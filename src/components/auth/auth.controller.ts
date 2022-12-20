@@ -48,6 +48,6 @@ export class AuthController {
   @Post('/registration')
   registration(@Body() user: CreateAuthDto) {
     console.log('user = ', user);
-    // return this.authService.signUp(user);
+    return this.authService.registration(user);
   }
 }

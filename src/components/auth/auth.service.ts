@@ -4,6 +4,7 @@ import { UserDto } from '../user/dto/user.dto';
 import { JwtService } from '@nestjs/jwt';
 import SignInDto from './dto/signIn.dto';
 import { IUser } from '../user/interfaces/user.interfaces';
+import { CreateAuthDto } from './dto/create-auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -27,15 +28,24 @@ export class AuthService {
     return this.decodeJWT(token);
   }
 
+  async isRegisteredUser(user: SignInDto) {
+    const { email } = user;
+    const userFromDb = await this.userService.getUserByEmail(email);
+    if (userFromDb) {
+      throw new BadRequestException(
+        `user with this email: ${email} is registration`,
+      );
+    }
+  }
   async validateUserByEmailPassword(user: SignInDto) {
     const { email } = user;
-    console.log('email = ', email);
     const userFromDb = await this.userService.getUserByEmail(email);
+    console.log('userFromDb = ', userFromDb);
     if (!userFromDb) {
-      throw new BadRequestException('invalid credential lol');
+      throw new BadRequestException('invalid credential');
     }
     if (userFromDb.password !== user.password) {
-      throw new BadRequestException('invalid credential lol');
+      throw new BadRequestException('invalid credential');
     }
     return userFromDb;
   }
@@ -60,8 +70,10 @@ export class AuthService {
     return user;
   }
 
-  async registration(user: UserDto): Promise<IUser> {
-    return user;
+  async registration(user: CreateAuthDto): Promise<IUser> {
+    await this.isRegisteredUser(user);
+    console.log(123);
+    return this.userService.createUser(user);
   }
 
   async getProfile(email: string): Promise<IUser> {
