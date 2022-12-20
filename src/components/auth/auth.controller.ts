@@ -12,6 +12,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { UserDto } from '../user/dto/user.dto';
 import { AuthGuard } from '@nestjs/passport';
 import SignInDto from './dto/signIn.dto';
+import { CreateAuthDto } from './dto/create-auth.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -40,6 +41,13 @@ export class AuthController {
   @UseGuards(AuthGuard('local'))
   @Post('/sign-up')
   signUp(@Body() user: UserDto) {
+    console.log('user = ', user);
     return this.authService.signUp(user);
+  }
+
+  @Post('/registration')
+  registration(@Body() user: CreateAuthDto) {
+    console.log('user = ', user);
+    // return this.authService.signUp(user);
   }
 }

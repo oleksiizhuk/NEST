@@ -8,7 +8,6 @@ class UserDto {
   name: string;
 
   @IsString()
-  @IsOptional()
   @MinLength(4)
   @ApiProperty()
   email: string;

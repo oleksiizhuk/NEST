@@ -29,6 +29,7 @@ export class AuthService {
 
   async validateUserByEmailPassword(user: SignInDto) {
     const { email } = user;
+    console.log('email = ', email);
     const userFromDb = await this.userService.getUserByEmail(email);
     if (!userFromDb) {
       throw new BadRequestException('invalid credential lol');
@@ -56,6 +57,10 @@ export class AuthService {
   }
 
   async signUp(user: UserDto): Promise<IUser> {
+    return user;
+  }
+
+  async registration(user: UserDto): Promise<IUser> {
     return user;
   }
 
