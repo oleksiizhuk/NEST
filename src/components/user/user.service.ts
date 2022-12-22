@@ -16,6 +16,7 @@ export class UserService {
   }
 
   async getUserById(id: string): Promise<IUser> {
+    console.log('idid=  ', id);
     return this.userRepository.getUserById(id);
   }
 

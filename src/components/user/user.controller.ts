@@ -36,8 +36,8 @@ export class UserController {
     });
   }
 
-  @UseGuards(AuthGuard('jwt'))
-  @ApiBearerAuth()
+  // @UseGuards(AuthGuard('jwt'))
+  // @ApiBearerAuth()
   @Get('/:id')
   getUserById(@Param('id') id: string): Promise<IUser> {
     return this.userService.getUserById(id);

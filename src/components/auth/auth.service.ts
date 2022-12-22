@@ -52,6 +52,7 @@ export class AuthService {
 
   async singIn(user: SignInDto) {
     const userFromDb = await this.validateUserByEmailPassword(user);
+    console.log('userFromDb = ', userFromDb);
     const payload = { email: userFromDb.email };
     return {
       user: userFromDb,

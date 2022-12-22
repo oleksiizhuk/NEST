@@ -23,6 +23,7 @@ export class UserRepository {
   }
 
   async getUserByEmail(email: string): Promise<IUser> {
+    console.log('this.UserDB = ', this.UserDB.find());
     return this.UserDB.findOne({ email }).lean();
   }
 

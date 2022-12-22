@@ -32,12 +32,13 @@ export class AuthController {
     return this.authService.getProfile(req.user.email.email);
   }
 
-  @UseGuards(AuthGuard('local'))
+  // @UseGuards(AuthGuard('local'))
   @Post('/sign-in')
   signIn(@Body() user: SignInDto) {
     return this.authService.singIn(user);
   }
 
+  // @UseGuards(AuthGuard('local'))
   @UseGuards(AuthGuard('local'))
   @Post('/sign-up')
   signUp(@Body() user: UserDto) {
@@ -45,6 +46,7 @@ export class AuthController {
     return this.authService.signUp(user);
   }
 
+  // @UseGuards(AuthGuard('local'))
   @Post('/registration')
   registration(@Body() user: CreateAuthDto) {
     console.log('user = ', user);
