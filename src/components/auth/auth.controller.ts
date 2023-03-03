@@ -25,6 +25,7 @@ export class AuthController {
     return this.authService.refreshToken(authorization.split(' ')[1]);
   }
 
+
   @ApiBearerAuth()
   @UseGuards(AuthGuard('jwt'))
   @Get('profile')
