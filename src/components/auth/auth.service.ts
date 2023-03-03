@@ -74,6 +74,7 @@ export class AuthService {
   async registration(user: CreateAuthDto): Promise<IUser> {
     await this.isRegisteredUser(user);
     console.log(123);
+    console.log('user = ', user);
     return this.userService.createUser(user);
   }
 

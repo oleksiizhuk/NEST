@@ -25,7 +25,6 @@ export class AuthController {
     return this.authService.refreshToken(authorization.split(' ')[1]);
   }
 
-
   @ApiBearerAuth()
   @UseGuards(AuthGuard('jwt'))
   @Get('profile')
@@ -36,11 +35,12 @@ export class AuthController {
   // @UseGuards(AuthGuard('local'))
   @Post('/sign-in')
   signIn(@Body() user: SignInDto) {
+    console.log('user = ', user)
     return this.authService.singIn(user);
   }
 
   // @UseGuards(AuthGuard('local'))
-  @UseGuards(AuthGuard('local'))
+  // @UseGuards(AuthGuard('local'))
   @Post('/sign-up')
   signUp(@Body() user: UserDto) {
     console.log('user = ', user);
