@@ -5,6 +5,7 @@ import { JwtService } from '@nestjs/jwt';
 import { LoginDTO } from './dto/Login.dto';
 import { IUser } from '../user/interfaces/user.interfaces';
 import { CreateAuthDto } from './dto/create-auth.dto';
+import { jwtConstants } from './constants/constants';
 
 @Injectable()
 export class AuthService {
@@ -52,11 +53,11 @@ export class AuthService {
     return {
       user: userFromDb,
       accessToken: this.jwtService.sign(payload, {
-        secret: 'secret',
+        secret: jwtConstants.secret,
         expiresIn: '24h',
       }),
       refreshToken: this.jwtService.sign(payload, {
-        secret: 'secret',
+        secret: jwtConstants.secret,
         expiresIn: '100h',
       }),
     };
