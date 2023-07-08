@@ -7,50 +7,39 @@ import {
   Get,
   Request,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { UserDto } from '../user/dto/user.dto';
-import { AuthGuard } from '@nestjs/passport';
-import SignInDto from './dto/signIn.dto';
+import { LoginDTO } from './dto/Login.dto';
 import { CreateAuthDto } from './dto/create-auth.dto';
+import { LocalAuthGuard } from '../../service/guards/local-auth.guard';
+import { JwtAuthGuard } from '../../service/guards/jwt-auth.guard';
 
 @ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  @Post('/refresh-token')
-  refreshToke(@Headers() headers: any) {
-    const { authorization } = headers;
-    return this.authService.refreshToken(authorization.split(' ')[1]);
-  }
-
-  @ApiBearerAuth()
-  @UseGuards(AuthGuard('jwt'))
-  @Get('profile')
-  getProfile(@Request() req) {
-    return this.authService.getProfile(req.user.email.email);
-  }
-
-  // @UseGuards(AuthGuard('local'))
-  @Post('/sign-in')
-  signIn(@Body() user: SignInDto) {
-    console.log('user = ', user)
+  @UseGuards(LocalAuthGuard)
+  @Post('login')
+  logIn(@Body() user: LoginDTO) {
     return this.authService.singIn(user);
   }
 
-  // @UseGuards(AuthGuard('local'))
-  // @UseGuards(AuthGuard('local'))
-  @Post('/sign-up')
-  signUp(@Body() user: UserDto) {
-    console.log('user = ', user);
-    return this.authService.signUp(user);
+  @Post('registration')
+  registration(@Body() user: CreateAuthDto) {
+    return this.authService.registration(user);
   }
 
-  // @UseGuards(AuthGuard('local'))
-  @Post('/registration')
-  registration(@Body() user: CreateAuthDto) {
-    console.log('user = ', user);
-    return this.authService.registration(user);
+  @UseGuards(JwtAuthGuard)
+  @Get('profile')
+  profile(@Request() req) {
+    console.log(req.user);
+    return this.authService.getProfile(req.user.email.email);
+  }
+
+  @Post('refresh-token')
+  refreshToken(@Headers() headers: any) {
+    const { authorization } = headers;
+    return this.authService.refreshToken(authorization.split(' ')[1]);
   }
 }

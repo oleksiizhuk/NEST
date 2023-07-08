@@ -12,7 +12,7 @@ import {
 } from 'class-validator';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
-import { Match } from '../decorator/match.decorator';
+import { Match } from '../../../decorator/match.decorator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateAuthDto {

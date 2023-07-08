@@ -10,7 +10,7 @@ export class UserRepository {
   constructor(@InjectModel('User') private UserDB: Model<UserEntity>) {}
 
   async getUsers(): Promise<IUser[]> {
-    return this.UserDB.find().limit(20).lean();
+    return this.UserDB.find().limit(100).lean();
   }
 
   async createUser(user: UserDto): Promise<IUser> {

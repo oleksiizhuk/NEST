@@ -14,13 +14,14 @@ import { UserDto } from './dto/user.dto';
 import { UserService } from './user.service';
 import { IUser } from './interfaces/user.interfaces';
 import { AuthGuard } from '@nestjs/passport';
-import JwtAuthGuard from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('User')
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
-  @UseGuards(JwtAuthGuard)
+
+  // @UseGuards(JwtAuthGuard)
+  @UseGuards(AuthGuard('local'))
   @ApiBearerAuth()
   @Get('/')
   getUsers(): Promise<IUser[]> {

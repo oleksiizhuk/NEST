@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { UserService } from '../user/user.service';
 import { UserDto } from '../user/dto/user.dto';
 import { JwtService } from '@nestjs/jwt';
-import SignInDto from './dto/signIn.dto';
+import { LoginDTO } from './dto/Login.dto';
 import { IUser } from '../user/interfaces/user.interfaces';
 import { CreateAuthDto } from './dto/create-auth.dto';
 
@@ -15,6 +15,7 @@ export class AuthService {
 
   private decodeJWT(token: string) {
     const result = this.jwtService.decode(token);
+    console.log('decodeJWT = ', 123);
     if (!result) {
       throw new BadRequestException({
         statusCode: 400,
@@ -25,34 +26,28 @@ export class AuthService {
   }
 
   async refreshToken(token: string) {
+    console.log('refreshToken = ', 123);
     return this.decodeJWT(token);
   }
 
-  async isRegisteredUser(user: SignInDto) {
+  async isRegisteredUser(user: LoginDTO) {
     const { email } = user;
     const userFromDb = await this.userService.getUserByEmail(email);
     if (userFromDb) {
-      throw new BadRequestException(
-        `user with this email: ${email} is registration`,
-      );
+      throw new BadRequestException(`This email ${email} is already exists`);
     }
   }
-  async validateUserByEmailPassword(user: SignInDto) {
+  async validateUser(user: LoginDTO): Promise<IUser> {
     const { email } = user;
     const userFromDb = await this.userService.getUserByEmail(email);
-    console.log('userFromDb = ', userFromDb);
-    if (!userFromDb) {
-      throw new BadRequestException('invalid credential');
-    }
-    if (userFromDb.password !== user.password) {
+    if (!userFromDb || userFromDb.password !== user.password) {
       throw new BadRequestException('invalid credential');
     }
     return userFromDb;
   }
 
-  async singIn(user: SignInDto) {
-    const userFromDb = await this.validateUserByEmailPassword(user);
-    console.log('userFromDb = ', userFromDb);
+  async singIn(user: LoginDTO) {
+    const userFromDb = await this.validateUser(user);
     const payload = { email: userFromDb.email };
     return {
       user: userFromDb,
@@ -73,8 +68,6 @@ export class AuthService {
 
   async registration(user: CreateAuthDto): Promise<IUser> {
     await this.isRegisteredUser(user);
-    console.log(123);
-    console.log('user = ', user);
     return this.userService.createUser(user);
   }
 
