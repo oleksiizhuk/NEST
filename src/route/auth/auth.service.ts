@@ -67,9 +67,21 @@ export class AuthService {
     return user;
   }
 
-  async registration(user: CreateAuthDto): Promise<IUser> {
-    await this.isRegisteredUser(user);
-    return this.userService.createUser(user);
+  async registration(newUser: CreateAuthDto) {
+    await this.isRegisteredUser(newUser);
+    const user = await this.userService.createUser(newUser);
+    const payload = { email: user.email };
+    return {
+      user,
+      accessToken: this.jwtService.sign(payload, {
+        secret: jwtConstants.secret,
+        expiresIn: '24h',
+      }),
+      refreshToken: this.jwtService.sign(payload, {
+        secret: jwtConstants.secret,
+        expiresIn: '100h',
+      }),
+    };
   }
 
   async getProfile(email: string): Promise<IUser> {
