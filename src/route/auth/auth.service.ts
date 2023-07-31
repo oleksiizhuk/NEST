@@ -5,18 +5,18 @@ import { JwtService } from '@nestjs/jwt';
 import { LoginDTO } from './dto/Login.dto';
 import { IUser } from '../user/interfaces/user.interfaces';
 import { CreateAuthDto } from './dto/create-auth.dto';
-import { jwtConstants } from './constants/constants';
+import { JWTGenerator } from '../../utils/JWTGenerator/JWTGenerator';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userService: UserService,
     private jwtService: JwtService,
+    private readonly jwtGenerator: JWTGenerator,
   ) {}
 
   private decodeJWT(token: string) {
     const result = this.jwtService.decode(token);
-    console.log('decodeJWT = ', 123);
     if (!result) {
       throw new BadRequestException({
         statusCode: 400,
@@ -27,7 +27,6 @@ export class AuthService {
   }
 
   async refreshToken(token: string) {
-    console.log('refreshToken = ', 123);
     return this.decodeJWT(token);
   }
 
@@ -49,17 +48,13 @@ export class AuthService {
 
   async singIn(user: LoginDTO) {
     const userFromDb = await this.validateUser(user);
-    const payload = { email: userFromDb.email };
+    const { accessToken, refreshToken } = this.jwtGenerator.generateJWT(
+      userFromDb.email,
+    );
     return {
       user: userFromDb,
-      accessToken: this.jwtService.sign(payload, {
-        secret: jwtConstants.secret,
-        expiresIn: '24h',
-      }),
-      refreshToken: this.jwtService.sign(payload, {
-        secret: jwtConstants.secret,
-        expiresIn: '100h',
-      }),
+      accessToken,
+      refreshToken,
     };
   }
 
@@ -70,17 +65,13 @@ export class AuthService {
   async registration(newUser: CreateAuthDto) {
     await this.isRegisteredUser(newUser);
     const user = await this.userService.createUser(newUser);
-    const payload = { email: user.email };
+    const { accessToken, refreshToken } = this.jwtGenerator.generateJWT(
+      user.email,
+    );
     return {
       user,
-      accessToken: this.jwtService.sign(payload, {
-        secret: jwtConstants.secret,
-        expiresIn: '24h',
-      }),
-      refreshToken: this.jwtService.sign(payload, {
-        secret: jwtConstants.secret,
-        expiresIn: '100h',
-      }),
+      accessToken,
+      refreshToken,
     };
   }
 
