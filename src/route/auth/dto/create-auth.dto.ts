@@ -57,16 +57,10 @@ export class CreateAuthDto {
   @MaxLength(32, {
     message: 'firstName is too long',
   })
-  @NotContains(' ', {
-    message: 'without space',
-  })
   firstName: string;
 
   @ApiProperty()
   @IsString()
-  @NotContains(' ', {
-    message: 'without space',
-  })
   @MinLength(2, {
     message: 'lastName is too short',
   })
