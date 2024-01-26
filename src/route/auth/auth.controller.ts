@@ -11,8 +11,8 @@ import { ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LoginDTO } from './dto/Login.dto';
 import { CreateAuthDto } from './dto/create-auth.dto';
-import { LocalAuthGuard } from '../../service/guards/local-auth.guard';
-import { JwtAuthGuard } from '../../service/guards/jwt-auth.guard';
+import { LocalAuthGuard } from '../../guards/guards/local-auth.guard';
+import { JwtAuthGuard } from '../../guards/guards/jwt-auth.guard';
 
 @ApiTags('Auth')
 @Controller('auth')
