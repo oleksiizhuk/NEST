@@ -8,6 +8,7 @@ class EmailDto {
   email: string;
 
   @IsString()
+  @ApiProperty()
   message: string;
 }
 

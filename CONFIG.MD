@@ -15,3 +15,13 @@
 - MAIL_PASS=a743daf72477f5
 - MAIL_SENDER=oleksiizhuk@example.com
 - APP_NAME=APP_NAME
+
+
+https://security.google.com/settings/security/apppasswords
+### ENV
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=oleksiizhuk.test@gmail.com
+MAIL_PASS=thppanyytrqxwjjc
+MAIL_SENDER=support@example.com
+APP_NAME=APP_NAME
