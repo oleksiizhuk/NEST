@@ -6,6 +6,9 @@ class EmailDto {
   @MinLength(4)
   @ApiProperty()
   email: string;
+
+  @IsString()
+  message: string;
 }
 
 export { EmailDto };
