@@ -13,8 +13,6 @@ export const emailConfig = (configService: ConfigService) => {
       pool: true,
     },
   };
-
   console.log('config = ', config);
-
   return config;
 };
