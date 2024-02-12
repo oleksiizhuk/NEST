@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
+import { OcrService } from '../../service/ocr/ocr.service';
 
 @Injectable()
 export class EmailingService {
   constructor(
     private readonly mailService: MailerService,
     private readonly configService: ConfigService,
+    private readonly ocrService: OcrService,
   ) {}
 
   async sendMail(email, message) {
@@ -25,5 +27,10 @@ export class EmailingService {
     } catch (e) {
       console.log('error', e);
     }
+  }
+
+  async convertImage(image) {
+    const text = await this.ocrService.convertImageToText(image.buffer);
+    return { text };
   }
 }
