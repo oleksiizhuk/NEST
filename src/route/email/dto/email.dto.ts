@@ -12,4 +12,11 @@ class EmailDto {
   message: string;
 }
 
-export { EmailDto };
+class EmailWithTemplateDtp {
+  @IsString()
+  @MinLength(4)
+  @ApiProperty()
+  email: string;
+}
+
+export { EmailDto, EmailWithTemplateDtp };

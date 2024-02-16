@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+    <meta http-equiv="Content-Type" content="text/html charset=UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Registration</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans&display=swap" rel="stylesheet">
+<body>
+<h1>{{title}}</h1>
+<button onclick="openPizzaHutApp()" class="button">
+    Button
+</button>
+<p class="body1 smallMarginBottom">
+    If the button above doesn’t work, paste this link into your web browser:
+</p>
+<a class="buttonOutline" href="{{deepLinkUrl}}">
+    {{deepLinkUrl}}
+</a>
+<script>
+  function openPizzaHutApp() {
+    window.location.href = 'pizzahut://';
+  }
+</script>
+</body>
+</html>
