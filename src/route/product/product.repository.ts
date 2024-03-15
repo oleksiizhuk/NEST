@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ProductEntity } from './entity/product.entity';
-import { Pagination, IPaginationOptions } from 'nestjs-typeorm-paginate';
+import { IPaginationOptions } from 'nestjs-typeorm-paginate';
 import { Model } from 'mongoose';
 import { ProductDTO } from './dto/product.dto';
+import { IPaginationProduct } from './product.types';
 
 @Injectable()
 export class ProductRepository {
@@ -11,8 +12,7 @@ export class ProductRepository {
     @InjectModel('Product') private productModel: Model<ProductEntity>,
   ) {}
 
-  // Promise<Pagination<ProductEntity>>
-  async getProduct(options: IPaginationOptions): Promise<any> {
+  async getProduct(options: IPaginationOptions): Promise<IPaginationProduct> {
     const page = +options.page;
     const limit = +options.limit;
     const [results, total] = await Promise.all([
@@ -24,16 +24,14 @@ export class ProductRepository {
     ]);
 
     const totalPages = Math.ceil(total / limit);
-    const meta = {
+    return {
+      items: results,
       totalItems: total,
       itemCount: results.length,
       itemsPerPage: limit,
       totalPages: totalPages,
       currentPage: page,
     };
-    // console.log(new Pagination(results, meta));
-    // return new Pagination(results, meta);
-    return { meta };
   }
 
   async getByID(id: string): Promise<ProductEntity> {
