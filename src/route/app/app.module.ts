@@ -6,9 +6,11 @@ import { AuthModule } from '../auth/auth.module';
 import { EmailModule } from '../email/email.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
+import { ProductModule } from '../product/product.module';
 
 @Module({
   imports: [
+    ProductModule,
     AuthModule,
     UserModule,
     EmailModule,
