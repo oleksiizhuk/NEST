@@ -16,4 +16,8 @@ export class ProductService {
   async getByID(id: string): Promise<ProductEntity> {
     return this.productRepository.getByID(id);
   }
+
+  async addProduct(product): Promise<ProductEntity> {
+    return this.productRepository.addProduct(product);
+  }
 }

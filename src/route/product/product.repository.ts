@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Model } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { ProductEntity } from './entity/product.entity';
 import { Pagination, IPaginationOptions } from 'nestjs-typeorm-paginate';
+import { Model } from 'mongoose';
+import { ProductDTO } from './dto/product.dto';
 
 @Injectable()
 export class ProductRepository {
@@ -10,11 +11,10 @@ export class ProductRepository {
     @InjectModel('Product') private productModel: Model<ProductEntity>,
   ) {}
 
-  async getProduct(
-    options: IPaginationOptions,
-  ): Promise<Pagination<ProductEntity>> {
-    const page = +options.page || 1;
-    const limit = +options.limit || 10;
+  // Promise<Pagination<ProductEntity>>
+  async getProduct(options: IPaginationOptions): Promise<any> {
+    const page = +options.page;
+    const limit = +options.limit;
     const [results, total] = await Promise.all([
       this.productModel
         .find()
@@ -31,8 +31,9 @@ export class ProductRepository {
       totalPages: totalPages,
       currentPage: page,
     };
-
-    return new Pagination(results, meta);
+    // console.log(new Pagination(results, meta));
+    // return new Pagination(results, meta);
+    return { meta };
   }
 
   async getByID(id: string): Promise<ProductEntity> {
@@ -41,5 +42,11 @@ export class ProductRepository {
       throw new NotFoundException(`Product with ID ${id} not found`);
     }
     return product;
+  }
+
+  async addProduct(productData: ProductDTO): Promise<ProductEntity> {
+    const newProduct = new this.productModel(productData);
+    await newProduct.save();
+    return newProduct;
   }
 }
