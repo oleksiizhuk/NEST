@@ -6,4 +6,5 @@ export class UserEntity extends Document {
   readonly age: number;
   readonly email: string;
   readonly password: string;
+  readonly shoppingCart: string;
 }

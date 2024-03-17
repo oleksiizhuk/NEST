@@ -7,10 +7,23 @@ import { ShoppingCartEntity } from './entity/shoppingCart.entity';
 export class ShoppingCartRepository {
   constructor(
     @InjectModel('ShoppingCart')
-    private productModel: Model<ShoppingCartEntity>,
+    private shoppingCartModel: Model<ShoppingCartEntity>,
   ) {}
 
-  async add(): Promise<ShoppingCartEntity> {
+  async add(id: string): Promise<ShoppingCartEntity> {
     return {} as any;
+  }
+
+  async getCart(id: string): Promise<ShoppingCartEntity> {
+    return this.shoppingCartModel.findOne({ id }).lean();
+  }
+
+  async createShoppingCart(id: string): Promise<ShoppingCartEntity> {
+    const newCart = await new this.shoppingCartModel({
+      id: id,
+      items: [],
+      price: { count: 0 },
+    });
+    return newCart.save();
   }
 }

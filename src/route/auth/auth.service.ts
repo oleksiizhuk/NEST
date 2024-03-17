@@ -5,6 +5,7 @@ import { LoginDTO } from './dto/Login.dto';
 import { IUser } from '../user/interfaces/user.interfaces';
 import { CreateAuthDto } from './dto/create-auth.dto';
 import { JWTGenerator } from '../../utils/JWTGenerator/JWTGenerator';
+import { LogMethodCallAndReturn } from '../../decorator/logMethodCallAndReturn';
 
 @Injectable()
 export class AuthService {
@@ -29,6 +30,7 @@ export class AuthService {
     return this.decodeJWT(token);
   }
 
+  @LogMethodCallAndReturn('AuthService')
   async isRegisteredUser({
     email,
   }: {
@@ -59,6 +61,7 @@ export class AuthService {
     };
   }
 
+  @LogMethodCallAndReturn('AuthService')
   async registration(newUser: CreateAuthDto) {
     const isRegisteredUser = await this.isRegisteredUser(newUser);
     if (isRegisteredUser) {
@@ -78,7 +81,19 @@ export class AuthService {
     };
   }
 
-  async getProfile(email: string): Promise<IUser> {
-    return await this.userService.getUserByEmail(email);
+  async getPublicUserProfile(email: string): Promise<Omit<IUser, 'password'>> {
+    const user = await this.userService.getUserByEmail(email);
+    return this.convertUserToPublicUser(user);
+  }
+
+  convertUserToPublicUser(user: IUser): Omit<IUser, 'password'> {
+    return {
+      _id: user._id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      age: user.age,
+      email: user.email,
+      shoppingCart: user.shoppingCart,
+    };
   }
 }

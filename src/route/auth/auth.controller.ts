@@ -13,6 +13,7 @@ import { LoginDTO } from './dto/Login.dto';
 import { CreateAuthDto } from './dto/create-auth.dto';
 import { LocalAuthGuard } from '../../guards/guards/local-auth.guard';
 import { JwtAuthGuard } from '../../guards/guards/jwt-auth.guard';
+import { LogMethodCallAndReturn } from '../../decorator/logMethodCallAndReturn';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -26,15 +27,15 @@ export class AuthController {
   }
 
   @Post('registration')
-  registration(@Body() user: CreateAuthDto) {
-    return this.authService.registration(user);
+  @LogMethodCallAndReturn('AuthController')
+  async registration(@Body() user: CreateAuthDto) {
+    return await this.authService.registration(user);
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   profile(@Request() req) {
-    console.log(req.user);
-    return this.authService.getProfile(req.user.email.email);
+    return this.authService.getPublicUserProfile(req.user.email.email);
   }
 
   @Post('refresh-token')
