@@ -35,6 +35,9 @@ $ npm install
 ## Running the app
 
 ```bash
+#Node version
+$ nvm use
+
 # development
 $ npm run start
 
