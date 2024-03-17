@@ -29,7 +29,6 @@
 ## NVM 
 
 ```bash
-#node version
 $ nvm use
 ```
 ## Installation
@@ -83,3 +82,7 @@ The server is deployed on Vercel, and you can access it using the following URL:
 - **Server URL**: [https://nest-ln8n-oleksiizhukatt.vercel.app/](https://nest-ln8n-oleksiizhukatt.vercel.app/)
 
 Please ensure that you have the necessary permissions and credentials to access these resources.
+
+
+## MAIL CONFIG
+[CONFIG](CONFIG.MD)
