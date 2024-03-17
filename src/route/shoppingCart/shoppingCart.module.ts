@@ -8,7 +8,7 @@ import { ShoppingCartRepository } from './shoppingCart.repository';
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: 'ShoppingCat', schema: ShoppingCartSchema },
+      { name: 'ShoppingCart', schema: ShoppingCartSchema },
     ]),
   ],
   controllers: [ShoppingCartController],

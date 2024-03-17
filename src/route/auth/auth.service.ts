@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { UserService } from '../user/user.service';
-import { UserDto } from '../user/dto/user.dto';
 import { JwtService } from '@nestjs/jwt';
+import { UserService } from '../user/user.service';
 import { LoginDTO } from './dto/Login.dto';
 import { IUser } from '../user/interfaces/user.interfaces';
 import { CreateAuthDto } from './dto/create-auth.dto';
@@ -30,13 +29,15 @@ export class AuthService {
     return this.decodeJWT(token);
   }
 
-  async isRegisteredUser(user: LoginDTO) {
-    const { email } = user;
-    const userFromDb = await this.userService.getUserByEmail(email);
-    if (userFromDb) {
-      throw new BadRequestException(`This email ${email} is already exists`);
-    }
+  async isRegisteredUser({
+    email,
+  }: {
+    email: LoginDTO['email'];
+  }): Promise<boolean> {
+    const user = await this.userService.getUserByEmail(email);
+    return !!user;
   }
+
   async validateUser(user: LoginDTO): Promise<IUser> {
     const { email } = user;
     const userFromDb = await this.userService.getUserByEmail(email);
@@ -58,12 +59,14 @@ export class AuthService {
     };
   }
 
-  async signUp(user: UserDto): Promise<IUser> {
-    return user;
-  }
-
   async registration(newUser: CreateAuthDto) {
-    await this.isRegisteredUser(newUser);
+    const isRegisteredUser = await this.isRegisteredUser(newUser);
+    if (isRegisteredUser) {
+      throw new BadRequestException(
+        `This email ${newUser.email} is already exists`,
+      );
+    }
+
     const user = await this.userService.createUser(newUser);
     const { accessToken, refreshToken } = this.jwtGenerator.generateJWT(
       user.email,

@@ -58,16 +58,9 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
-## Support
+DB Mongodb
+Link - https://cloud.mongodb.com/
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
 
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://kamilmysliwiec.com)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](LICENSE).
+Schema
+Link - https://lucid.app/lucidchart/77811c67-5a48-4c6f-8470-47a02490e997/edit?beaconFlowId=29F90988C732EEB9&invitationId=inv_799a023b-2027-435c-b1ed-4e71b1f317be&page=0_0#
