@@ -67,7 +67,7 @@ $ npm run test:cov
 We are using MongoDB as our primary database. To access the database, visit the MongoDB cloud interface.
 
 - **MongoDB Cloud Interface**: [https://cloud.mongodb.com/](https://cloud.mongodb.com/)
-- **MongoDB DataBase**: [https://cloud.mongodb.com/v2/61220468f5c5e70b843c093d#/metrics/replicaSet/63a0ea1d7121d601b603e56a/explorer/test/](https://cloud.mongodb.com/v2/61220468f5c5e70b843c093d#/metrics/replicaSet/63a0ea1d7121d601b603e56a/explorer/test/)
+- **MongoDB DataBase**: [MONGO DB](https://cloud.mongodb.com/v2/61220468f5c5e70b843c093d#/metrics/replicaSet/63a0ea1d7121d601b603e56a/explorer/test)
 
 ## Schema Information
 
@@ -79,7 +79,7 @@ To understand the database schema and the relationships between different entiti
 
 The server is deployed on Vercel, and you can access it using the following URL:
 
-- **Server URL**: [https://nest-ln8n-oleksiizhukatt.vercel.app/](https://nest-ln8n-oleksiizhukatt.vercel.app/)
+- **Server URL**: [SERVE URL](https://nest-ln8n-oleksiizhukatt.vercel.app/)
 
 Please ensure that you have the necessary permissions and credentials to access these resources.
 
