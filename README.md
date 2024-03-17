@@ -61,9 +61,21 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
-DB Mongodb
-Link - https://cloud.mongodb.com/
+### MongoDB
+We are using MongoDB as our primary database. To access the database, visit the MongoDB cloud interface.
 
+- **MongoDB Cloud Interface**: [https://cloud.mongodb.com/](https://cloud.mongodb.com/)
 
-Schema
-Link - https://lucid.app/lucidchart/77811c67-5a48-4c6f-8470-47a02490e997/edit?beaconFlowId=29F90988C732EEB9&invitationId=inv_799a023b-2027-435c-b1ed-4e71b1f317be&page=0_0#
+## Schema Information
+
+To understand the database schema and the relationships between different entities, refer to the schema diagram available at the following link:
+
+- **Schema Diagram**: [Lucidchart Link](https://lucid.app/lucidchart/77811c67-5a48-4c6f-8470-47a02490e997/edit?beaconFlowId=29F90988C732EEB9&invitationId=inv_799a023b-2027-435c-b1ed-4e71b1f317be&page=0_0#)
+
+## Server Information
+
+The server is deployed on Vercel, and you can access it using the following URL:
+
+- **Server URL**: [https://nest-ln8n-oleksiizhukatt.vercel.app/](https://nest-ln8n-oleksiizhukatt.vercel.app/)
+
+Please ensure that you have the necessary permissions and credentials to access these resources.
