@@ -26,6 +26,12 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## NVM 
+
+```bash
+#node version
+$ nvm use
+```
 ## Installation
 
 ```bash
@@ -35,9 +41,6 @@ $ npm install
 ## Running the app
 
 ```bash
-#Node version
-$ nvm use
-
 # development
 $ npm run start
 
