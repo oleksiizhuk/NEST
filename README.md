@@ -86,3 +86,7 @@ Please ensure that you have the necessary permissions and credentials to access 
 
 ## MAIL CONFIG
 [CONFIG](CONFIG.MD)
+
+## Vercel
+**Server URL**: [Vercel URL](https://vercel.com/oleksiizhukatt/nest)
+

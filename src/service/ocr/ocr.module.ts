@@ -4,6 +4,6 @@ import { OcrService } from './ocr.service';
 
 @Module({
   providers: [OcrService],
-  exports: [OcrService], // This makes OcrService available for import in other modules
+  exports: [OcrService],
 })
 export class OcrModule {}
