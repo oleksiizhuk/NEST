@@ -93,7 +93,7 @@ export class AuthService {
       lastName: user.lastName,
       age: user.age,
       email: user.email,
-      shoppingCart: user.shoppingCart,
+      shoppingCartId: user.shoppingCartId,
     };
   }
 }

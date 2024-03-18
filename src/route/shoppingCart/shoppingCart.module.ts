@@ -5,10 +5,12 @@ import { ShoppingCartController } from './shoppingCart.controller';
 import { ShoppingCartService } from './shoppingCart.service';
 import { ShoppingCartRepository } from './shoppingCart.repository';
 import { UserModule } from '../user/user.module';
+import { ProductModule } from '../product/product.module';
 
 @Module({
   imports: [
     UserModule,
+    ProductModule,
     MongooseModule.forFeature([
       { name: 'ShoppingCart', schema: ShoppingCartSchema },
     ]),

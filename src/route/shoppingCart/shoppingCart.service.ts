@@ -1,37 +1,63 @@
-import { BadRequestException, Injectable, UseGuards } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { ShoppingCartRepository } from './shoppingCart.repository';
 import { UserService } from '../user/user.service';
-import { v4 as uuidv4 } from 'uuid';
+import { ProductService } from '../product/product.service';
+import { ShoppingCartEntity } from './entity/shoppingCart.entity';
 
 @Injectable()
 export class ShoppingCartService {
   constructor(
     private readonly shoppingCartRepository: ShoppingCartRepository,
     private readonly userService: UserService,
+    private readonly productService: ProductService,
   ) {}
 
-  async add(id: string): Promise<any> {
-    return this.shoppingCartRepository.add(id);
+  async addItem(
+    email: string,
+    itemID: string,
+    count: number,
+  ): Promise<ShoppingCartEntity> {
+    const { shoppingCartId } = await this.userService.getUserByEmail(email);
+    if (shoppingCartId === null) {
+      throw new BadRequestException(`shoppingCart is null`);
+    }
+
+    const item = await this.productService.getByID(itemID);
+    if (!item) {
+      throw new BadRequestException(
+        `product with this ${itemID} does not exist`,
+      );
+    }
+
+    return await this.shoppingCartRepository.addItem(
+      shoppingCartId,
+      item,
+      count,
+    );
   }
 
-  async getCart(): Promise<any> {
-    return this.shoppingCartRepository.getCart('');
+  async getCart(email: string): Promise<ShoppingCartEntity> {
+    const { shoppingCartId } = await this.userService.getUserByEmail(email);
+    if (shoppingCartId === null) {
+      throw new BadRequestException(`shoppingCart is null`);
+    }
+
+    return this.shoppingCartRepository.getCart(shoppingCartId);
   }
 
-  async shoppingCartIsEmpty(idShoppingCart): Promise<boolean> {
-    const { items } = await this.shoppingCartRepository.getCart(idShoppingCart);
+  async shoppingCartIsEmpty(shoppingCartId): Promise<boolean> {
+    const { items } = await this.shoppingCartRepository.getCart(shoppingCartId);
     return !items.length;
   }
 
   async completeOrder(email: string): Promise<any> {
-    const { shoppingCart } = await this.userService.getUserByEmail(email);
-    if (shoppingCart === null) {
-      throw new BadRequestException(
-        `something went wrong shoppingCart is null`,
-      );
+    const { shoppingCartId } = await this.userService.getUserByEmail(email);
+    if (shoppingCartId === null) {
+      throw new BadRequestException(`shoppingCart is null`);
     }
 
-    const shoppingCartIsEmpty = await this.shoppingCartIsEmpty(shoppingCart);
+    const shoppingCartIsEmpty = await this.shoppingCartIsEmpty(shoppingCartId);
     if (shoppingCartIsEmpty) {
       throw new BadRequestException('shopping cart is empty');
     }

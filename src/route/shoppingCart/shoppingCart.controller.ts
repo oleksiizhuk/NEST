@@ -22,15 +22,24 @@ export class ShoppingCartController {
       req.user.email.email,
     );
   }
+
+  @UseGuards(JwtAuthGuard)
   @Post('/addItem')
-  async addItem(@Body() id: string) {
-    return await this.shoppingCartService.add(id);
+  async addItem(
+    @Request() req,
+    @Body() { itemID, count }: { itemID: string; count: number },
+  ) {
+    return await this.shoppingCartService.addItem(
+      req.user.email.email,
+      itemID,
+      count,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('/')
   async getCart(@Request() req) {
-    return await this.shoppingCartService.getCart();
+    return await this.shoppingCartService.getCart(req.user.email.email);
   }
 
   @UseGuards(JwtAuthGuard)

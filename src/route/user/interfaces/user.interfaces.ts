@@ -5,5 +5,5 @@ export interface IUser {
   age: number;
   email: string;
   password: string;
-  shoppingCart: string;
+  shoppingCartId: string;
 }
