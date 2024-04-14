@@ -5,6 +5,9 @@ import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import serveStatic = require('serve-static');
 
+import { resolve } from 'path';
+import { writeFileSync } from 'fs';
+
 const options = new DocumentBuilder()
   .setTitle('Api v1')
   .setDescription('The API for vibe APP')
@@ -14,26 +17,8 @@ const options = new DocumentBuilder()
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  // Пример настройки Helmet для разрешения загрузки скриптов
-  app.use(
-    helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
-          styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
-          imgSrc: ["'self'", 'data:', 'validator.swagger.io'],
-          connectSrc: ["'self'"],
-        },
-      },
-    }),
-  );
-
+  app.use(helmet());
   app.useGlobalPipes(new ValidationPipe());
-
-  const document = await SwaggerModule.createDocument(app, options);
-  SwaggerModule.setup('api', app, document);
-
   app.use(
     '/api',
     serveStatic('public', {
@@ -45,9 +30,21 @@ async function bootstrap() {
       },
     }),
   );
-  // const document = SwaggerModule.createDocument(app, options);
-  // SwaggerModule.setup('api', app, document);
+  const document = SwaggerModule.createDocument(app, options);
+  SwaggerModule.setup('api', app, document);
   await app.listen(3000);
+
+  if (process.env.NODE_ENV === 'staging') {
+    const pathToSwaggerStaticFolder = resolve(process.cwd(), 'swagger-static');
+
+    const pathToSwaggerJson = resolve(
+      pathToSwaggerStaticFolder,
+      'swagger.json',
+    );
+    const swaggerJson = JSON.stringify(document, null, 2);
+    writeFileSync(pathToSwaggerJson, swaggerJson);
+    console.log(`Swagger JSON file written to: '/swagger-static/swagger.json'`);
+  }
 }
 
 bootstrap();

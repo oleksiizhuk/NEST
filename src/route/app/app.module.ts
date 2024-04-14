@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { UserModule } from '../user/user.module';
@@ -23,6 +25,10 @@ import { ShoppingCartModule } from '../shoppingCart/shoppingCart.module';
       'mongodb+srv://oleksii:223132qq@cluster0.bzoaa.mongodb.net/?retryWrites=true&w=majority',
       { autoCreate: true },
     ),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'swagger-static'),
+      serveRoot: process.env.NODE_ENV === 'staging' ? '/' : '/swagger',
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],
