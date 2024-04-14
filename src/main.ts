@@ -16,6 +16,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.use(helmet());
   app.useGlobalPipes(new ValidationPipe());
+
+  const document = SwaggerModule.createDocument(app, options);
+  SwaggerModule.setup('api', app, document);
+
+
   app.use(
     '/api',
     serveStatic('public', {
@@ -27,8 +32,8 @@ async function bootstrap() {
       },
     }),
   );
-  const document = SwaggerModule.createDocument(app, options);
-  SwaggerModule.setup('api', app, document);
+  // const document = SwaggerModule.createDocument(app, options);
+  // SwaggerModule.setup('api', app, document);
   await app.listen(3000);
 }
 

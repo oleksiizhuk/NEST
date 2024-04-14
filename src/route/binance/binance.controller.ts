@@ -1,4 +1,10 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  HttpStatus,
+  HttpException,
+} from '@nestjs/common';
 import { BinanceService } from './binance.service';
 import { ApiTags, ApiQuery } from '@nestjs/swagger';
 
@@ -23,5 +29,17 @@ export class BinanceController {
   })
   getMyPrices() {
     return this.binanceService.getMyPrices();
+  }
+
+  @Get('account-info')
+  async getAccountInfo() {
+    try {
+      return await this.binanceService.getAccountInfo();
+    } catch (error) {
+      throw new HttpException(
+        'Failed to get account info',
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 }
