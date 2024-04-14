@@ -7,8 +7,8 @@ import { EmailModule } from '../email/email.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { ProductModule } from '../product/product.module';
-import { ShoppingCartModule } from '../shoppingCart/shoppingCart.module';
 import { BinanceModule } from '../binance/binance.module';
+import { ShoppingCartModule } from '../shoppingCart/shoppingCart.module';
 
 @Module({
   imports: [

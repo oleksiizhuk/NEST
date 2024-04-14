@@ -9,8 +9,6 @@ export class EmailService {
     private readonly configService: ConfigService,
   ) {}
 
-  async initEmailService() {}
-
   async sendMail(email, message) {
     const sender = {
       name: this.configService.get<string>('APP_NAME'),
