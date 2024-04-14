@@ -17,8 +17,11 @@ export class BinanceController {
     return this.binanceService.getLatestPrice(symbol);
   }
 
-  @Get('test')
-  test() {
-    return '';
+  @Get('prices')
+  @ApiQuery({
+    description: 'BTCUSDT, OPUSDT, ARBUSDY, STRKUSDT',
+  })
+  getMyPrices() {
+    return this.binanceService.getMyPrices();
   }
 }
