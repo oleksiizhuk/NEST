@@ -14,12 +14,25 @@ const options = new DocumentBuilder()
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.use(helmet());
+  // Пример настройки Helmet для разрешения загрузки скриптов
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", 'https:', "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'validator.swagger.io'],
+          connectSrc: ["'self'"],
+        },
+      },
+    }),
+  );
+
   app.useGlobalPipes(new ValidationPipe());
 
-  const document = SwaggerModule.createDocument(app, options);
+  const document = await SwaggerModule.createDocument(app, options);
   SwaggerModule.setup('api', app, document);
-
 
   app.use(
     '/api',
