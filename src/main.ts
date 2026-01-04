@@ -4,6 +4,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import serveStatic = require('serve-static');
+import { helmetConfig } from './config/helmet.config';
 
 const options = new DocumentBuilder()
   .setTitle('Api v1')
@@ -15,11 +16,12 @@ const options = new DocumentBuilder()
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.use(helmet());
+  app.use(helmet(helmetConfig));
   app.useGlobalPipes(new ValidationPipe());
+  app.enableCors();
 
   app.use(
-    '/api',
+    '/static',
     serveStatic('public', {
       index: ['index.html'],
       setHeaders: (res, path) => {
@@ -29,9 +31,11 @@ async function bootstrap() {
       },
     }),
   );
+
   const document = SwaggerModule.createDocument(app, options);
-  SwaggerModule.setup('api', app, document);
-  await app.listen(3000);
+  SwaggerModule.setup('api/docs', app, document);
+
+  await app.listen(process.env.PORT || 3000);
 }
 
 bootstrap();
