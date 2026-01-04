@@ -4,5 +4,5 @@
 echo "Running lint..."
 npm run lint
 
-echo "Running tests..."
-npm test
+echo "Running tests with coverage..."
+npm run test:cov
