@@ -20,8 +20,7 @@ import { AuthGuard } from '@nestjs/passport';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  // @UseGuards(JwtAuthGuard)
-  @UseGuards(AuthGuard('local'))
+  // @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
   @Get('/')
   getUsers(): Promise<IUser[]> {
