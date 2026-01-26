@@ -20,7 +20,7 @@ import { AuthGuard } from '@nestjs/passport';
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
-  // @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
   @Get('/')
   getUsers(): Promise<IUser[]> {
@@ -36,8 +36,8 @@ export class UserController {
     });
   }
 
-  // @UseGuards(AuthGuard('jwt'))
-  // @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
   @Get('/:id')
   getUserById(@Param('id') id: string): Promise<IUser> {
     return this.userService.getUserById(id);
@@ -48,11 +48,15 @@ export class UserController {
     return this.userService.getUserByEmail(email);
   }
 
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
   @Patch('/:id')
   patchUser(@Param('id') id: string, @Body() user: UserDto): Promise<IUser> {
     return this.userService.update(id, user);
   }
 
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
   @Delete('/:id')
   @HttpCode(204)
   delete(@Param('id') id: string): Promise<IUser> {
