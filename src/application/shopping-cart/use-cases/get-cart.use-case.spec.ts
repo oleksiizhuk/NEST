@@ -6,9 +6,29 @@ import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface'
 import { User } from '../../../domain/user/user.entity';
 import { ShoppingCart } from '../../../domain/shopping-cart/shopping-cart.entity';
 
-const mockUser = new User('u1', 'John', 'Doe', 30, 'john@test.com', 'pass', 'cart-1');
-const mockUserNoCart = new User('u1', 'John', 'Doe', 30, 'john@test.com', 'pass', null);
-const mockCart = new ShoppingCart('cart-1', [], { price: 0, discount: 0, finalPrice: 0 });
+const mockUser = new User(
+  'u1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass',
+  'cart-1',
+);
+const mockUserNoCart = new User(
+  'u1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass',
+  null,
+);
+const mockCart = new ShoppingCart('cart-1', [], {
+  price: 0,
+  discount: 0,
+  finalPrice: 0,
+});
 
 describe('GetCartUseCase', () => {
   let useCase: GetCartUseCase;
@@ -37,6 +57,8 @@ describe('GetCartUseCase', () => {
 
   it('throws BadRequestException when user has no cart', async () => {
     mockUserRepo.findByEmail.mockResolvedValue(mockUserNoCart);
-    await expect(useCase.execute('john@test.com')).rejects.toThrow(BadRequestException);
+    await expect(useCase.execute('john@test.com')).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });

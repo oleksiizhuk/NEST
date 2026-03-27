@@ -4,7 +4,19 @@ import { GetProductByIdUseCase } from './get-product-by-id.use-case';
 import { PRODUCT_REPOSITORY } from '../../../domain/product/product.repository.interface';
 import { Product } from '../../../domain/product/product.entity';
 
-const mockProduct = new Product('p1', 0, 'phone', '', 'iPhone', '', 999, 0, '', '', '');
+const mockProduct = new Product(
+  'p1',
+  0,
+  'phone',
+  '',
+  'iPhone',
+  '',
+  999,
+  0,
+  '',
+  '',
+  '',
+);
 
 describe('GetProductByIdUseCase', () => {
   let useCase: GetProductByIdUseCase;

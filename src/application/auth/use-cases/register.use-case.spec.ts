@@ -5,9 +5,23 @@ import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface'
 import { JWTGenerator } from '../../../utils/JWTGenerator/JWTGenerator';
 import { User } from '../../../domain/user/user.entity';
 
-const mockUser = new User('id1', 'John', 'Doe', 30, 'john@test.com', 'pass123', null);
+const mockUser = new User(
+  'id1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass123',
+  null,
+);
 const mockTokens = { accessToken: 'access', refreshToken: 'refresh' };
-const dto = { email: 'john@test.com', password: 'pass123', firstName: 'John', lastName: 'Doe', age: 30 };
+const dto = {
+  email: 'john@test.com',
+  password: 'pass123',
+  firstName: 'John',
+  lastName: 'Doe',
+  age: 30,
+};
 
 describe('RegisterUseCase', () => {
   let useCase: RegisterUseCase;
@@ -39,14 +53,18 @@ describe('RegisterUseCase', () => {
     mockRepo.findByEmail.mockResolvedValue(null);
     mockRepo.create.mockResolvedValue(mockUser);
     await useCase.execute({ ...dto, email: 'JOHN@TEST.COM' });
-    expect(mockRepo.create).toHaveBeenCalledWith(expect.objectContaining({ email: 'john@test.com' }));
+    expect(mockRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'john@test.com' }),
+    );
   });
 
   it('sets shoppingCartId to null on creation', async () => {
     mockRepo.findByEmail.mockResolvedValue(null);
     mockRepo.create.mockResolvedValue(mockUser);
     await useCase.execute(dto);
-    expect(mockRepo.create).toHaveBeenCalledWith(expect.objectContaining({ shoppingCartId: null }));
+    expect(mockRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ shoppingCartId: null }),
+    );
   });
 
   it('throws BadRequestException when email already exists', async () => {

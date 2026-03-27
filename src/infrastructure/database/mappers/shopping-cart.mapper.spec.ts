@@ -40,13 +40,19 @@ describe('ShoppingCartMapper', () => {
     });
 
     it('handles empty items array', () => {
-      const emptyDoc = { ...mockDoc, items: [] } as unknown as ShoppingCartDocument;
+      const emptyDoc = {
+        ...mockDoc,
+        items: [],
+      } as unknown as ShoppingCartDocument;
       const cart = ShoppingCartMapper.toDomain(emptyDoc);
       expect(cart.items).toHaveLength(0);
     });
 
     it('defaults price fields to 0 when undefined', () => {
-      const noPrice = { ...mockDoc, price: undefined } as unknown as ShoppingCartDocument;
+      const noPrice = {
+        ...mockDoc,
+        price: undefined,
+      } as unknown as ShoppingCartDocument;
       const cart = ShoppingCartMapper.toDomain(noPrice);
       expect(cart.price).toEqual({ price: 0, discount: 0, finalPrice: 0 });
     });
