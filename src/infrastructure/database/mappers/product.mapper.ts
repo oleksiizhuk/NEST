@@ -1,5 +1,5 @@
-import { Product } from '../../../domain/product/product.entity';
-import { ProductDocument } from '../schemas/product.schema';
+import { Product } from '@domain/product/product.entity';
+import { ProductDocument } from '@infrastructure/database/schemas/product.schema';
 
 export class ProductMapper {
   static toDomain(doc: ProductDocument): Product {

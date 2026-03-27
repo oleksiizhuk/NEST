@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AddProductUseCase } from '../add-product.use-case';
-import { PRODUCT_REPOSITORY } from '../../../../domain/product/product.repository.interface';
-import { Product } from '../../../../domain/product/product.entity';
+import { AddProductUseCase } from '@application/product/use-cases/add-product.use-case';
+import { PRODUCT_REPOSITORY } from '@domain/product/product.repository.interface';
+import { Product } from '@domain/product/product.entity';
 
 const dto = {
   age: 1,

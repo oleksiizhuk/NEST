@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { GetUsersUseCase } from '../get-users.use-case';
-import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
-import { User } from '../../../../domain/user/user.entity';
+import { GetUsersUseCase } from '@application/user/use-cases/get-users.use-case';
+import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
+import { User } from '@domain/user/user.entity';
 
 const mockUsers = [
   new User('id1', 'John', 'Doe', 30, 'john@test.com', 'pass', null),

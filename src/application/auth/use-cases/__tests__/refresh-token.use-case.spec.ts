@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { RefreshTokenUseCase } from '../refresh-token.use-case';
+import { RefreshTokenUseCase } from '@application/auth/use-cases/refresh-token.use-case';
 
 describe('RefreshTokenUseCase', () => {
   let useCase: RefreshTokenUseCase;

@@ -1,13 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { IProductRepository } from '../../../domain/product/product.repository.interface';
+import { IProductRepository } from '@domain/product/product.repository.interface';
 import {
   Product,
   IPaginationProduct,
-} from '../../../domain/product/product.entity';
-import { ProductDocument } from '../schemas/product.schema';
-import { ProductMapper } from '../mappers/product.mapper';
+} from '@domain/product/product.entity';
+import { ProductDocument } from '@infrastructure/database/schemas/product.schema';
+import { ProductMapper } from '@infrastructure/database/mappers/product.mapper';
 
 @Injectable()
 export class MongoProductRepository implements IProductRepository {

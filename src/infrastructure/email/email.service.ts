@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
 import { ConfigService } from '@nestjs/config';
-import { OcrService } from '../ocr/ocr.service';
+import { OcrService } from '@infrastructure/ocr/ocr.service';
 import Handlebars from 'handlebars';
-import { html } from '../../assets/html';
-import { IEmailService } from '../../application/email/email.service.interface';
+import { html } from '@assets/html';
+import { IEmailService } from '@application/email/email.service.interface';
 
 @Injectable()
 export class EmailingService implements IEmailService {

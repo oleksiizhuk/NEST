@@ -1,4 +1,4 @@
-import { Product } from '../product/product.entity';
+import { Product } from '@domain/product/product.entity';
 
 export interface CartItem {
   count: number;

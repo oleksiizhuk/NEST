@@ -1,11 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
-import { CompleteOrderUseCase } from '../complete-order.use-case';
-import { SHOPPING_CART_REPOSITORY } from '../../../../domain/shopping-cart/shopping-cart.repository.interface';
-import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
-import { User } from '../../../../domain/user/user.entity';
-import { ShoppingCart } from '../../../../domain/shopping-cart/shopping-cart.entity';
-import { Product } from '../../../../domain/product/product.entity';
+import { CompleteOrderUseCase } from '@application/shopping-cart/use-cases/complete-order.use-case';
+import { SHOPPING_CART_REPOSITORY } from '@domain/shopping-cart/shopping-cart.repository.interface';
+import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
+import { User } from '@domain/user/user.entity';
+import { ShoppingCart } from '@domain/shopping-cart/shopping-cart.entity';
+import { Product } from '@domain/product/product.entity';
 
 const mockUser = new User(
   'u1',

@@ -2,9 +2,9 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   IUserRepository,
   USER_REPOSITORY,
-} from '../../../domain/user/user.repository.interface';
-import { User } from '../../../domain/user/user.entity';
-import { JWTGenerator } from '../../../infrastructure/http/auth/utils/jwt-generator';
+} from '@domain/user/user.repository.interface';
+import { User } from '@domain/user/user.entity';
+import { JWTGenerator } from '@infrastructure/http/auth/utils/jwt-generator';
 
 export interface LoginDto {
   email: string;

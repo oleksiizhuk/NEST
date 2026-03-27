@@ -1,4 +1,4 @@
-import { Product, IPaginationProduct } from './product.entity';
+import { Product, IPaginationProduct } from '@domain/product/product.entity';
 
 export const PRODUCT_REPOSITORY = 'PRODUCT_REPOSITORY';
 

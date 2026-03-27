@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UpdateUserUseCase } from '../update-user.use-case';
-import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
-import { User } from '../../../../domain/user/user.entity';
+import { UpdateUserUseCase } from '@application/user/use-cases/update-user.use-case';
+import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
+import { User } from '@domain/user/user.entity';
 
 const updatedUser = new User(
   'id1',

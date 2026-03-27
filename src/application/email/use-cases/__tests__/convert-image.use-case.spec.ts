@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConvertImageUseCase } from '../convert-image.use-case';
-import { EMAIL_SERVICE } from '../../email.service.interface';
+import { ConvertImageUseCase } from '@application/email/use-cases/convert-image.use-case';
+import { EMAIL_SERVICE } from '@application/email/email.service.interface';
 
 describe('ConvertImageUseCase', () => {
   let useCase: ConvertImageUseCase;

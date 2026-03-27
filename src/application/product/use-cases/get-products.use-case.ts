@@ -2,8 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   IProductRepository,
   PRODUCT_REPOSITORY,
-} from '../../../domain/product/product.repository.interface';
-import { IPaginationProduct } from '../../../domain/product/product.entity';
+} from '@domain/product/product.repository.interface';
+import { IPaginationProduct } from '@domain/product/product.entity';
 
 @Injectable()
 export class GetProductsUseCase {
