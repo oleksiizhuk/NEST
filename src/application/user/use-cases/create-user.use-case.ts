@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { IUserRepository, USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
+import {
+  IUserRepository,
+  USER_REPOSITORY,
+} from '../../../domain/user/user.repository.interface';
 import { User } from '../../../domain/user/user.entity';
 
 export interface CreateUserDto {

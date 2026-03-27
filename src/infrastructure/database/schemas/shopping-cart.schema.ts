@@ -31,8 +31,13 @@ export class ShoppingCartDocument extends Document {
   @Type(() => ProductDocument)
   items: Array<{ count: number; item: ProductDocument }>;
 
-  @Prop({ type: PriceDocument, required: true, default: () => ({ price: 0, discount: 0, finalPrice: 0 }) })
+  @Prop({
+    type: PriceDocument,
+    required: true,
+    default: () => ({ price: 0, discount: 0, finalPrice: 0 }),
+  })
   price: PriceDocument;
 }
 
-export const ShoppingCartSchema = SchemaFactory.createForClass(ShoppingCartDocument);
+export const ShoppingCartSchema =
+  SchemaFactory.createForClass(ShoppingCartDocument);

@@ -16,10 +16,15 @@ export class ProductController {
 
   @Get('/')
   @ApiQuery({ name: 'page', required: false, description: 'Page number' })
-  @ApiQuery({ name: 'limit', required: false, description: 'Limit of items per page' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Limit of items per page',
+  })
   async getProduct(@Query('page') page: string, @Query('limit') limit: string) {
     const pageNumber = parseInt(page, 10) || 1;
-    const limitNumber = parseInt(limit, 10) > 100 ? 100 : parseInt(limit, 10) || 10;
+    const limitNumber =
+      parseInt(limit, 10) > 100 ? 100 : parseInt(limit, 10) || 10;
     return this.getProductsUseCase.execute(pageNumber, limitNumber);
   }
 

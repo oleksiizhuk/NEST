@@ -30,7 +30,10 @@ export class MongoUserRepository implements IUserRepository {
     return UserMapper.toDomain(doc);
   }
 
-  async update(id: string, data: Partial<Omit<User, 'id' | 'toPublicProfile'>>): Promise<User> {
+  async update(
+    id: string,
+    data: Partial<Omit<User, 'id' | 'toPublicProfile'>>,
+  ): Promise<User> {
     const doc = await this.userModel.findByIdAndUpdate(id, data, { new: true });
     return UserMapper.toDomain(doc);
   }
@@ -40,9 +43,16 @@ export class MongoUserRepository implements IUserRepository {
     return UserMapper.toDomain(doc);
   }
 
-  async updateShoppingCart(userId: string, cartId: string | null): Promise<User> {
+  async updateShoppingCart(
+    userId: string,
+    cartId: string | null,
+  ): Promise<User> {
     const doc = await this.userModel
-      .findByIdAndUpdate(userId, { $set: { shoppingCartId: cartId } }, { new: true })
+      .findByIdAndUpdate(
+        userId,
+        { $set: { shoppingCartId: cartId } },
+        { new: true },
+      )
       .lean();
     return UserMapper.toDomain(doc as UserDocument);
   }

@@ -8,7 +8,10 @@ export class RefreshTokenUseCase {
   execute(token: string): unknown {
     const result = this.jwtService.decode(token);
     if (!result) {
-      throw new BadRequestException({ statusCode: 400, message: 'Token is invalid' });
+      throw new BadRequestException({
+        statusCode: 400,
+        message: 'Token is invalid',
+      });
     }
     return result;
   }

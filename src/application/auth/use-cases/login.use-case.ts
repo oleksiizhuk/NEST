@@ -1,5 +1,8 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { IUserRepository, USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
+import {
+  IUserRepository,
+  USER_REPOSITORY,
+} from '../../../domain/user/user.repository.interface';
 import { User } from '../../../domain/user/user.entity';
 import { JWTGenerator } from '../../../utils/JWTGenerator/JWTGenerator';
 
@@ -16,13 +19,17 @@ export class LoginUseCase {
     private readonly jwtGenerator: JWTGenerator,
   ) {}
 
-  async execute(dto: LoginDto): Promise<{ user: User; accessToken: string; refreshToken: string }> {
+  async execute(
+    dto: LoginDto,
+  ): Promise<{ user: User; accessToken: string; refreshToken: string }> {
     const user = await this.userRepository.findByEmail(dto.email.toLowerCase());
     if (!user || user.password !== dto.password) {
       throw new BadRequestException('invalid credential');
     }
 
-    const { accessToken, refreshToken } = this.jwtGenerator.generateJWT(user.email);
+    const { accessToken, refreshToken } = this.jwtGenerator.generateJWT(
+      user.email,
+    );
     return { user, accessToken, refreshToken };
   }
 }

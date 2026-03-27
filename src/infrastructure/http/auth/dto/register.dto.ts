@@ -23,7 +23,10 @@ export class RegisterHttpDto {
   @MaxLength(20, { message: 'userName is too long' })
   @Matches(
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
-    { message: 'Minimum eight characters, at least one uppercase letter, one lowercase letter, one number and one special character' },
+    {
+      message:
+        'Minimum eight characters, at least one uppercase letter, one lowercase letter, one number and one special character',
+    },
   )
   password: string;
 

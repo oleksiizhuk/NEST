@@ -15,7 +15,9 @@ export class MongoShoppingCartRepository implements IShoppingCartRepository {
 
   async findById(cartId: string): Promise<ShoppingCart | null> {
     const doc = await this.cartModel.findOne({ id: cartId }).lean();
-    return doc ? ShoppingCartMapper.toDomain(doc as ShoppingCartDocument) : null;
+    return doc
+      ? ShoppingCartMapper.toDomain(doc as ShoppingCartDocument)
+      : null;
   }
 
   async create(id: string): Promise<ShoppingCart> {
@@ -27,13 +29,19 @@ export class MongoShoppingCartRepository implements IShoppingCartRepository {
     return ShoppingCartMapper.toDomain(doc);
   }
 
-  async addItem(cartId: string, item: Product, count: number): Promise<ShoppingCart> {
+  async addItem(
+    cartId: string,
+    item: Product,
+    count: number,
+  ): Promise<ShoppingCart> {
     const doc = await this.cartModel.findOne({ id: cartId });
     if (!doc) {
       throw new Error('Shopping cart not found');
     }
 
-    const existingIndex = doc.items.findIndex((ci) => (ci.item as any).id === item.id);
+    const existingIndex = doc.items.findIndex(
+      (ci) => (ci.item as any).id === item.id,
+    );
     if (existingIndex >= 0) {
       doc.items[existingIndex].count += count;
     } else {

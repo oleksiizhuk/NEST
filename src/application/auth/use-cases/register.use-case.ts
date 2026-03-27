@@ -1,5 +1,8 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { IUserRepository, USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
+import {
+  IUserRepository,
+  USER_REPOSITORY,
+} from '../../../domain/user/user.repository.interface';
 import { User } from '../../../domain/user/user.entity';
 import { JWTGenerator } from '../../../utils/JWTGenerator/JWTGenerator';
 
@@ -19,10 +22,16 @@ export class RegisterUseCase {
     private readonly jwtGenerator: JWTGenerator,
   ) {}
 
-  async execute(dto: RegisterDto): Promise<{ user: User; accessToken: string; refreshToken: string }> {
-    const existing = await this.userRepository.findByEmail(dto.email.toLowerCase());
+  async execute(
+    dto: RegisterDto,
+  ): Promise<{ user: User; accessToken: string; refreshToken: string }> {
+    const existing = await this.userRepository.findByEmail(
+      dto.email.toLowerCase(),
+    );
     if (existing) {
-      throw new BadRequestException(`This email ${dto.email} is already exists`);
+      throw new BadRequestException(
+        `This email ${dto.email} is already exists`,
+      );
     }
 
     const user = await this.userRepository.create({
@@ -31,7 +40,9 @@ export class RegisterUseCase {
       shoppingCartId: null,
     });
 
-    const { accessToken, refreshToken } = this.jwtGenerator.generateJWT(user.email);
+    const { accessToken, refreshToken } = this.jwtGenerator.generateJWT(
+      user.email,
+    );
     return { user, accessToken, refreshToken };
   }
 }

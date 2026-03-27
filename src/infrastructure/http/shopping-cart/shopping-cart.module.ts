@@ -15,11 +15,16 @@ import { CompleteOrderUseCase } from '../../../application/shopping-cart/use-cas
   imports: [
     UserModule,
     ProductModule,
-    MongooseModule.forFeature([{ name: 'ShoppingCart', schema: ShoppingCartSchema }]),
+    MongooseModule.forFeature([
+      { name: 'ShoppingCart', schema: ShoppingCartSchema },
+    ]),
   ],
   controllers: [ShoppingCartController],
   providers: [
-    { provide: SHOPPING_CART_REPOSITORY, useClass: MongoShoppingCartRepository },
+    {
+      provide: SHOPPING_CART_REPOSITORY,
+      useClass: MongoShoppingCartRepository,
+    },
     CreateShoppingCartUseCase,
     AddItemUseCase,
     GetCartUseCase,

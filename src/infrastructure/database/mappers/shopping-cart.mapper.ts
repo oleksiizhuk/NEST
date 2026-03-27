@@ -1,4 +1,7 @@
-import { ShoppingCart, CartItem } from '../../../domain/shopping-cart/shopping-cart.entity';
+import {
+  ShoppingCart,
+  CartItem,
+} from '../../../domain/shopping-cart/shopping-cart.entity';
 import { ShoppingCartDocument } from '../schemas/shopping-cart.schema';
 import { ProductMapper } from './product.mapper';
 import { ProductDocument } from '../schemas/product.schema';
