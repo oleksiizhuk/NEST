@@ -1,6 +1,6 @@
-import { ShoppingCartMapper } from './shopping-cart.mapper';
-import { ShoppingCartDocument } from '../schemas/shopping-cart.schema';
-import { ProductDocument } from '../schemas/product.schema';
+import { ShoppingCartMapper } from '../shopping-cart.mapper';
+import { ShoppingCartDocument } from '../../schemas/shopping-cart.schema';
+import { ProductDocument } from '../../schemas/product.schema';
 
 const mockProductDoc = {
   id: 'p1',

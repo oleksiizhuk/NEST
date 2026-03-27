@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { SendEmailUseCase } from './send-email.use-case';
-import { EMAIL_SERVICE } from '../email.service.interface';
+import { SendEmailUseCase } from '../send-email.use-case';
+import { EMAIL_SERVICE } from '../../email.service.interface';
 
 describe('SendEmailUseCase', () => {
   let useCase: SendEmailUseCase;
@@ -18,7 +18,9 @@ describe('SendEmailUseCase', () => {
   });
 
   it('sends email with email and message', async () => {
-    mockEmailService.sendMail.mockResolvedValue({ accepted: ['test@test.com'] });
+    mockEmailService.sendMail.mockResolvedValue({
+      accepted: ['test@test.com'],
+    });
     const result = await useCase.execute('test@test.com', 'Hello');
     expect(result).toEqual({ accepted: ['test@test.com'] });
     expect(mockEmailService.sendMail).toHaveBeenCalledWith(

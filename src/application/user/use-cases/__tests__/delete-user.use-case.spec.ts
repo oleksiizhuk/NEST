@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { DeleteUserUseCase } from './delete-user.use-case';
-import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
-import { User } from '../../../domain/user/user.entity';
+import { DeleteUserUseCase } from '../delete-user.use-case';
+import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
+import { User } from '../../../../domain/user/user.entity';
 
 const mockUser = new User(
   'id1',

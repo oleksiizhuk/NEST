@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CreateUserUseCase } from './create-user.use-case';
-import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
-import { User } from '../../../domain/user/user.entity';
+import { CreateUserUseCase } from '../create-user.use-case';
+import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
+import { User } from '../../../../domain/user/user.entity';
 
 const dto = {
   firstName: 'John',

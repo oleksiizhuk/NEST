@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { CreateShoppingCartUseCase } from './create-shopping-cart.use-case';
-import { SHOPPING_CART_REPOSITORY } from '../../../domain/shopping-cart/shopping-cart.repository.interface';
-import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
-import { ShoppingCart } from '../../../domain/shopping-cart/shopping-cart.entity';
-import { User } from '../../../domain/user/user.entity';
+import { CreateShoppingCartUseCase } from '../create-shopping-cart.use-case';
+import { SHOPPING_CART_REPOSITORY } from '../../../../domain/shopping-cart/shopping-cart.repository.interface';
+import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
+import { ShoppingCart } from '../../../../domain/shopping-cart/shopping-cart.entity';
+import { User } from '../../../../domain/user/user.entity';
 
 const mockUser = new User(
   'user-1',

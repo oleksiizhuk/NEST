@@ -1,5 +1,5 @@
-import { ProductMapper } from './product.mapper';
-import { ProductDocument } from '../schemas/product.schema';
+import { ProductMapper } from '../product.mapper';
+import { ProductDocument } from '../../schemas/product.schema';
 
 const mockDoc = {
   id: 'product-id',

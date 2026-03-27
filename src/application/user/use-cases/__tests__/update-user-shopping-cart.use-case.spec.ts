@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { UpdateUserShoppingCartUseCase } from './update-user-shopping-cart.use-case';
-import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
-import { User } from '../../../domain/user/user.entity';
+import { UpdateUserShoppingCartUseCase } from '../update-user-shopping-cart.use-case';
+import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
+import { User } from '../../../../domain/user/user.entity';
 
 describe('UpdateUserShoppingCartUseCase', () => {
   let useCase: UpdateUserShoppingCartUseCase;

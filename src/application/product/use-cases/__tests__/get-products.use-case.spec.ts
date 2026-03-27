@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { GetProductsUseCase } from './get-products.use-case';
-import { PRODUCT_REPOSITORY } from '../../../domain/product/product.repository.interface';
-import { IPaginationProduct } from '../../../domain/product/product.entity';
+import { GetProductsUseCase } from '../get-products.use-case';
+import { PRODUCT_REPOSITORY } from '../../../../domain/product/product.repository.interface';
+import { IPaginationProduct } from '../../../../domain/product/product.entity';
 
 const mockPage: IPaginationProduct = {
   items: [],

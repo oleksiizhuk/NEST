@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
-import { AddItemUseCase } from './add-item.use-case';
-import { SHOPPING_CART_REPOSITORY } from '../../../domain/shopping-cart/shopping-cart.repository.interface';
-import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
-import { PRODUCT_REPOSITORY } from '../../../domain/product/product.repository.interface';
-import { User } from '../../../domain/user/user.entity';
-import { Product } from '../../../domain/product/product.entity';
-import { ShoppingCart } from '../../../domain/shopping-cart/shopping-cart.entity';
+import { AddItemUseCase } from '../add-item.use-case';
+import { SHOPPING_CART_REPOSITORY } from '../../../../domain/shopping-cart/shopping-cart.repository.interface';
+import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
+import { PRODUCT_REPOSITORY } from '../../../../domain/product/product.repository.interface';
+import { User } from '../../../../domain/user/user.entity';
+import { Product } from '../../../../domain/product/product.entity';
+import { ShoppingCart } from '../../../../domain/shopping-cart/shopping-cart.entity';
 
 const mockUser = new User(
   'u1',

@@ -12,8 +12,7 @@ import { EMAIL_SERVICE } from '../../application/email/email.service.interface';
     MailerModule.forRootAsync({
       inject: [ConfigService],
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) =>
-        emailConfig(configService),
+      useFactory: (configService: ConfigService) => emailConfig(configService),
     }),
     OcrModule,
   ],
