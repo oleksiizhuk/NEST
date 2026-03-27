@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
-import { RegisterUseCase } from '../register.use-case';
-import { USER_REPOSITORY } from '../../../../domain/user/user.repository.interface';
-import { JWTGenerator } from '../../../../infrastructure/http/auth/utils/jwt-generator';
-import { User } from '../../../../domain/user/user.entity';
+import { RegisterUseCase } from '@application/auth/use-cases/register.use-case';
+import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
+import { JWTGenerator } from '@infrastructure/http/auth/utils/jwt-generator';
+import { User } from '@domain/user/user.entity';
 
 const mockUser = new User(
   'id1',

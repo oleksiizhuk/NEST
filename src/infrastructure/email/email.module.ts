@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { EmailingService } from './email.service';
-import { OcrModule } from '../ocr/ocr.module';
-import { emailConfig } from './email.config';
-import { EMAIL_SERVICE } from '../../application/email/email.service.interface';
+import { EmailingService } from '@infrastructure/email/email.service';
+import { OcrModule } from '@infrastructure/ocr/ocr.module';
+import { emailConfig } from '@infrastructure/email/email.config';
+import { EMAIL_SERVICE } from '@application/email/email.service.interface';
 
 @Module({
   imports: [

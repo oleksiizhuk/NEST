@@ -2,16 +2,16 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   IShoppingCartRepository,
   SHOPPING_CART_REPOSITORY,
-} from '../../../domain/shopping-cart/shopping-cart.repository.interface';
+} from '@domain/shopping-cart/shopping-cart.repository.interface';
 import {
   IUserRepository,
   USER_REPOSITORY,
-} from '../../../domain/user/user.repository.interface';
+} from '@domain/user/user.repository.interface';
 import {
   IProductRepository,
   PRODUCT_REPOSITORY,
-} from '../../../domain/product/product.repository.interface';
-import { ShoppingCart } from '../../../domain/shopping-cart/shopping-cart.entity';
+} from '@domain/product/product.repository.interface';
+import { ShoppingCart } from '@domain/shopping-cart/shopping-cart.entity';
 
 @Injectable()
 export class AddItemUseCase {

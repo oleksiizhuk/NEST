@@ -1,5 +1,5 @@
-import { ShoppingCart } from '../shopping-cart.entity';
-import { Product } from '../../product/product.entity';
+import { ShoppingCart } from '@domain/shopping-cart/shopping-cart.entity';
+import { Product } from '@domain/product/product.entity';
 
 const makeProduct = (price: number, discount: number): Product =>
   new Product('p1', 0, 'phone', '', 'Phone', '', price, discount, '', '', '');

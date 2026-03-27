@@ -4,8 +4,8 @@ import { SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { ValidationPipe } from '@nestjs/common';
 import serveStatic = require('serve-static');
-import { helmetConfig } from './config/helmet.config';
-import { swaggerConfig, swaggerOptions } from './config/swagger.config';
+import { helmetConfig } from '@config/helmet.config';
+import { swaggerConfig, swaggerOptions } from '@config/swagger.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

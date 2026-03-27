@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { Type } from 'class-transformer';
-import { ProductDocument } from './product.schema';
+import { ProductDocument } from '@infrastructure/database/schemas/product.schema';
 
 class PriceDocument {
   @Prop({ required: true, default: 0 })

@@ -11,12 +11,12 @@ import {
 } from '@nestjs/common';
 import { ApiBody, ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { UserHttpDto } from './dto/user.dto';
-import { GetUsersUseCase } from '../../../application/user/use-cases/get-users.use-case';
-import { CreateUserUseCase } from '../../../application/user/use-cases/create-user.use-case';
-import { GetUserByIdUseCase } from '../../../application/user/use-cases/get-user-by-id.use-case';
-import { UpdateUserUseCase } from '../../../application/user/use-cases/update-user.use-case';
-import { DeleteUserUseCase } from '../../../application/user/use-cases/delete-user.use-case';
+import { UserHttpDto } from '@infrastructure/http/user/dto/user.dto';
+import { GetUsersUseCase } from '@application/user/use-cases/get-users.use-case';
+import { CreateUserUseCase } from '@application/user/use-cases/create-user.use-case';
+import { GetUserByIdUseCase } from '@application/user/use-cases/get-user-by-id.use-case';
+import { UpdateUserUseCase } from '@application/user/use-cases/update-user.use-case';
+import { DeleteUserUseCase } from '@application/user/use-cases/delete-user.use-case';
 
 @ApiTags('User')
 @Controller('user')

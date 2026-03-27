@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { SendEmailUseCase } from '../send-email.use-case';
-import { EMAIL_SERVICE } from '../../email.service.interface';
+import { SendEmailUseCase } from '@application/email/use-cases/send-email.use-case';
+import { EMAIL_SERVICE } from '@application/email/email.service.interface';
 
 describe('SendEmailUseCase', () => {
   let useCase: SendEmailUseCase;

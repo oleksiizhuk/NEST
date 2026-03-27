@@ -4,11 +4,11 @@ import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 
-import { UserModule } from '../../infrastructure/http/user/user.module';
-import { AuthModule } from '../../infrastructure/http/auth/auth.module';
-import { ProductModule } from '../../infrastructure/http/product/product.module';
-import { ShoppingCartModule } from '../../infrastructure/http/shopping-cart/shopping-cart.module';
-import { EmailHttpModule } from '../../infrastructure/http/email/email.module';
+import { UserModule } from '@infrastructure/http/user/user.module';
+import { AuthModule } from '@infrastructure/http/auth/auth.module';
+import { ProductModule } from '@infrastructure/http/product/product.module';
+import { ShoppingCartModule } from '@infrastructure/http/shopping-cart/shopping-cart.module';
+import { EmailHttpModule } from '@infrastructure/http/email/email.module';
 
 @Module({
   imports: [

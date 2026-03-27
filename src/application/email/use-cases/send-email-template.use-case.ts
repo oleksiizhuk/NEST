@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { IEmailService, EMAIL_SERVICE } from '../email.service.interface';
+import { IEmailService, EMAIL_SERVICE } from '@application/email/email.service.interface';
 
 @Injectable()
 export class SendEmailTemplateUseCase {

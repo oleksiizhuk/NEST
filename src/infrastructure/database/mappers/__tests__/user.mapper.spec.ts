@@ -1,5 +1,5 @@
-import { UserMapper } from '../user.mapper';
-import { UserDocument } from '../../schemas/user.schema';
+import { UserMapper } from '@infrastructure/database/mappers/user.mapper';
+import { UserDocument } from '@infrastructure/database/schemas/user.schema';
 
 const mockDoc = {
   _id: { toString: () => 'doc-id' },

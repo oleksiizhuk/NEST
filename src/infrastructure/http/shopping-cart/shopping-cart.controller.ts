@@ -7,11 +7,11 @@ import {
   Request,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { CreateShoppingCartUseCase } from '../../../application/shopping-cart/use-cases/create-shopping-cart.use-case';
-import { AddItemUseCase } from '../../../application/shopping-cart/use-cases/add-item.use-case';
-import { GetCartUseCase } from '../../../application/shopping-cart/use-cases/get-cart.use-case';
-import { CompleteOrderUseCase } from '../../../application/shopping-cart/use-cases/complete-order.use-case';
+import { JwtAuthGuard } from '@infrastructure/http/auth/guards/jwt-auth.guard';
+import { CreateShoppingCartUseCase } from '@application/shopping-cart/use-cases/create-shopping-cart.use-case';
+import { AddItemUseCase } from '@application/shopping-cart/use-cases/add-item.use-case';
+import { GetCartUseCase } from '@application/shopping-cart/use-cases/get-cart.use-case';
+import { CompleteOrderUseCase } from '@application/shopping-cart/use-cases/complete-order.use-case';
 
 @ApiTags('ShoppingCart')
 @Controller('shoppingCart')

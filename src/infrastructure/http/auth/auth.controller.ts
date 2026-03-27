@@ -8,14 +8,14 @@ import {
   Request,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { LoginHttpDto } from './dto/login.dto';
-import { RegisterHttpDto } from './dto/register.dto';
-import { LocalAuthGuard } from './guards/local-auth.guard';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { LoginUseCase } from '../../../application/auth/use-cases/login.use-case';
-import { RegisterUseCase } from '../../../application/auth/use-cases/register.use-case';
-import { RefreshTokenUseCase } from '../../../application/auth/use-cases/refresh-token.use-case';
-import { GetProfileUseCase } from '../../../application/auth/use-cases/get-profile.use-case';
+import { LoginHttpDto } from '@infrastructure/http/auth/dto/login.dto';
+import { RegisterHttpDto } from '@infrastructure/http/auth/dto/register.dto';
+import { LocalAuthGuard } from '@infrastructure/http/auth/guards/local-auth.guard';
+import { JwtAuthGuard } from '@infrastructure/http/auth/guards/jwt-auth.guard';
+import { LoginUseCase } from '@application/auth/use-cases/login.use-case';
+import { RegisterUseCase } from '@application/auth/use-cases/register.use-case';
+import { RefreshTokenUseCase } from '@application/auth/use-cases/refresh-token.use-case';
+import { GetProfileUseCase } from '@application/auth/use-cases/get-profile.use-case';
 
 @ApiTags('Auth')
 @Controller('auth')

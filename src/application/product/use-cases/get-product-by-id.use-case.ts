@@ -2,8 +2,8 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   IProductRepository,
   PRODUCT_REPOSITORY,
-} from '../../../domain/product/product.repository.interface';
-import { Product } from '../../../domain/product/product.entity';
+} from '@domain/product/product.repository.interface';
+import { Product } from '@domain/product/product.entity';
 
 @Injectable()
 export class GetProductByIdUseCase {
