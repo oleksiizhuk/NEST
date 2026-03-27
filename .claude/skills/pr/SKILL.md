@@ -44,7 +44,15 @@ refactor: migrate product module to clean architecture
 test: add unit tests for login use case
 ```
 
-## Step 5: Push & create PR
+## Step 5: Ask before pushing
+
+**Before any `git push`, always ask the user:**
+
+> "Запушить ветку `<branch-name>` на GitHub?"
+
+Wait for explicit confirmation before running `git push` or `gh pr create`.
+
+## Step 6: Push & create PR (only after confirmation)
 
 ```bash
 git push -u origin <branch-name>
@@ -66,5 +74,6 @@ EOF
 ## Notes
 
 - Never push directly to `master`
+- Always ask before pushing — even if the user says "create a PR", confirm the push first
 - Always run `npm run build` before PR — TypeScript must compile cleanly
 - Swagger docs at `/api/docs` for manual verification

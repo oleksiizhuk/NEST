@@ -1,6 +1,6 @@
 import { Controller, Get, Query, Post, Body } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiTags, ApiQuery } from '@nestjs/swagger';
-import { ProductDTO } from '../../../route/product/dto/product.dto';
+import { ProductDTO } from './dto/product.dto';
 import { GetProductsUseCase } from '../../../application/product/use-cases/get-products.use-case';
 import { GetProductByIdUseCase } from '../../../application/product/use-cases/get-product-by-id.use-case';
 import { AddProductUseCase } from '../../../application/product/use-cases/add-product.use-case';
