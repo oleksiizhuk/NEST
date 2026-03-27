@@ -1,13 +1,17 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UserModule } from '../user/user.module';
-import { AuthModule } from '../auth/auth.module';
-import { EmailModule } from '../email/email.module';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
-import { ProductModule } from '../product/product.module';
-import { ShoppingCartModule } from '../shoppingCart/shoppingCart.module';
+
+// Clean Architecture modules
+import { UserModule } from '../../infrastructure/http/user/user.module';
+import { AuthModule } from '../../infrastructure/http/auth/auth.module';
+import { ProductModule } from '../../infrastructure/http/product/product.module';
+import { ShoppingCartModule } from '../../infrastructure/http/shopping-cart/shopping-cart.module';
+
+// Keep EmailModule from old structure (not yet migrated)
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -18,7 +22,8 @@ import { ShoppingCartModule } from '../shoppingCart/shoppingCart.module';
     ShoppingCartModule,
     ConfigModule.forRoot(),
     MongooseModule.forRoot(
-      'mongodb+srv://oleksii:223132qq@cluster0.bzoaa.mongodb.net/?retryWrites=true&w=majority',
+      process.env.MONGODB_URI ||
+        'mongodb+srv://oleksii:223132qq@cluster0.bzoaa.mongodb.net/?retryWrites=true&w=majority',
       { autoCreate: true },
     ),
   ],
