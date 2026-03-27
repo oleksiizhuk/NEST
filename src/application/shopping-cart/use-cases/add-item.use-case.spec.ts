@@ -8,10 +8,42 @@ import { User } from '../../../domain/user/user.entity';
 import { Product } from '../../../domain/product/product.entity';
 import { ShoppingCart } from '../../../domain/shopping-cart/shopping-cart.entity';
 
-const mockUser = new User('u1', 'John', 'Doe', 30, 'john@test.com', 'pass', 'cart-1');
-const mockUserNoCart = new User('u1', 'John', 'Doe', 30, 'john@test.com', 'pass', null);
-const mockProduct = new Product('p1', 0, 'phone', '', 'iPhone', '', 999, 0, '', '', '');
-const mockCart = new ShoppingCart('cart-1', [], { price: 0, discount: 0, finalPrice: 0 });
+const mockUser = new User(
+  'u1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass',
+  'cart-1',
+);
+const mockUserNoCart = new User(
+  'u1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass',
+  null,
+);
+const mockProduct = new Product(
+  'p1',
+  0,
+  'phone',
+  '',
+  'iPhone',
+  '',
+  999,
+  0,
+  '',
+  '',
+  '',
+);
+const mockCart = new ShoppingCart('cart-1', [], {
+  price: 0,
+  discount: 0,
+  finalPrice: 0,
+});
 
 describe('AddItemUseCase', () => {
   let useCase: AddItemUseCase;
@@ -44,12 +76,16 @@ describe('AddItemUseCase', () => {
 
   it('throws BadRequestException when user has no cart', async () => {
     mockUserRepo.findByEmail.mockResolvedValue(mockUserNoCart);
-    await expect(useCase.execute('john@test.com', 'p1', 1)).rejects.toThrow(BadRequestException);
+    await expect(useCase.execute('john@test.com', 'p1', 1)).rejects.toThrow(
+      BadRequestException,
+    );
   });
 
   it('throws BadRequestException when product not found', async () => {
     mockUserRepo.findByEmail.mockResolvedValue(mockUser);
     mockProductRepo.findById.mockResolvedValue(null);
-    await expect(useCase.execute('john@test.com', 'unknown', 1)).rejects.toThrow(BadRequestException);
+    await expect(
+      useCase.execute('john@test.com', 'unknown', 1),
+    ).rejects.toThrow(BadRequestException);
   });
 });

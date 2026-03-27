@@ -3,7 +3,15 @@ import { DeleteUserUseCase } from './delete-user.use-case';
 import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
 import { User } from '../../../domain/user/user.entity';
 
-const mockUser = new User('id1', 'John', 'Doe', 30, 'john@test.com', 'pass', null);
+const mockUser = new User(
+  'id1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass',
+  null,
+);
 
 describe('DeleteUserUseCase', () => {
   let useCase: DeleteUserUseCase;

@@ -3,7 +3,15 @@ import { UpdateUserUseCase } from './update-user.use-case';
 import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
 import { User } from '../../../domain/user/user.entity';
 
-const updatedUser = new User('id1', 'Updated', 'Doe', 30, 'john@test.com', 'pass', null);
+const updatedUser = new User(
+  'id1',
+  'Updated',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass',
+  null,
+);
 
 describe('UpdateUserUseCase', () => {
   let useCase: UpdateUserUseCase;
@@ -24,6 +32,8 @@ describe('UpdateUserUseCase', () => {
     mockRepo.update.mockResolvedValue(updatedUser);
     const result = await useCase.execute('id1', { firstName: 'Updated' });
     expect(result.firstName).toBe('Updated');
-    expect(mockRepo.update).toHaveBeenCalledWith('id1', { firstName: 'Updated' });
+    expect(mockRepo.update).toHaveBeenCalledWith('id1', {
+      firstName: 'Updated',
+    });
   });
 });

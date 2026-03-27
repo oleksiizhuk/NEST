@@ -5,7 +5,15 @@ import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface'
 import { JWTGenerator } from '../../../utils/JWTGenerator/JWTGenerator';
 import { User } from '../../../domain/user/user.entity';
 
-const mockUser = new User('id1', 'John', 'Doe', 30, 'john@test.com', 'pass123', null);
+const mockUser = new User(
+  'id1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass123',
+  null,
+);
 const mockTokens = { accessToken: 'access', refreshToken: 'refresh' };
 
 describe('LoginUseCase', () => {
@@ -28,7 +36,10 @@ describe('LoginUseCase', () => {
 
   it('returns user and tokens on valid credentials', async () => {
     mockRepo.findByEmail.mockResolvedValue(mockUser);
-    const result = await useCase.execute({ email: 'john@test.com', password: 'pass123' });
+    const result = await useCase.execute({
+      email: 'john@test.com',
+      password: 'pass123',
+    });
     expect(result.user).toBe(mockUser);
     expect(result.accessToken).toBe('access');
     expect(result.refreshToken).toBe('refresh');
@@ -42,13 +53,15 @@ describe('LoginUseCase', () => {
 
   it('throws BadRequestException when user not found', async () => {
     mockRepo.findByEmail.mockResolvedValue(null);
-    await expect(useCase.execute({ email: 'x@x.com', password: 'pass' }))
-      .rejects.toThrow(BadRequestException);
+    await expect(
+      useCase.execute({ email: 'x@x.com', password: 'pass' }),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('throws BadRequestException on wrong password', async () => {
     mockRepo.findByEmail.mockResolvedValue(mockUser);
-    await expect(useCase.execute({ email: 'john@test.com', password: 'wrong' }))
-      .rejects.toThrow(BadRequestException);
+    await expect(
+      useCase.execute({ email: 'john@test.com', password: 'wrong' }),
+    ).rejects.toThrow(BadRequestException);
   });
 });

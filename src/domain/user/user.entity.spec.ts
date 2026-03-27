@@ -1,7 +1,15 @@
 import { User } from './user.entity';
 
 describe('User entity', () => {
-  const user = new User('id1', 'John', 'Doe', 25, 'john@test.com', 'secret', 'cart-1');
+  const user = new User(
+    'id1',
+    'John',
+    'Doe',
+    25,
+    'john@test.com',
+    'secret',
+    'cart-1',
+  );
 
   describe('toPublicProfile', () => {
     it('returns all fields except password', () => {

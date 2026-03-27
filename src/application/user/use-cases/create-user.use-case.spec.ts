@@ -3,8 +3,22 @@ import { CreateUserUseCase } from './create-user.use-case';
 import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
 import { User } from '../../../domain/user/user.entity';
 
-const dto = { firstName: 'John', lastName: 'Doe', age: 30, email: 'JOHN@TEST.COM', password: 'pass123' };
-const createdUser = new User('id1', 'John', 'Doe', 30, 'john@test.com', 'pass123', null);
+const dto = {
+  firstName: 'John',
+  lastName: 'Doe',
+  age: 30,
+  email: 'JOHN@TEST.COM',
+  password: 'pass123',
+};
+const createdUser = new User(
+  'id1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'pass123',
+  null,
+);
 
 describe('CreateUserUseCase', () => {
   let useCase: CreateUserUseCase;

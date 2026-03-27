@@ -3,7 +3,15 @@ import { GetProfileUseCase } from './get-profile.use-case';
 import { USER_REPOSITORY } from '../../../domain/user/user.repository.interface';
 import { User } from '../../../domain/user/user.entity';
 
-const mockUser = new User('id1', 'John', 'Doe', 30, 'john@test.com', 'secret', 'cart-1');
+const mockUser = new User(
+  'id1',
+  'John',
+  'Doe',
+  30,
+  'john@test.com',
+  'secret',
+  'cart-1',
+);
 
 describe('GetProfileUseCase', () => {
   let useCase: GetProfileUseCase;
