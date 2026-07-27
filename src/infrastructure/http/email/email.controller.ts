@@ -14,7 +14,10 @@ import * as path from 'path';
 import { SendEmailUseCase } from '@application/email/use-cases/send-email.use-case';
 import { SendEmailTemplateUseCase } from '@application/email/use-cases/send-email-template.use-case';
 import { ConvertImageUseCase } from '@application/email/use-cases/convert-image.use-case';
-import { EmailDto, EmailWithTemplateDto } from '@infrastructure/http/email/dto/email.dto';
+import {
+  EmailDto,
+  EmailWithTemplateDto,
+} from '@infrastructure/http/email/dto/email.dto';
 
 @ApiTags('Email')
 @Controller('email')
