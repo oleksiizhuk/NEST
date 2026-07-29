@@ -516,4 +516,29 @@ describe('AnthropicReplyService', () => {
       expect.objectContaining({ cache_control: { type: 'ephemeral' } }),
     ]);
   });
+
+  it('reads open questions from an "Open:" section too', async () => {
+    mockCreate
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'create_jira_task',
+            input: {
+              summary: 'Postpone icon replacement on mockups',
+              description:
+                'No icon component exists yet. Leaving the icons as they are.\n\nOpen:\n- Which mockups are affected?\n- What counts as the design system being ready?',
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce(textResponse('відклав'));
+
+    const reply = await service.generateReply('відклади іконки');
+
+    expect(reply).toContain('• Which mockups are affected?');
+    expect(reply).toContain('• What counts as the design system being ready?');
+  });
 });

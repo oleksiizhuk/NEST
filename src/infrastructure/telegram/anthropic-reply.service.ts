@@ -38,20 +38,21 @@ const CREATE_JIRA_TASK_TOOL: Anthropic.Tool = {
       description: {
         type: 'string',
         description:
-          'Task description in ENGLISH. Exactly these four sections, each header on its ' +
-          'own line, none omitted:\n' +
-          'Context: one or two sentences on why this is needed, from what the user said.\n' +
-          'Scope: bullet lines starting with "- " — what is to be done.\n' +
-          'Acceptance criteria: 1-3 bullet lines as "- Given <state>, when <action>, then ' +
-          '<observable result>". The "then" must be checkable by looking at something — a ' +
-          'screen, a message, a stored value, a request sent — never "works correctly".\n' +
-          'Open questions: lines starting with "- OPEN: ", one per unknown, each a question. ' +
-          'Write "- none" only when nothing is missing.\n\n' +
+          'Task description in ENGLISH. Write a task, not a specification.\n' +
+          'Default shape — a short paragraph of what and why, then, if anything was left ' +
+          'unsaid, a blank line and:\n' +
+          'Open:\n' +
+          '- one line per unknown, phrased as a question\n\n' +
+          'Add "Acceptance criteria:" with 1-3 "- Given <state>, when <action>, then ' +
+          '<observable result>" lines ONLY when the task changes how something behaves and ' +
+          'someone will have to check it. A decision, a reminder, a backlog note or a ' +
+          '"postpone this" has nothing to accept — leave the section out entirely rather ' +
+          'than inventing criteria.\n\n' +
           'NEVER invent a number, date, deadline, limit, version, name or owner the user did ' +
-          'not give. If a value is needed but unknown, leave it out of Scope and Acceptance ' +
-          'criteria and put it in Open questions instead. A chat message is usually one ' +
-          'sentence: three OPEN lines and a two-line Scope is a correct result — do not pad ' +
-          'the task to look complete. Neutral business language, no slang or roleplay.',
+          'not give. If a value is needed but unknown, keep it out of the description and put ' +
+          'it under Open instead. A one-sentence request makes a three-line task with two ' +
+          'open questions — that is correct, do not pad it. Neutral business language, no ' +
+          'slang or roleplay.',
       },
       type: {
         type: 'string',
@@ -157,14 +158,34 @@ const cleanSummary = (text: string): string => clean(text).replace(/\s+/g, ' ');
 
 // The model is told to list what it does not know; surfacing that in the chat
 // is the only way the asker learns the task has holes
-const OPEN_LINE = /^\s*[-*•]?\s*OPEN\b[:\s]/i;
+// Two shapes reach us: an "Open:" heading followed by bullets, and stray
+// "- OPEN: …" lines. Both mean the same thing to the reader of the chat.
+const OPEN_HEADING = /^\s*open\b\s*:?\s*$/i;
+const OPEN_INLINE = /^\s*[-*•]?\s*OPEN\b[:\s]/i;
+const BULLET = /^\s*[-*•]\s+(.+)$/;
 
-const openQuestions = (description?: string): string[] =>
-  (description ?? '')
-    .split('\n')
-    .filter((line) => OPEN_LINE.test(line))
-    .map((line) => line.replace(/^\s*[-*•]?\s*OPEN\b[:\s]*/i, '').trim())
-    .filter(Boolean);
+const openQuestions = (description?: string): string[] => {
+  const found: string[] = [];
+  let underHeading = false;
+
+  for (const line of (description ?? '').split('\n')) {
+    if (OPEN_HEADING.test(line)) {
+      underHeading = true;
+      continue;
+    }
+    if (OPEN_INLINE.test(line)) {
+      found.push(line.replace(/^\s*[-*•]?\s*OPEN\b[:\s]*/i, '').trim());
+      continue;
+    }
+    const bullet = BULLET.exec(line);
+    if (underHeading && bullet) {
+      found.push(bullet[1].trim());
+      continue;
+    }
+    if (line.trim()) underHeading = false;
+  }
+  return found.filter(Boolean);
+};
 
 // Keeps the reply readable when the model dumps a whole spec into the field
 const RECEIPT_FIELD_LIMIT = 300;
