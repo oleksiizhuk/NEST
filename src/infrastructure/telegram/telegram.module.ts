@@ -4,6 +4,8 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { TELEGRAM_GATEWAY } from '@application/telegram/telegram.gateway.interface';
 import { AI_REPLY_SERVICE } from '@application/telegram/ai-reply.service.interface';
 import { TELEGRAM_CONFIG } from '@application/telegram/telegram.config.interface';
+import { TASK_TRACKER_SERVICE } from '@application/telegram/task-tracker.service.interface';
+import { JiraService } from '@infrastructure/jira/jira.service';
 import { TELEGRAM_MESSAGE_REPOSITORY } from '@domain/telegram/telegram-message.repository.interface';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
 import { TelegramMessageSchema } from '@infrastructure/database/schemas/telegram-message.schema';
@@ -30,6 +32,7 @@ import { telegramConfig } from '@infrastructure/telegram/telegram.config';
     // useExisting — one bot singleton shared by the gateway token and the polling bootstrap
     { provide: TELEGRAM_GATEWAY, useExisting: TelegramBotService },
     { provide: AI_REPLY_SERVICE, useClass: AnthropicReplyService },
+    { provide: TASK_TRACKER_SERVICE, useClass: JiraService },
     {
       provide: TELEGRAM_MESSAGE_REPOSITORY,
       useClass: MongoTelegramMessageRepository,
