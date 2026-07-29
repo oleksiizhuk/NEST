@@ -22,13 +22,6 @@ export const telegramConfig = (
 
   return {
     ownerId: Number(configService.get<string>('TELEGRAM_OWNER_ID')),
-    // Comma-separated list; a single id still works unchanged
-    allowedChatIds: (
-      configService.get<string>('TELEGRAM_ALLOWED_CHAT_ID') ?? ''
-    )
-      .split(',')
-      .map((id) => Number(id.trim()))
-      .filter((id) => Number.isFinite(id) && id !== 0),
     mode,
     webhookSecret: configService.get<string>('TELEGRAM_WEBHOOK_SECRET') ?? '',
     historySince: parseDate(

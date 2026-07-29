@@ -7,6 +7,7 @@ import {
   IAiReplyService,
   IConversationTurn,
   AI_REPLY_SERVICE,
+  AI_UNAVAILABLE_REPLY,
 } from '@application/telegram/ai-reply.service.interface';
 import {
   ITelegramConfig,
@@ -17,6 +18,18 @@ import {
   TELEGRAM_MESSAGE_REPOSITORY,
 } from '@domain/telegram/telegram-message.repository.interface';
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
+
+// "Оксана @oksana" — whatever Telegram gave us, falling back to the numeric id
+const authorLabel = (from: {
+  id: number;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+}): string => {
+  const name = [from.firstName, from.lastName].filter(Boolean).join(' ');
+  const handle = from.username ? `@${from.username}` : '';
+  return [name, handle].filter(Boolean).join(' ') || `id${from.id}`;
+};
 
 const FALLBACK_MESSAGE = 'Что-то пошло не так 😢';
 const ERROR_PREFIX = 'ERROR: ';
@@ -43,12 +56,8 @@ export class HandleTelegramMessageUseCase {
     const isGroup = chatType === 'group' || chatType === 'supergroup';
     if (!isPrivate && !isGroup) return;
 
+    // Groups are open — the mention/reply check below is the only gate there
     if (isPrivate && msg.from.id !== this.config.ownerId) return;
-    // Empty allowlist = any group the bot is added to; owner-only stays for DMs
-    const groupAllowed =
-      this.config.allowedChatIds.length === 0 ||
-      this.config.allowedChatIds.includes(chatId);
-    if (isGroup && !groupAllowed) return;
 
     const botInfo = await this.telegram.getBotInfo();
 
@@ -67,8 +76,9 @@ export class HandleTelegramMessageUseCase {
     try {
       await this.telegram.sendTyping(chatId);
       const history = await this.loadHistory(chatId);
+      // The model sees who is talking — in a group the history is a mix of people
       const reply = await this.aiReply.generateReply(
-        cleanText || text,
+        `${authorLabel(msg.from)}: ${cleanText || text}`,
         history,
       );
       await this.telegram.sendMessage(chatId, reply);
@@ -101,10 +111,21 @@ export class HandleTelegramMessageUseCase {
             log.text &&
             log.botResponse &&
             !log.botResponse.startsWith(ERROR_PREFIX) &&
+            // A degraded reply is not something the bot "said" — replaying it
+            // teaches the model to produce more of them
+            log.botResponse !== AI_UNAVAILABLE_REPLY &&
             // Anything the bot said under an older persona stays out
             (!since || (log.createdAt && log.createdAt >= since)),
         )
-        .map((log) => ({ userText: log.text, botResponse: log.botResponse }));
+        .map((log) => ({
+          userText: `${authorLabel({
+            id: log.userId,
+            username: log.username,
+            firstName: log.firstName,
+            lastName: log.lastName,
+          })}: ${log.text}`,
+          botResponse: log.botResponse,
+        }));
     } catch (error) {
       this.logger.error(error);
       return [];

@@ -4,7 +4,6 @@ export type TelegramMode = 'polling' | 'webhook';
 
 export interface ITelegramConfig {
   ownerId: number;
-  allowedChatIds: number[];
   mode: TelegramMode;
   webhookSecret: string;
   // Replies written before this are kept out of the model's context, so an

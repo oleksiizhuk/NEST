@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   IAiReplyService,
   IConversationTurn,
+  AI_UNAVAILABLE_REPLY,
 } from '@application/telegram/ai-reply.service.interface';
 import {
   ICreatedTask,
@@ -27,16 +28,31 @@ const CREATE_JIRA_TASK_TOOL: Anthropic.Tool = {
     properties: {
       summary: {
         type: 'string',
-        description: 'Short task title, max ~120 chars',
+        description:
+          'Short task title, max ~120 chars. Neutral business language — the ' +
+          'board is read by the whole team, so no slang, surzhyk, profanity or ' +
+          'roleplay, whatever style the chat uses.',
       },
       description: {
         type: 'string',
-        description: 'Optional longer description of the task',
+        description:
+          'Optional longer description, same neutral business language as the summary.',
       },
     },
     required: ['summary'],
   },
 };
+
+const SUMMARY_LIMIT = 250;
+const DESCRIPTION_LIMIT = 2000;
+
+// The persona swears; the Jira board is seen by the whole team. Roots cover the
+// usual Ukrainian/Russian forms with their prefixes and endings.
+const PROFANITY =
+  /\S*(?:хуй|хуе|хуё|хуї|пизд|піzd|піzd|бля|бляд|єбат|ебат|єбан|ебан|їбат|їбан|заєб|заеб|наєб|наеб|доєб|уєб|уеб|підар|пидор|гандон|мудак|мудил|срак|гівн|говн)\S*/giu;
+
+const clean = (text: string): string =>
+  (text ?? '').replace(PROFANITY, '').replace(/\s+/g, ' ').trim();
 
 // Per-request tool state — scoped to a single generateReply() call
 interface ToolState {
@@ -88,7 +104,7 @@ export class AnthropicReplyService implements IAiReplyService {
       });
 
       if (response.stop_reason !== 'tool_use') {
-        return this.extractText(response);
+        return this.finalise(this.extractText(response), state);
       }
 
       // Append the assistant turn (with tool_use blocks), then all tool results
@@ -103,7 +119,20 @@ export class AnthropicReplyService implements IAiReplyService {
       messages.push({ role: 'user', content: toolResults });
     }
 
-    return 'Не вдалося завершити операцію 😢';
+    // The loop ran out of turns — but the task may already exist, and telling
+    // the user it failed would have them create a duplicate
+    return this.finalise('', state);
+  }
+
+  // The key and the link come from Jira, not from the model: in character it
+  // may mangle "KAN-12" or glue the URL to a word and break Telegram's autolink
+  private finalise(text: string, state: ToolState): string {
+    const task = state.createdTask;
+    const body = text.trim();
+
+    if (!task) return body || AI_UNAVAILABLE_REPLY;
+    if (body.includes(task.key)) return body;
+    return `${body ? `${body}\n\n` : ''}${task.key} — ${task.url}`;
   }
 
   private async runTool(
@@ -130,7 +159,13 @@ export class AnthropicReplyService implements IAiReplyService {
           summary: string;
           description?: string;
         };
-        const task = await this.taskTracker.createTask(summary, description);
+        const task = await this.taskTracker.createTask(
+          // Jira rejects summaries past 255 chars and keeps newlines out of them
+          clean(summary).slice(0, SUMMARY_LIMIT),
+          description
+            ? clean(description).slice(0, DESCRIPTION_LIMIT)
+            : undefined,
+        );
         state.createdTask = task;
         return {
           type: 'tool_result',
@@ -155,8 +190,13 @@ export class AnthropicReplyService implements IAiReplyService {
     }
   }
 
+  // A turn can carry several text blocks (typically around a tool call) —
+  // taking only the first one silently truncated the reply
   private extractText(response: Anthropic.Message): string {
-    const block = response.content.find((b) => b.type === 'text');
-    return block && 'text' in block ? block.text : '';
+    return response.content
+      .filter((block) => block.type === 'text')
+      .map((block) => ('text' in block ? block.text : ''))
+      .join('\n\n')
+      .trim();
   }
 }

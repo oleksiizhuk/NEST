@@ -7,9 +7,15 @@ import { TELEGRAM_MESSAGE_REPOSITORY } from '@domain/telegram/telegram-message.r
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
 
 const OWNER_ID = 1;
-const ALLOWED_CHAT_ID = -100;
-const SECOND_CHAT_ID = -200;
+const GROUP_CHAT_ID = -100;
 const BOT = { id: 42, username: 'test_bot' };
+// Author columns the repository stores alongside every logged exchange
+const author = {
+  userId: OWNER_ID,
+  username: 'owner',
+  firstName: 'O',
+  lastName: null,
+};
 
 const privateMessage = (
   overrides: Partial<IncomingTelegramMessage> = {},
@@ -25,7 +31,7 @@ const privateMessage = (
 const groupMessage = (
   overrides: Partial<IncomingTelegramMessage> = {},
 ): IncomingTelegramMessage => ({
-  chatId: ALLOWED_CHAT_ID,
+  chatId: GROUP_CHAT_ID,
   chatType: 'supergroup',
   chatTitle: 'Chat',
   text: 'Hello',
@@ -54,7 +60,6 @@ describe('HandleTelegramMessageUseCase', () => {
           provide: TELEGRAM_CONFIG,
           useValue: {
             ownerId: OWNER_ID,
-            allowedChatIds: [ALLOWED_CHAT_ID, SECOND_CHAT_ID],
             mode: 'polling',
             webhookSecret: 'secret',
             historySince: null,
@@ -86,7 +91,10 @@ describe('HandleTelegramMessageUseCase', () => {
   it('replies to owner in private chat and saves log', async () => {
     await useCase.execute(privateMessage());
     expect(mockGateway.sendTyping).toHaveBeenCalledWith(OWNER_ID);
-    expect(mockAiReply.generateReply).toHaveBeenCalledWith('Hello', []);
+    expect(mockAiReply.generateReply).toHaveBeenCalledWith(
+      'O @owner: Hello',
+      [],
+    );
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       OWNER_ID,
       'Sarcastic reply',
@@ -101,12 +109,6 @@ describe('HandleTelegramMessageUseCase', () => {
     );
   });
 
-  it('ignores message in a non-allowed group', async () => {
-    await useCase.execute(groupMessage({ chatId: -555 }));
-    expect(mockGateway.sendMessage).not.toHaveBeenCalled();
-    expect(mockAiReply.generateReply).not.toHaveBeenCalled();
-  });
-
   it('ignores allowed-group message without mention or reply', async () => {
     await useCase.execute(groupMessage());
     expect(mockGateway.sendMessage).not.toHaveBeenCalled();
@@ -115,59 +117,24 @@ describe('HandleTelegramMessageUseCase', () => {
 
   it('responds to mention in allowed group with mention stripped', async () => {
     await useCase.execute(groupMessage({ text: '@test_bot how are you?' }));
-    expect(mockAiReply.generateReply).toHaveBeenCalledWith('how are you?', []);
+    expect(mockAiReply.generateReply).toHaveBeenCalledWith(
+      'M @member: how are you?',
+      [],
+    );
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      ALLOWED_CHAT_ID,
+      GROUP_CHAT_ID,
       'Sarcastic reply',
     );
   });
 
   it('responds when message is a reply to the bot', async () => {
     await useCase.execute(groupMessage({ replyToBotId: BOT.id }));
-    expect(mockAiReply.generateReply).toHaveBeenCalledWith('Hello', []);
-    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      ALLOWED_CHAT_ID,
-      'Sarcastic reply',
+    expect(mockAiReply.generateReply).toHaveBeenCalledWith(
+      'M @member: Hello',
+      [],
     );
-  });
-
-  it('responds in any group when no allowlist is configured', async () => {
-    const open: TestingModule = await Test.createTestingModule({
-      providers: [
-        HandleTelegramMessageUseCase,
-        { provide: TELEGRAM_GATEWAY, useValue: mockGateway },
-        { provide: AI_REPLY_SERVICE, useValue: mockAiReply },
-        { provide: TELEGRAM_MESSAGE_REPOSITORY, useValue: mockRepository },
-        {
-          provide: TELEGRAM_CONFIG,
-          useValue: {
-            ownerId: OWNER_ID,
-            allowedChatIds: [],
-            mode: 'polling',
-            webhookSecret: 'secret',
-            historySince: null,
-          },
-        },
-      ],
-    }).compile();
-
-    await open
-      .get(HandleTelegramMessageUseCase)
-      .execute(groupMessage({ chatId: -999, text: '@test_bot агов' }));
-
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      -999,
-      'Sarcastic reply',
-    );
-  });
-
-  it('responds in every allowed group, not just the first', async () => {
-    await useCase.execute(
-      groupMessage({ chatId: SECOND_CHAT_ID, text: '@test_bot ще питання' }),
-    );
-
-    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      SECOND_CHAT_ID,
+      GROUP_CHAT_ID,
       'Sarcastic reply',
     );
   });
@@ -181,31 +148,38 @@ describe('HandleTelegramMessageUseCase', () => {
   it('passes the last exchanges as context, oldest first', async () => {
     // Repository returns newest first
     mockRepository.findByChatId.mockResolvedValue([
-      { text: 'друге питання', botResponse: 'друга відповідь' },
-      { text: 'перше питання', botResponse: 'перша відповідь' },
+      {
+        ...author,
+        text: 'друге питання',
+        botResponse: 'друга відповідь',
+      },
+      { ...author, text: 'перше питання', botResponse: 'перша відповідь' },
     ]);
 
     await useCase.execute(privateMessage({ text: 'третє питання' }));
 
     expect(mockRepository.findByChatId).toHaveBeenCalledWith(OWNER_ID, 10);
-    expect(mockAiReply.generateReply).toHaveBeenCalledWith('третє питання', [
-      { userText: 'перше питання', botResponse: 'перша відповідь' },
-      { userText: 'друге питання', botResponse: 'друга відповідь' },
-    ]);
+    expect(mockAiReply.generateReply).toHaveBeenCalledWith(
+      'O @owner: третє питання',
+      [
+        { userText: 'O @owner: перше питання', botResponse: 'перша відповідь' },
+        { userText: 'O @owner: друге питання', botResponse: 'друга відповідь' },
+      ],
+    );
   });
 
   it('drops failed turns from the context', async () => {
     mockRepository.findByChatId.mockResolvedValue([
-      { text: 'впало', botResponse: 'ERROR: api down' },
-      { text: 'без відповіді', botResponse: null },
-      { text: null, botResponse: 'осиротіла відповідь' },
-      { text: 'нормальне', botResponse: 'нормальна відповідь' },
+      { ...author, text: 'впало', botResponse: 'ERROR: api down' },
+      { ...author, text: 'без відповіді', botResponse: null },
+      { ...author, text: null, botResponse: 'осиротіла відповідь' },
+      { ...author, text: 'нормальне', botResponse: 'нормальна відповідь' },
     ]);
 
     await useCase.execute(privateMessage());
 
-    expect(mockAiReply.generateReply).toHaveBeenCalledWith('Hello', [
-      { userText: 'нормальне', botResponse: 'нормальна відповідь' },
+    expect(mockAiReply.generateReply).toHaveBeenCalledWith('O @owner: Hello', [
+      { userText: 'O @owner: нормальне', botResponse: 'нормальна відповідь' },
     ]);
   });
 
@@ -221,7 +195,6 @@ describe('HandleTelegramMessageUseCase', () => {
           provide: TELEGRAM_CONFIG,
           useValue: {
             ownerId: OWNER_ID,
-            allowedChatIds: [],
             mode: 'polling',
             webhookSecret: 'secret',
             historySince: cutoff,
@@ -232,11 +205,13 @@ describe('HandleTelegramMessageUseCase', () => {
 
     mockRepository.findByChatId.mockResolvedValue([
       {
+        ...author,
         text: 'нове',
         botResponse: 'нова відповідь',
         createdAt: new Date('2026-07-29T13:00:00Z'),
       },
       {
+        ...author,
         text: 'старе',
         botResponse: '*Поправляє манжети* Селюк',
         createdAt: new Date('2026-07-28T09:00:00Z'),
@@ -247,8 +222,8 @@ describe('HandleTelegramMessageUseCase', () => {
       .get(HandleTelegramMessageUseCase)
       .execute(privateMessage());
 
-    expect(mockAiReply.generateReply).toHaveBeenCalledWith('Hello', [
-      { userText: 'нове', botResponse: 'нова відповідь' },
+    expect(mockAiReply.generateReply).toHaveBeenCalledWith('O @owner: Hello', [
+      { userText: 'O @owner: нове', botResponse: 'нова відповідь' },
     ]);
   });
 
@@ -257,7 +232,10 @@ describe('HandleTelegramMessageUseCase', () => {
 
     await useCase.execute(privateMessage());
 
-    expect(mockAiReply.generateReply).toHaveBeenCalledWith('Hello', []);
+    expect(mockAiReply.generateReply).toHaveBeenCalledWith(
+      'O @owner: Hello',
+      [],
+    );
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       OWNER_ID,
       'Sarcastic reply',
