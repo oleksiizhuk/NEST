@@ -37,19 +37,6 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
     await this.bot.sendMessage(chatId, text);
   }
 
-  async sendPhoto(
-    chatId: number,
-    photo: Buffer,
-    caption?: string,
-  ): Promise<void> {
-    // contentType is required — without it the lib guesses from the (absent)
-    // filename and Telegram rejects the upload
-    await this.bot.sendPhoto(chatId, photo, caption ? { caption } : {}, {
-      filename: 'reply.png',
-      contentType: 'image/png',
-    });
-  }
-
   async sendTyping(chatId: number): Promise<void> {
     await this.bot.sendChatAction(chatId, 'typing');
   }
