@@ -9,6 +9,7 @@ import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram
 
 const OWNER_ID = 1;
 const ALLOWED_CHAT_ID = -100;
+const SECOND_CHAT_ID = -200;
 const BOT = { id: 42, username: 'test_bot' };
 
 const privateMessage = (
@@ -57,7 +58,7 @@ describe('HandleTelegramMessageUseCase', () => {
           provide: TELEGRAM_CONFIG,
           useValue: {
             ownerId: OWNER_ID,
-            allowedChatId: ALLOWED_CHAT_ID,
+            allowedChatIds: [ALLOWED_CHAT_ID, SECOND_CHAT_ID],
             mode: 'polling',
             webhookSecret: 'secret',
           },
@@ -132,6 +133,17 @@ describe('HandleTelegramMessageUseCase', () => {
     expect(mockAiReply.generateReply).toHaveBeenCalledWith('Hello', []);
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       ALLOWED_CHAT_ID,
+      'Sarcastic reply',
+    );
+  });
+
+  it('responds in every allowed group, not just the first', async () => {
+    await useCase.execute(
+      groupMessage({ chatId: SECOND_CHAT_ID, text: '@test_bot ще питання' }),
+    );
+
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      SECOND_CHAT_ID,
       'Sarcastic reply',
     );
   });

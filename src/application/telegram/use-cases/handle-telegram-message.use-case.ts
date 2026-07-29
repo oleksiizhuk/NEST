@@ -53,7 +53,7 @@ export class HandleTelegramMessageUseCase {
     if (!isPrivate && !isGroup) return;
 
     if (isPrivate && msg.from.id !== this.config.ownerId) return;
-    if (isGroup && chatId !== this.config.allowedChatId) return;
+    if (isGroup && !this.config.allowedChatIds.includes(chatId)) return;
 
     const botInfo = await this.telegram.getBotInfo();
 
