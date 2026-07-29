@@ -43,6 +43,39 @@ const CREATE_JIRA_TASK_TOOL: Anthropic.Tool = {
   },
 };
 
+const UPDATE_JIRA_TASK_TOOL: Anthropic.Tool = {
+  name: 'update_jira_task',
+  description:
+    'Change the title or the description of an existing Jira task. Call this when ' +
+    'the user asks to fix, rename, clarify or add detail to a task they name by key ' +
+    '(e.g. "онови KAN-12", "перепиши заголовок у KAN-3"). ' +
+    'Send only the fields that change — omitted fields are left as they are. ' +
+    'The description is replaced, not appended: include the full new text.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      key: {
+        type: 'string',
+        description: 'Task key exactly as the user gave it, e.g. KAN-12',
+      },
+      summary: {
+        type: 'string',
+        description:
+          'New title. Neutral business language — no slang, surzhyk, profanity or roleplay.',
+      },
+      description: {
+        type: 'string',
+        description:
+          'New description, replacing the old one. Same neutral business language.',
+      },
+    },
+    required: ['key'],
+  },
+};
+
+// KAN-12 and the like; anything else is the model inventing a key
+const TASK_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
+
 const SUMMARY_LIMIT = 250;
 const DESCRIPTION_LIMIT = 2000;
 
@@ -98,7 +131,7 @@ export class AnthropicReplyService implements IAiReplyService {
         // thinking would eat into the 10024-token budget for a chat bot
         thinking: { type: 'disabled' },
         system: TELEGRAM_SYSTEM_PROMPT,
-        tools: [CREATE_JIRA_TASK_TOOL],
+        tools: [CREATE_JIRA_TASK_TOOL, UPDATE_JIRA_TASK_TOOL],
         tool_choice: { type: 'auto', disable_parallel_tool_use: true },
         messages,
       });
@@ -171,6 +204,48 @@ export class AnthropicReplyService implements IAiReplyService {
           type: 'tool_result',
           tool_use_id: block.id,
           content: `Created ${task.key}: ${task.url}`,
+        };
+      }
+      if (block.name === 'update_jira_task') {
+        const { key, summary, description } = block.input as {
+          key: string;
+          summary?: string;
+          description?: string;
+        };
+
+        if (!TASK_KEY.test((key ?? '').trim().toUpperCase())) {
+          return {
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: `"${key}" is not a task key. Ask the user which task to update.`,
+            is_error: true,
+          };
+        }
+        if (!summary && !description) {
+          return {
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content:
+              'Nothing to change — send a new summary, description, or both.',
+            is_error: true,
+          };
+        }
+
+        const task = await this.taskTracker.updateTask(
+          key.trim().toUpperCase(),
+          {
+            ...(summary
+              ? { summary: clean(summary).slice(0, SUMMARY_LIMIT) }
+              : {}),
+            ...(description
+              ? { description: clean(description).slice(0, DESCRIPTION_LIMIT) }
+              : {}),
+          },
+        );
+        return {
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: `Updated ${task.key}: ${task.url}`,
         };
       }
       return {
