@@ -7,8 +7,7 @@ import { TELEGRAM_MESSAGE_REPOSITORY } from '@domain/telegram/telegram-message.r
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
 
 const OWNER_ID = 1;
-const ALLOWED_CHAT_ID = -100;
-const SECOND_CHAT_ID = -200;
+const GROUP_CHAT_ID = -100;
 const BOT = { id: 42, username: 'test_bot' };
 // Author columns the repository stores alongside every logged exchange
 const author = {
@@ -32,7 +31,7 @@ const privateMessage = (
 const groupMessage = (
   overrides: Partial<IncomingTelegramMessage> = {},
 ): IncomingTelegramMessage => ({
-  chatId: ALLOWED_CHAT_ID,
+  chatId: GROUP_CHAT_ID,
   chatType: 'supergroup',
   chatTitle: 'Chat',
   text: 'Hello',
@@ -61,7 +60,6 @@ describe('HandleTelegramMessageUseCase', () => {
           provide: TELEGRAM_CONFIG,
           useValue: {
             ownerId: OWNER_ID,
-            allowedChatIds: [ALLOWED_CHAT_ID, SECOND_CHAT_ID],
             mode: 'polling',
             webhookSecret: 'secret',
             historySince: null,
@@ -111,12 +109,6 @@ describe('HandleTelegramMessageUseCase', () => {
     );
   });
 
-  it('ignores message in a non-allowed group', async () => {
-    await useCase.execute(groupMessage({ chatId: -555 }));
-    expect(mockGateway.sendMessage).not.toHaveBeenCalled();
-    expect(mockAiReply.generateReply).not.toHaveBeenCalled();
-  });
-
   it('ignores allowed-group message without mention or reply', async () => {
     await useCase.execute(groupMessage());
     expect(mockGateway.sendMessage).not.toHaveBeenCalled();
@@ -130,7 +122,7 @@ describe('HandleTelegramMessageUseCase', () => {
       [],
     );
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      ALLOWED_CHAT_ID,
+      GROUP_CHAT_ID,
       'Sarcastic reply',
     );
   });
@@ -142,48 +134,7 @@ describe('HandleTelegramMessageUseCase', () => {
       [],
     );
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      ALLOWED_CHAT_ID,
-      'Sarcastic reply',
-    );
-  });
-
-  it('responds in any group when no allowlist is configured', async () => {
-    const open: TestingModule = await Test.createTestingModule({
-      providers: [
-        HandleTelegramMessageUseCase,
-        { provide: TELEGRAM_GATEWAY, useValue: mockGateway },
-        { provide: AI_REPLY_SERVICE, useValue: mockAiReply },
-        { provide: TELEGRAM_MESSAGE_REPOSITORY, useValue: mockRepository },
-        {
-          provide: TELEGRAM_CONFIG,
-          useValue: {
-            ownerId: OWNER_ID,
-            allowedChatIds: [],
-            mode: 'polling',
-            webhookSecret: 'secret',
-            historySince: null,
-          },
-        },
-      ],
-    }).compile();
-
-    await open
-      .get(HandleTelegramMessageUseCase)
-      .execute(groupMessage({ chatId: -999, text: '@test_bot агов' }));
-
-    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      -999,
-      'Sarcastic reply',
-    );
-  });
-
-  it('responds in every allowed group, not just the first', async () => {
-    await useCase.execute(
-      groupMessage({ chatId: SECOND_CHAT_ID, text: '@test_bot ще питання' }),
-    );
-
-    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      SECOND_CHAT_ID,
+      GROUP_CHAT_ID,
       'Sarcastic reply',
     );
   });
@@ -244,7 +195,6 @@ describe('HandleTelegramMessageUseCase', () => {
           provide: TELEGRAM_CONFIG,
           useValue: {
             ownerId: OWNER_ID,
-            allowedChatIds: [],
             mode: 'polling',
             webhookSecret: 'secret',
             historySince: cutoff,

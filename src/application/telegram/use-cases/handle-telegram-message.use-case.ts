@@ -55,12 +55,8 @@ export class HandleTelegramMessageUseCase {
     const isGroup = chatType === 'group' || chatType === 'supergroup';
     if (!isPrivate && !isGroup) return;
 
+    // Groups are open — the mention/reply check below is the only gate there
     if (isPrivate && msg.from.id !== this.config.ownerId) return;
-    // Empty allowlist = any group the bot is added to; owner-only stays for DMs
-    const groupAllowed =
-      this.config.allowedChatIds.length === 0 ||
-      this.config.allowedChatIds.includes(chatId);
-    if (isGroup && !groupAllowed) return;
 
     const botInfo = await this.telegram.getBotInfo();
 
