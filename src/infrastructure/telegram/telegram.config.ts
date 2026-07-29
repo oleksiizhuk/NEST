@@ -4,6 +4,14 @@ import {
   TelegramMode,
 } from '@application/telegram/telegram.config.interface';
 
+// An unparseable value must not silently wipe the bot's memory — fall back to
+// "no cutoff" and let the operator notice the history is still there
+const parseDate = (value?: string): Date | null => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 export const telegramConfig = (
   configService: ConfigService,
 ): ITelegramConfig => {
@@ -23,5 +31,8 @@ export const telegramConfig = (
       .filter((id) => Number.isFinite(id) && id !== 0),
     mode,
     webhookSecret: configService.get<string>('TELEGRAM_WEBHOOK_SECRET') ?? '',
+    historySince: parseDate(
+      configService.get<string>('TELEGRAM_HISTORY_SINCE'),
+    ),
   };
 };

@@ -57,6 +57,7 @@ describe('HandleTelegramMessageUseCase', () => {
             allowedChatIds: [ALLOWED_CHAT_ID, SECOND_CHAT_ID],
             mode: 'polling',
             webhookSecret: 'secret',
+            historySince: null,
           },
         },
       ],
@@ -144,6 +145,7 @@ describe('HandleTelegramMessageUseCase', () => {
             allowedChatIds: [],
             mode: 'polling',
             webhookSecret: 'secret',
+            historySince: null,
           },
         },
       ],
@@ -204,6 +206,49 @@ describe('HandleTelegramMessageUseCase', () => {
 
     expect(mockAiReply.generateReply).toHaveBeenCalledWith('Hello', [
       { userText: 'нормальне', botResponse: 'нормальна відповідь' },
+    ]);
+  });
+
+  it('drops exchanges from before the history cutoff', async () => {
+    const cutoff = new Date('2026-07-29T12:00:00Z');
+    const withCutoff: TestingModule = await Test.createTestingModule({
+      providers: [
+        HandleTelegramMessageUseCase,
+        { provide: TELEGRAM_GATEWAY, useValue: mockGateway },
+        { provide: AI_REPLY_SERVICE, useValue: mockAiReply },
+        { provide: TELEGRAM_MESSAGE_REPOSITORY, useValue: mockRepository },
+        {
+          provide: TELEGRAM_CONFIG,
+          useValue: {
+            ownerId: OWNER_ID,
+            allowedChatIds: [],
+            mode: 'polling',
+            webhookSecret: 'secret',
+            historySince: cutoff,
+          },
+        },
+      ],
+    }).compile();
+
+    mockRepository.findByChatId.mockResolvedValue([
+      {
+        text: 'нове',
+        botResponse: 'нова відповідь',
+        createdAt: new Date('2026-07-29T13:00:00Z'),
+      },
+      {
+        text: 'старе',
+        botResponse: '*Поправляє манжети* Селюк',
+        createdAt: new Date('2026-07-28T09:00:00Z'),
+      },
+    ]);
+
+    await withCutoff
+      .get(HandleTelegramMessageUseCase)
+      .execute(privateMessage());
+
+    expect(mockAiReply.generateReply).toHaveBeenCalledWith('Hello', [
+      { userText: 'нове', botResponse: 'нова відповідь' },
     ]);
   });
 
