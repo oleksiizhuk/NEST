@@ -10,6 +10,8 @@ import { TELEGRAM_MESSAGE_REPOSITORY } from '@domain/telegram/telegram-message.r
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
 import { TelegramMessageSchema } from '@infrastructure/database/schemas/telegram-message.schema';
 import { MongoTelegramMessageRepository } from '@infrastructure/database/repositories/mongo-telegram-message.repository';
+import { REPLY_IMAGE_RENDERER } from '@application/telegram/reply-image.renderer.interface';
+import { ReplyImageRenderer } from '@infrastructure/telegram/reply-image.renderer';
 import { TelegramBotService } from '@infrastructure/telegram/telegram-bot.service';
 import { AnthropicReplyService } from '@infrastructure/telegram/anthropic-reply.service';
 import { TelegramPollingBootstrap } from '@infrastructure/telegram/telegram-polling.bootstrap';
@@ -32,6 +34,7 @@ import { telegramConfig } from '@infrastructure/telegram/telegram.config';
     // useExisting — one bot singleton shared by the gateway token and the polling bootstrap
     { provide: TELEGRAM_GATEWAY, useExisting: TelegramBotService },
     { provide: AI_REPLY_SERVICE, useClass: AnthropicReplyService },
+    { provide: REPLY_IMAGE_RENDERER, useClass: ReplyImageRenderer },
     { provide: TASK_TRACKER_SERVICE, useClass: JiraService },
     {
       provide: TELEGRAM_MESSAGE_REPOSITORY,
