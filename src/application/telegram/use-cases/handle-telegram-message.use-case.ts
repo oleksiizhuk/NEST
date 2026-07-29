@@ -7,6 +7,7 @@ import {
   IAiReplyService,
   IConversationTurn,
   AI_REPLY_SERVICE,
+  AI_UNAVAILABLE_REPLY,
 } from '@application/telegram/ai-reply.service.interface';
 import {
   ITelegramConfig,
@@ -110,6 +111,9 @@ export class HandleTelegramMessageUseCase {
             log.text &&
             log.botResponse &&
             !log.botResponse.startsWith(ERROR_PREFIX) &&
+            // A degraded reply is not something the bot "said" — replaying it
+            // teaches the model to produce more of them
+            log.botResponse !== AI_UNAVAILABLE_REPLY &&
             // Anything the bot said under an older persona stays out
             (!since || (log.createdAt && log.createdAt >= since)),
         )

@@ -125,7 +125,7 @@ describe('AnthropicReplyService', () => {
       .mockResolvedValueOnce(textResponse('Одну створив, решту окремо'));
 
     await expect(service.generateReply('створи дві таски')).resolves.toBe(
-      'Одну створив, решту окремо',
+      `Одну створив, решту окремо\n\n${TASK.key} — ${TASK.url}`,
     );
 
     expect(mockTaskTracker.createTask).toHaveBeenCalledTimes(1);
@@ -172,13 +172,73 @@ describe('AnthropicReplyService', () => {
     ]);
   });
 
-  it('gives up after the iteration cap', async () => {
+  it('reports the created task even when the loop runs out of turns', async () => {
     mockCreate.mockResolvedValue(toolUseResponse('t1'));
 
+    // Saying "failed" here would have the user create a duplicate
     await expect(service.generateReply('створи таску')).resolves.toBe(
+      `${TASK.key} — ${TASK.url}`,
+    );
+    expect(mockTaskTracker.createTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back when the loop runs out with nothing created', async () => {
+    mockCreate.mockResolvedValue({
+      stop_reason: 'tool_use',
+      content: [
+        { type: 'tool_use', id: 't1', name: 'unknown_tool', input: {} },
+      ],
+    });
+
+    await expect(service.generateReply('шось')).resolves.toBe(
       'Не вдалося завершити операцію 😢',
     );
-    // First call creates the task, every later one is refused
-    expect(mockTaskTracker.createTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('joins every text block instead of only the first', async () => {
+    mockCreate.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [
+        { type: 'text', text: 'перша частина' },
+        { type: 'text', text: 'друга частина' },
+      ],
+    });
+
+    await expect(service.generateReply('питання')).resolves.toBe(
+      'перша частина\n\nдруга частина',
+    );
+  });
+
+  it('falls back when the model returns no text at all', async () => {
+    mockCreate.mockResolvedValueOnce({ stop_reason: 'end_turn', content: [] });
+
+    await expect(service.generateReply('питання')).resolves.toBe(
+      'Не вдалося завершити операцію 😢',
+    );
+  });
+
+  it('leaves the reply alone when it already names the task', async () => {
+    mockCreate
+      .mockResolvedValueOnce(toolUseResponse('t1'))
+      .mockResolvedValueOnce(textResponse(`Зробив ${TASK.key}, дивись сам`));
+
+    await expect(service.generateReply('створи таску')).resolves.toBe(
+      `Зробив ${TASK.key}, дивись сам`,
+    );
+  });
+
+  it('strips profanity and trims the summary before it reaches Jira', async () => {
+    mockCreate
+      .mockResolvedValueOnce(
+        toolUseResponse('t1', '  Пофіксити цю хуйню з\n\nлогіном  '),
+      )
+      .mockResolvedValueOnce(textResponse('ок'));
+
+    await service.generateReply('створи таску');
+
+    expect(mockTaskTracker.createTask).toHaveBeenCalledWith(
+      'Пофіксити цю з логіном',
+      undefined,
+    );
   });
 });
