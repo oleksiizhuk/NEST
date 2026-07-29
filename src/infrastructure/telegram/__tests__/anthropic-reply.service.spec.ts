@@ -17,6 +17,11 @@ import { AnthropicReplyService } from '@infrastructure/telegram/anthropic-reply.
 
 const TASK = { key: 'KAN-1', url: 'https://jira.example/browse/KAN-1' };
 
+const transitionUseResponse = (id: string, input: Record<string, unknown>) => ({
+  stop_reason: 'tool_use',
+  content: [{ type: 'tool_use', id, name: 'transition_jira_task', input }],
+});
+
 const updateUseResponse = (id: string, input: Record<string, unknown>) => ({
   stop_reason: 'tool_use',
   content: [{ type: 'tool_use', id, name: 'update_jira_task', input }],
@@ -47,7 +52,11 @@ const lastToolResults = (callIndex: number) => {
 
 describe('AnthropicReplyService', () => {
   let service: AnthropicReplyService;
-  const mockTaskTracker = { createTask: jest.fn(), updateTask: jest.fn() };
+  const mockTaskTracker = {
+    createTask: jest.fn(),
+    updateTask: jest.fn(),
+    transitionTask: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -66,6 +75,10 @@ describe('AnthropicReplyService', () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     mockTaskTracker.createTask.mockResolvedValue(TASK);
     mockTaskTracker.updateTask.mockResolvedValue(TASK);
+    mockTaskTracker.transitionTask.mockResolvedValue({
+      ...TASK,
+      status: 'Done',
+    });
   });
 
   it('returns the text reply when no tool is used', async () => {
@@ -301,6 +314,55 @@ describe('AnthropicReplyService', () => {
     await service.generateReply('онови KAN-12');
 
     expect(mockTaskTracker.updateTask).not.toHaveBeenCalled();
+    expect(lastToolResults(1)[0]).toMatchObject({ is_error: true });
+  });
+
+  it('moves a task to the requested status', async () => {
+    mockCreate
+      .mockResolvedValueOnce(
+        transitionUseResponse('m1', { key: 'kan-12', status: 'done' }),
+      )
+      .mockResolvedValueOnce(textResponse('закрив'));
+
+    await expect(service.generateReply('закрий KAN-12')).resolves.toBe(
+      'закрив',
+    );
+    expect(mockTaskTracker.transitionTask).toHaveBeenCalledWith(
+      'KAN-12',
+      'done',
+    );
+    expect(lastToolResults(1)[0].content).toContain('Done');
+  });
+
+  it('hands the available statuses back when the target is unreachable', async () => {
+    mockTaskTracker.transitionTask.mockRejectedValue(
+      new Error(
+        '"Done" is not available for KAN-12. Available now: In Progress',
+      ),
+    );
+    mockCreate
+      .mockResolvedValueOnce(
+        transitionUseResponse('m1', { key: 'KAN-12', status: 'Done' }),
+      )
+      .mockResolvedValueOnce(textResponse('туди не можна'));
+
+    await service.generateReply('закрий KAN-12');
+
+    const [result] = lastToolResults(1);
+    expect(result).toMatchObject({ is_error: true });
+    expect(result.content).toContain('In Progress');
+  });
+
+  it('refuses to move a made-up key', async () => {
+    mockCreate
+      .mockResolvedValueOnce(
+        transitionUseResponse('m1', { key: 'та отой', status: 'Done' }),
+      )
+      .mockResolvedValueOnce(textResponse('який таск?'));
+
+    await service.generateReply('закрий таску');
+
+    expect(mockTaskTracker.transitionTask).not.toHaveBeenCalled();
     expect(lastToolResults(1)[0]).toMatchObject({ is_error: true });
   });
 });

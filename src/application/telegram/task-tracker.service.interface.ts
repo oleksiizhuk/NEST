@@ -11,7 +11,14 @@ export interface ITaskChanges {
   description?: string;
 }
 
+export interface IMovedTask extends ICreatedTask {
+  status: string;
+}
+
 export interface ITaskTrackerService {
   createTask(summary: string, description?: string): Promise<ICreatedTask>;
   updateTask(key: string, changes: ITaskChanges): Promise<ICreatedTask>;
+  // Rejects with the list of available statuses when the requested one is not
+  // reachable from where the task currently sits
+  transitionTask(key: string, status: string): Promise<IMovedTask>;
 }

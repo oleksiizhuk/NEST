@@ -73,6 +73,31 @@ const UPDATE_JIRA_TASK_TOOL: Anthropic.Tool = {
   },
 };
 
+const TRANSITION_JIRA_TASK_TOOL: Anthropic.Tool = {
+  name: 'transition_jira_task',
+  description:
+    'Move an existing Jira task to another status. Call this when the user asks to ' +
+    'start, finish, reopen or otherwise move a task they name by key ' +
+    '(e.g. "закрий KAN-12", "візьми KAN-3 в роботу"). ' +
+    'If the status is not reachable the tool answers with the ones that are — ' +
+    'pick from that list or ask the user, never guess twice.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      key: {
+        type: 'string',
+        description: 'Task key exactly as the user gave it, e.g. KAN-12',
+      },
+      status: {
+        type: 'string',
+        description:
+          'Target status as the board names it, e.g. "In Progress", "Done", "To Do"',
+      },
+    },
+    required: ['key', 'status'],
+  },
+};
+
 // KAN-12 and the like; anything else is the model inventing a key
 const TASK_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 
@@ -131,7 +156,11 @@ export class AnthropicReplyService implements IAiReplyService {
         // thinking would eat into the 10024-token budget for a chat bot
         thinking: { type: 'disabled' },
         system: TELEGRAM_SYSTEM_PROMPT,
-        tools: [CREATE_JIRA_TASK_TOOL, UPDATE_JIRA_TASK_TOOL],
+        tools: [
+          CREATE_JIRA_TASK_TOOL,
+          UPDATE_JIRA_TASK_TOOL,
+          TRANSITION_JIRA_TASK_TOOL,
+        ],
         tool_choice: { type: 'auto', disable_parallel_tool_use: true },
         messages,
       });
@@ -246,6 +275,28 @@ export class AnthropicReplyService implements IAiReplyService {
           type: 'tool_result',
           tool_use_id: block.id,
           content: `Updated ${task.key}: ${task.url}`,
+        };
+      }
+      if (block.name === 'transition_jira_task') {
+        const { key, status } = block.input as { key: string; status: string };
+
+        if (!TASK_KEY.test((key ?? '').trim().toUpperCase())) {
+          return {
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: `"${key}" is not a task key. Ask the user which task to move.`,
+            is_error: true,
+          };
+        }
+
+        const task = await this.taskTracker.transitionTask(
+          key.trim().toUpperCase(),
+          status ?? '',
+        );
+        return {
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: `${task.key} is now "${task.status}": ${task.url}`,
         };
       }
       return {
