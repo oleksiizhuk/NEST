@@ -16,19 +16,12 @@ import {
   ITelegramMessageRepository,
   TELEGRAM_MESSAGE_REPOSITORY,
 } from '@domain/telegram/telegram-message.repository.interface';
-import {
-  IReplyImageRenderer,
-  REPLY_IMAGE_RENDERER,
-} from '@application/telegram/reply-image.renderer.interface';
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
 
 const FALLBACK_MESSAGE = 'Что-то пошло не так 😢';
 const ERROR_PREFIX = 'ERROR: ';
 // Exchanges (user + bot) replayed to the model as conversation context
 const HISTORY_LIMIT = 10;
-// Telegram truncates photo captions past this
-const CAPTION_LIMIT = 1024;
-const URL_PATTERN = /https?:\/\/\S+/g;
 
 @Injectable()
 export class HandleTelegramMessageUseCase {
@@ -39,8 +32,6 @@ export class HandleTelegramMessageUseCase {
     @Inject(AI_REPLY_SERVICE) private readonly aiReply: IAiReplyService,
     @Inject(TELEGRAM_MESSAGE_REPOSITORY)
     private readonly messageRepository: ITelegramMessageRepository,
-    @Inject(REPLY_IMAGE_RENDERER)
-    private readonly imageRenderer: IReplyImageRenderer,
     @Inject(TELEGRAM_CONFIG) private readonly config: ITelegramConfig,
   ) {}
 
@@ -80,7 +71,7 @@ export class HandleTelegramMessageUseCase {
         cleanText || text,
         history,
       );
-      await this.deliver(chatId, reply);
+      await this.telegram.sendMessage(chatId, reply);
       await this.saveLog(msg, reply);
     } catch (error) {
       this.logger.error(error);
@@ -90,27 +81,6 @@ export class HandleTelegramMessageUseCase {
       await this.saveLog(msg, ERROR_PREFIX + (error as Error).message).catch(
         (logError) => this.logger.error(logError),
       );
-    }
-  }
-
-  // The reply goes out as a themed picture when the renderer produced one.
-  // Links are repeated in the caption — text baked into a PNG is not clickable.
-  private async deliver(chatId: number, reply: string): Promise<void> {
-    const image = await this.imageRenderer.render(reply);
-    if (!image) {
-      await this.telegram.sendMessage(chatId, reply);
-      return;
-    }
-
-    const caption = (reply.match(URL_PATTERN) ?? [])
-      .join('\n')
-      .slice(0, CAPTION_LIMIT);
-    try {
-      await this.telegram.sendPhoto(chatId, image, caption || undefined);
-    } catch (error) {
-      // Upload can fail on its own (size, network) — the text still must land
-      this.logger.error(error);
-      await this.telegram.sendMessage(chatId, reply);
     }
   }
 

@@ -4,7 +4,6 @@ import { TELEGRAM_GATEWAY } from '@application/telegram/telegram.gateway.interfa
 import { AI_REPLY_SERVICE } from '@application/telegram/ai-reply.service.interface';
 import { TELEGRAM_CONFIG } from '@application/telegram/telegram.config.interface';
 import { TELEGRAM_MESSAGE_REPOSITORY } from '@domain/telegram/telegram-message.repository.interface';
-import { REPLY_IMAGE_RENDERER } from '@application/telegram/reply-image.renderer.interface';
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
 
 const OWNER_ID = 1;
@@ -38,13 +37,11 @@ describe('HandleTelegramMessageUseCase', () => {
   let useCase: HandleTelegramMessageUseCase;
   const mockGateway = {
     sendMessage: jest.fn(),
-    sendPhoto: jest.fn(),
     sendTyping: jest.fn(),
     getBotInfo: jest.fn(),
   };
   const mockAiReply = { generateReply: jest.fn() };
   const mockRepository = { save: jest.fn(), findByChatId: jest.fn() };
-  const mockImageRenderer = { render: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -53,7 +50,6 @@ describe('HandleTelegramMessageUseCase', () => {
         { provide: TELEGRAM_GATEWAY, useValue: mockGateway },
         { provide: AI_REPLY_SERVICE, useValue: mockAiReply },
         { provide: TELEGRAM_MESSAGE_REPOSITORY, useValue: mockRepository },
-        { provide: REPLY_IMAGE_RENDERER, useValue: mockImageRenderer },
         {
           provide: TELEGRAM_CONFIG,
           useValue: {
@@ -73,9 +69,6 @@ describe('HandleTelegramMessageUseCase', () => {
     mockAiReply.generateReply.mockResolvedValue('Sarcastic reply');
     mockRepository.save.mockResolvedValue(undefined);
     mockRepository.findByChatId.mockResolvedValue([]);
-    mockGateway.sendPhoto.mockResolvedValue(undefined);
-    // Plain text unless a test opts into the rendered image
-    mockImageRenderer.render.mockResolvedValue(null);
   });
 
   it('ignores private message from non-owner', async () => {
@@ -144,7 +137,6 @@ describe('HandleTelegramMessageUseCase', () => {
         { provide: TELEGRAM_GATEWAY, useValue: mockGateway },
         { provide: AI_REPLY_SERVICE, useValue: mockAiReply },
         { provide: TELEGRAM_MESSAGE_REPOSITORY, useValue: mockRepository },
-        { provide: REPLY_IMAGE_RENDERER, useValue: mockImageRenderer },
         {
           provide: TELEGRAM_CONFIG,
           useValue: {
@@ -224,56 +216,6 @@ describe('HandleTelegramMessageUseCase', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       OWNER_ID,
       'Sarcastic reply',
-    );
-  });
-
-  it('sends the rendered image with links kept in the caption', async () => {
-    const png = Buffer.from('png');
-    mockImageRenderer.render.mockResolvedValue(png);
-    mockAiReply.generateReply.mockResolvedValue(
-      'Зробив KAN-12: https://jira.example/browse/KAN-12',
-    );
-
-    await useCase.execute(privateMessage());
-
-    expect(mockGateway.sendPhoto).toHaveBeenCalledWith(
-      OWNER_ID,
-      png,
-      'https://jira.example/browse/KAN-12',
-    );
-    expect(mockGateway.sendMessage).not.toHaveBeenCalled();
-    // The log keeps the text, not the picture
-    expect(mockRepository.save).toHaveBeenCalledWith(
-      expect.objectContaining({
-        botResponse: 'Зробив KAN-12: https://jira.example/browse/KAN-12',
-      }),
-    );
-  });
-
-  it('sends a photo without caption when the reply has no links', async () => {
-    mockImageRenderer.render.mockResolvedValue(Buffer.from('png'));
-
-    await useCase.execute(privateMessage());
-
-    expect(mockGateway.sendPhoto).toHaveBeenCalledWith(
-      OWNER_ID,
-      expect.any(Buffer),
-      undefined,
-    );
-  });
-
-  it('falls back to text when the photo upload fails', async () => {
-    mockImageRenderer.render.mockResolvedValue(Buffer.from('png'));
-    mockGateway.sendPhoto.mockRejectedValue(new Error('upload failed'));
-
-    await useCase.execute(privateMessage());
-
-    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
-      OWNER_ID,
-      'Sarcastic reply',
-    );
-    expect(mockRepository.save).toHaveBeenCalledWith(
-      expect.objectContaining({ botResponse: 'Sarcastic reply' }),
     );
   });
 
