@@ -124,7 +124,7 @@ describe('AnthropicReplyService', () => {
       .mockResolvedValueOnce(toolUseResponse('t1'))
       .mockResolvedValueOnce(textResponse('Створив KAN-1'));
 
-    await expect(service.generateReply('створи таску')).resolves.toBe(
+    await expect(service.generateReply('створи таску')).resolves.toContain(
       'Створив KAN-1',
     );
     expect(mockTaskTracker.createTask).toHaveBeenCalledTimes(1);
@@ -144,7 +144,13 @@ describe('AnthropicReplyService', () => {
       .mockResolvedValueOnce(textResponse('Одну створив, решту окремо'));
 
     await expect(service.generateReply('створи дві таски')).resolves.toBe(
-      `Одну створив, решту окремо\n\n${TASK.key} — ${TASK.url}`,
+      [
+        'Одну створив, решту окремо',
+        '',
+        `${TASK.key} — ${TASK.url}`,
+        'Заголовок: Перша',
+        'Опис: —',
+      ].join('\n'),
     );
 
     expect(mockTaskTracker.createTask).toHaveBeenCalledTimes(1);
@@ -195,7 +201,7 @@ describe('AnthropicReplyService', () => {
     mockCreate.mockResolvedValue(toolUseResponse('t1'));
 
     // Saying "failed" here would have the user create a duplicate
-    await expect(service.generateReply('створи таску')).resolves.toBe(
+    await expect(service.generateReply('створи таску')).resolves.toContain(
       `${TASK.key} — ${TASK.url}`,
     );
     expect(mockTaskTracker.createTask).toHaveBeenCalledTimes(1);
@@ -241,7 +247,7 @@ describe('AnthropicReplyService', () => {
       .mockResolvedValueOnce(toolUseResponse('t1'))
       .mockResolvedValueOnce(textResponse(`Зробив ${TASK.key}, дивись сам`));
 
-    await expect(service.generateReply('створи таску')).resolves.toBe(
+    await expect(service.generateReply('створи таску')).resolves.toContain(
       `Зробив ${TASK.key}, дивись сам`,
     );
   });
@@ -271,7 +277,7 @@ describe('AnthropicReplyService', () => {
       )
       .mockResolvedValueOnce(textResponse('поправив'));
 
-    await expect(service.generateReply('онови KAN-12')).resolves.toBe(
+    await expect(service.generateReply('онови KAN-12')).resolves.toContain(
       'поправив',
     );
     expect(mockTaskTracker.updateTask).toHaveBeenCalledWith('KAN-12', {
@@ -324,7 +330,7 @@ describe('AnthropicReplyService', () => {
       )
       .mockResolvedValueOnce(textResponse('закрив'));
 
-    await expect(service.generateReply('закрий KAN-12')).resolves.toBe(
+    await expect(service.generateReply('закрий KAN-12')).resolves.toContain(
       'закрив',
     );
     expect(mockTaskTracker.transitionTask).toHaveBeenCalledWith(
@@ -364,5 +370,77 @@ describe('AnthropicReplyService', () => {
 
     expect(mockTaskTracker.transitionTask).not.toHaveBeenCalled();
     expect(lastToolResults(1)[0]).toMatchObject({ is_error: true });
+  });
+
+  it('shows exactly what landed on the board', async () => {
+    mockCreate
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'create_jira_task',
+            input: {
+              summary: 'Postpone icon replacement on mockups',
+              description: 'Skip until the design system is organised.',
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce(textResponse('завів, гуляй'));
+
+    const reply = await service.generateReply('створи таску');
+
+    expect(reply).toBe(
+      [
+        'завів, гуляй',
+        '',
+        `${TASK.key} — ${TASK.url}`,
+        'Заголовок: Postpone icon replacement on mockups',
+        'Опис: Skip until the design system is organised.',
+      ].join('\n'),
+    );
+  });
+
+  it('reports the receipt even when the model says nothing', async () => {
+    mockCreate
+      .mockResolvedValueOnce(toolUseResponse('t1', 'Fix the login flow'))
+      .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [] });
+
+    const reply = await service.generateReply('створи таску');
+
+    expect(reply).toBe(
+      [
+        `${TASK.key} — ${TASK.url}`,
+        'Заголовок: Fix the login flow',
+        'Опис: —',
+      ].join('\n'),
+    );
+  });
+
+  it('lists only the fields an update actually changed', async () => {
+    mockCreate
+      .mockResolvedValueOnce(
+        updateUseResponse('u1', { key: 'KAN-3', description: 'New wording' }),
+      )
+      .mockResolvedValueOnce(textResponse('поправив'));
+
+    const reply = await service.generateReply('онови KAN-3');
+
+    expect(reply).toContain('Новий опис: New wording');
+    expect(reply).not.toContain('Новий заголовок');
+  });
+
+  it('reports the resulting status after a move', async () => {
+    mockCreate
+      .mockResolvedValueOnce(
+        transitionUseResponse('m1', { key: 'KAN-12', status: 'Done' }),
+      )
+      .mockResolvedValueOnce(textResponse('закрив'));
+
+    const reply = await service.generateReply('закрий KAN-12');
+
+    expect(reply).toContain('Статус: Done');
   });
 });

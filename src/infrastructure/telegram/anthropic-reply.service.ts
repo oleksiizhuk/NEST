@@ -29,14 +29,15 @@ const CREATE_JIRA_TASK_TOOL: Anthropic.Tool = {
       summary: {
         type: 'string',
         description:
-          'Short task title, max ~120 chars. Neutral business language — the ' +
-          'board is read by the whole team, so no slang, surzhyk, profanity or ' +
-          'roleplay, whatever style the chat uses.',
+          'Short task title, max ~120 chars. ALWAYS IN ENGLISH, whatever language ' +
+          'the chat uses — translate the request. Neutral business language: the ' +
+          'board is read by the whole team, so no slang, surzhyk, profanity or roleplay.',
       },
       description: {
         type: 'string',
         description:
-          'Optional longer description, same neutral business language as the summary.',
+          'Optional longer description. Also ALWAYS IN ENGLISH, same neutral ' +
+          'business language as the summary.',
       },
     },
     required: ['summary'],
@@ -61,12 +62,14 @@ const UPDATE_JIRA_TASK_TOOL: Anthropic.Tool = {
       summary: {
         type: 'string',
         description:
-          'New title. Neutral business language — no slang, surzhyk, profanity or roleplay.',
+          'New title, ALWAYS IN ENGLISH. Neutral business language — no slang, ' +
+          'surzhyk, profanity or roleplay.',
       },
       description: {
         type: 'string',
         description:
-          'New description, replacing the old one. Same neutral business language.',
+          'New description, replacing the old one. ALWAYS IN ENGLISH, same neutral ' +
+          'business language.',
       },
     },
     required: ['key'],
@@ -112,9 +115,20 @@ const PROFANITY =
 const clean = (text: string): string =>
   (text ?? '').replace(PROFANITY, '').replace(/\s+/g, ' ').trim();
 
+// Keeps the reply readable when the model dumps a whole spec into the field
+const RECEIPT_FIELD_LIMIT = 300;
+
+const trim = (text: string): string =>
+  text.length > RECEIPT_FIELD_LIMIT
+    ? `${text.slice(0, RECEIPT_FIELD_LIMIT)}…`
+    : text;
+
 // Per-request tool state — scoped to a single generateReply() call
 interface ToolState {
   createdTask: ICreatedTask | null;
+  // What actually reached Jira, appended to the reply verbatim so the user
+  // sees the real title and description instead of the model's retelling
+  receipt: string | null;
 }
 
 @Injectable()
@@ -147,7 +161,7 @@ export class AnthropicReplyService implements IAiReplyService {
     messages.push({ role: 'user', content: userText });
     // One task per user message: the model gets a single tool call per turn
     // (disable_parallel_tool_use) and runTool refuses any further one
-    const state: ToolState = { createdTask: null };
+    const state: ToolState = { createdTask: null, receipt: null };
 
     for (let i = 0; i <= MAX_TOOL_ITERATIONS; i++) {
       const response = await this.client.messages.create({
@@ -186,15 +200,14 @@ export class AnthropicReplyService implements IAiReplyService {
     return this.finalise('', state);
   }
 
-  // The key and the link come from Jira, not from the model: in character it
-  // may mangle "KAN-12" or glue the URL to a word and break Telegram's autolink
+  // What Jira accepted is appended verbatim rather than left to the model: in
+  // character it mangles keys, glues URLs to words and retells the title in
+  // surzhyk, so the user cannot tell what actually landed on the board
   private finalise(text: string, state: ToolState): string {
-    const task = state.createdTask;
     const body = text.trim();
 
-    if (!task) return body || AI_UNAVAILABLE_REPLY;
-    if (body.includes(task.key)) return body;
-    return `${body ? `${body}\n\n` : ''}${task.key} — ${task.url}`;
+    if (!state.receipt) return body || AI_UNAVAILABLE_REPLY;
+    return `${body ? `${body}\n\n` : ''}${state.receipt}`;
   }
 
   private async runTool(
@@ -221,14 +234,21 @@ export class AnthropicReplyService implements IAiReplyService {
           summary: string;
           description?: string;
         };
+        // Jira rejects summaries past 255 chars and keeps newlines out of them
+        const sentSummary = clean(summary).slice(0, SUMMARY_LIMIT);
+        const sentDescription = description
+          ? clean(description).slice(0, DESCRIPTION_LIMIT)
+          : undefined;
         const task = await this.taskTracker.createTask(
-          // Jira rejects summaries past 255 chars and keeps newlines out of them
-          clean(summary).slice(0, SUMMARY_LIMIT),
-          description
-            ? clean(description).slice(0, DESCRIPTION_LIMIT)
-            : undefined,
+          sentSummary,
+          sentDescription,
         );
         state.createdTask = task;
+        state.receipt = [
+          `${task.key} — ${task.url}`,
+          `Заголовок: ${trim(sentSummary)}`,
+          `Опис: ${sentDescription ? trim(sentDescription) : '—'}`,
+        ].join('\n');
         return {
           type: 'tool_result',
           tool_use_id: block.id,
@@ -260,17 +280,27 @@ export class AnthropicReplyService implements IAiReplyService {
           };
         }
 
+        const changes = {
+          ...(summary
+            ? { summary: clean(summary).slice(0, SUMMARY_LIMIT) }
+            : {}),
+          ...(description
+            ? { description: clean(description).slice(0, DESCRIPTION_LIMIT) }
+            : {}),
+        };
         const task = await this.taskTracker.updateTask(
           key.trim().toUpperCase(),
-          {
-            ...(summary
-              ? { summary: clean(summary).slice(0, SUMMARY_LIMIT) }
-              : {}),
-            ...(description
-              ? { description: clean(description).slice(0, DESCRIPTION_LIMIT) }
-              : {}),
-          },
+          changes,
         );
+        state.receipt = [
+          `${task.key} — ${task.url}`,
+          ...(changes.summary
+            ? [`Новий заголовок: ${trim(changes.summary)}`]
+            : []),
+          ...(changes.description
+            ? [`Новий опис: ${trim(changes.description)}`]
+            : []),
+        ].join('\n');
         return {
           type: 'tool_result',
           tool_use_id: block.id,
@@ -293,6 +323,7 @@ export class AnthropicReplyService implements IAiReplyService {
           key.trim().toUpperCase(),
           status ?? '',
         );
+        state.receipt = `${task.key} — ${task.url}\nСтатус: ${task.status}`;
         return {
           type: 'tool_result',
           tool_use_id: block.id,
