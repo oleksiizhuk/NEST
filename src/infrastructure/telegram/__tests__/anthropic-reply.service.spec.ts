@@ -17,6 +17,11 @@ import { AnthropicReplyService } from '@infrastructure/telegram/anthropic-reply.
 
 const TASK = { key: 'KAN-1', url: 'https://jira.example/browse/KAN-1' };
 
+const updateUseResponse = (id: string, input: Record<string, unknown>) => ({
+  stop_reason: 'tool_use',
+  content: [{ type: 'tool_use', id, name: 'update_jira_task', input }],
+});
+
 const toolUseResponse = (id: string, summary = 'Полагодити кран') => ({
   stop_reason: 'tool_use',
   content: [
@@ -42,7 +47,7 @@ const lastToolResults = (callIndex: number) => {
 
 describe('AnthropicReplyService', () => {
   let service: AnthropicReplyService;
-  const mockTaskTracker = { createTask: jest.fn() };
+  const mockTaskTracker = { createTask: jest.fn(), updateTask: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -60,6 +65,7 @@ describe('AnthropicReplyService', () => {
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     mockTaskTracker.createTask.mockResolvedValue(TASK);
+    mockTaskTracker.updateTask.mockResolvedValue(TASK);
   });
 
   it('returns the text reply when no tool is used', async () => {
@@ -240,5 +246,61 @@ describe('AnthropicReplyService', () => {
       'Пофіксити цю з логіном',
       undefined,
     );
+  });
+
+  it('updates a task by key and cleans the new title', async () => {
+    mockCreate
+      .mockResolvedValueOnce(
+        updateUseResponse('u1', {
+          key: 'kan-12',
+          summary: '  Новий\n\nзаголовок хуйня  ',
+        }),
+      )
+      .mockResolvedValueOnce(textResponse('поправив'));
+
+    await expect(service.generateReply('онови KAN-12')).resolves.toBe(
+      'поправив',
+    );
+    expect(mockTaskTracker.updateTask).toHaveBeenCalledWith('KAN-12', {
+      summary: 'Новий заголовок',
+    });
+  });
+
+  it('sends only the fields the model actually changed', async () => {
+    mockCreate
+      .mockResolvedValueOnce(
+        updateUseResponse('u1', { key: 'KAN-3', description: 'Новий опис' }),
+      )
+      .mockResolvedValueOnce(textResponse('ок'));
+
+    await service.generateReply('онови опис');
+
+    expect(mockTaskTracker.updateTask).toHaveBeenCalledWith('KAN-3', {
+      description: 'Новий опис',
+    });
+  });
+
+  it('refuses a made-up task key instead of calling Jira', async () => {
+    mockCreate
+      .mockResolvedValueOnce(
+        updateUseResponse('u1', { key: 'та отой таск', summary: 'Щось' }),
+      )
+      .mockResolvedValueOnce(textResponse('який саме таск?'));
+
+    await service.generateReply('онови таску');
+
+    expect(mockTaskTracker.updateTask).not.toHaveBeenCalled();
+    expect(lastToolResults(1)[0]).toMatchObject({ is_error: true });
+  });
+
+  it('refuses an update that changes nothing', async () => {
+    mockCreate
+      .mockResolvedValueOnce(updateUseResponse('u1', { key: 'KAN-12' }))
+      .mockResolvedValueOnce(textResponse('а шо міняти?'));
+
+    await service.generateReply('онови KAN-12');
+
+    expect(mockTaskTracker.updateTask).not.toHaveBeenCalled();
+    expect(lastToolResults(1)[0]).toMatchObject({ is_error: true });
   });
 });

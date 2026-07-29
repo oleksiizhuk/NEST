@@ -2,8 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   ICreatedTask,
+  ITaskChanges,
   ITaskTrackerService,
 } from '@application/telegram/task-tracker.service.interface';
+
+// Jira REST API v3 wants rich text as an Atlassian Document Format tree
+const toAdf = (text: string) => ({
+  type: 'doc',
+  version: 1,
+  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+});
 
 @Injectable()
 export class JiraService implements ITaskTrackerService {
@@ -37,21 +45,7 @@ export class JiraService implements ITaskTrackerService {
         project: { key: this.projectKey },
         issuetype: { name: 'Task' },
         summary,
-        // Jira REST API v3 requires the description in ADF format
-        ...(description
-          ? {
-              description: {
-                type: 'doc',
-                version: 1,
-                content: [
-                  {
-                    type: 'paragraph',
-                    content: [{ type: 'text', text: description }],
-                  },
-                ],
-              },
-            }
-          : {}),
+        ...(description ? { description: toAdf(description) } : {}),
       },
     };
 
@@ -76,5 +70,43 @@ export class JiraService implements ITaskTrackerService {
       key: data.key,
       url: `${this.baseUrl}/browse/${data.key}`,
     };
+  }
+
+  async updateTask(key: string, changes: ITaskChanges): Promise<ICreatedTask> {
+    if (!this.baseUrl) {
+      throw new Error('JIRA_BASE_URL is not configured');
+    }
+    if (!changes.summary && !changes.description) {
+      throw new Error('Nothing to update');
+    }
+
+    const fields = {
+      ...(changes.summary ? { summary: changes.summary } : {}),
+      ...(changes.description
+        ? { description: toAdf(changes.description) }
+        : {}),
+    };
+
+    const response = await fetch(
+      `${this.baseUrl}/rest/api/3/issue/${encodeURIComponent(key)}`,
+      {
+        method: 'PUT',
+        headers: {
+          Authorization: this.authHeader,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ fields }),
+      },
+    );
+
+    // A successful edit answers 204 with no body, so there is nothing to parse
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      this.logger.error(`Jira ${response.status}: ${errorText}`);
+      throw new Error(`Jira responded with ${response.status}`);
+    }
+
+    return { key, url: `${this.baseUrl}/browse/${key}` };
   }
 }
