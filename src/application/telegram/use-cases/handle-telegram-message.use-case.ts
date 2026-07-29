@@ -53,7 +53,11 @@ export class HandleTelegramMessageUseCase {
     if (!isPrivate && !isGroup) return;
 
     if (isPrivate && msg.from.id !== this.config.ownerId) return;
-    if (isGroup && !this.config.allowedChatIds.includes(chatId)) return;
+    // Empty allowlist = any group the bot is added to; owner-only stays for DMs
+    const groupAllowed =
+      this.config.allowedChatIds.length === 0 ||
+      this.config.allowedChatIds.includes(chatId);
+    if (isGroup && !groupAllowed) return;
 
     const botInfo = await this.telegram.getBotInfo();
 

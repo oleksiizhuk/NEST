@@ -137,6 +137,36 @@ describe('HandleTelegramMessageUseCase', () => {
     );
   });
 
+  it('responds in any group when no allowlist is configured', async () => {
+    const open: TestingModule = await Test.createTestingModule({
+      providers: [
+        HandleTelegramMessageUseCase,
+        { provide: TELEGRAM_GATEWAY, useValue: mockGateway },
+        { provide: AI_REPLY_SERVICE, useValue: mockAiReply },
+        { provide: TELEGRAM_MESSAGE_REPOSITORY, useValue: mockRepository },
+        { provide: REPLY_IMAGE_RENDERER, useValue: mockImageRenderer },
+        {
+          provide: TELEGRAM_CONFIG,
+          useValue: {
+            ownerId: OWNER_ID,
+            allowedChatIds: [],
+            mode: 'polling',
+            webhookSecret: 'secret',
+          },
+        },
+      ],
+    }).compile();
+
+    await open
+      .get(HandleTelegramMessageUseCase)
+      .execute(groupMessage({ chatId: -999, text: '@test_bot агов' }));
+
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      -999,
+      'Sarcastic reply',
+    );
+  });
+
   it('responds in every allowed group, not just the first', async () => {
     await useCase.execute(
       groupMessage({ chatId: SECOND_CHAT_ID, text: '@test_bot ще питання' }),
