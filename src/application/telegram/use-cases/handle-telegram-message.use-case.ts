@@ -92,6 +92,7 @@ export class HandleTelegramMessageUseCase {
         chatId,
         HISTORY_LIMIT,
       );
+      const since = this.config.historySince;
       return logs
         .slice()
         .reverse() // repository returns newest first
@@ -99,7 +100,9 @@ export class HandleTelegramMessageUseCase {
           (log) =>
             log.text &&
             log.botResponse &&
-            !log.botResponse.startsWith(ERROR_PREFIX),
+            !log.botResponse.startsWith(ERROR_PREFIX) &&
+            // Anything the bot said under an older persona stays out
+            (!since || (log.createdAt && log.createdAt >= since)),
         )
         .map((log) => ({ userText: log.text, botResponse: log.botResponse }));
     } catch (error) {
