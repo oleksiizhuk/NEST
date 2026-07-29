@@ -149,12 +149,15 @@ describe('AnthropicReplyService', () => {
         '',
         `${TASK.key} — ${TASK.url}`,
         'Заголовок: Перша',
-        'Опис: —',
+        'Тип: Task',
+        'Питань нема — усе було в повідомленні',
       ].join('\n'),
     );
 
     expect(mockTaskTracker.createTask).toHaveBeenCalledTimes(1);
-    expect(mockTaskTracker.createTask).toHaveBeenCalledWith('Перша', undefined);
+    expect(mockTaskTracker.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({ summary: 'Перша' }),
+    );
 
     const [refusal] = lastToolResults(2);
     expect(refusal).toMatchObject({
@@ -262,8 +265,7 @@ describe('AnthropicReplyService', () => {
     await service.generateReply('створи таску');
 
     expect(mockTaskTracker.createTask).toHaveBeenCalledWith(
-      'Пофіксити цю з логіном',
-      undefined,
+      expect.objectContaining({ summary: 'Пофіксити цю з логіном' }),
     );
   });
 
@@ -383,7 +385,8 @@ describe('AnthropicReplyService', () => {
             name: 'create_jira_task',
             input: {
               summary: 'Postpone icon replacement on mockups',
-              description: 'Skip until the design system is organised.',
+              description:
+                'Context: design system is not ready.\n- OPEN: Which sprint?',
             },
           },
         ],
@@ -398,7 +401,8 @@ describe('AnthropicReplyService', () => {
         '',
         `${TASK.key} — ${TASK.url}`,
         'Заголовок: Postpone icon replacement on mockups',
-        'Опис: Skip until the design system is organised.',
+        'Тип: Task',
+        'Треба уточнити:\n• Which sprint?',
       ].join('\n'),
     );
   });
@@ -414,7 +418,8 @@ describe('AnthropicReplyService', () => {
       [
         `${TASK.key} — ${TASK.url}`,
         'Заголовок: Fix the login flow',
-        'Опис: —',
+        'Тип: Task',
+        'Питань нема — усе було в повідомленні',
       ].join('\n'),
     );
   });
@@ -442,5 +447,73 @@ describe('AnthropicReplyService', () => {
     const reply = await service.generateReply('закрий KAN-12');
 
     expect(reply).toContain('Статус: Done');
+  });
+
+  it('keeps the description structure but flattens the summary', async () => {
+    mockCreate
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'create_jira_task',
+            input: {
+              summary: 'Fix\nthe   login',
+              description:
+                'Context: users cannot log in.\n\nScope:\n- Fix the guard\n\nOpen questions:\n- OPEN: Which environments?',
+              type: 'Bug',
+              priority: 'High',
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce(textResponse('зробив'));
+
+    await service.generateReply('заведи баг');
+
+    expect(mockTaskTracker.createTask).toHaveBeenCalledWith({
+      summary: 'Fix the login',
+      description:
+        'Context: users cannot log in.\n\nScope:\n- Fix the guard\n\nOpen questions:\n- OPEN: Which environments?',
+      type: 'Bug',
+      priority: 'High',
+    });
+  });
+
+  it('pulls the open questions into the chat reply', async () => {
+    mockCreate
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            id: 't1',
+            name: 'create_jira_task',
+            input: {
+              summary: 'Add retries',
+              description:
+                'Scope:\n- Add retries\n\nOpen questions:\n- OPEN: How many attempts?\n- OPEN: What backoff?',
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce(textResponse('готово'));
+
+    const reply = await service.generateReply('зроби таску на ретраї');
+
+    expect(reply).toContain('Треба уточнити:');
+    expect(reply).toContain('• How many attempts?');
+    expect(reply).toContain('• What backoff?');
+  });
+
+  it('caches the static prefix', async () => {
+    mockCreate.mockResolvedValueOnce(textResponse('ок'));
+
+    await service.generateReply('привіт');
+
+    expect(mockCreate.mock.calls[0][0].system).toEqual([
+      expect.objectContaining({ cache_control: { type: 'ephemeral' } }),
+    ]);
   });
 });

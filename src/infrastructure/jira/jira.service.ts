@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import {
   ICreatedTask,
   IMovedTask,
+  INewTask,
   ITaskChanges,
   ITaskTrackerService,
 } from '@application/telegram/task-tracker.service.interface';
@@ -13,12 +14,52 @@ interface JiraTransition {
   to?: { name?: string };
 }
 
-// Jira REST API v3 wants rich text as an Atlassian Document Format tree
-const toAdf = (text: string) => ({
-  type: 'doc',
-  version: 1,
-  content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
-});
+// Jira REST v3 wants an ADF tree, and a newline inside a text node is not
+// rendered — the structure has to be built out of paragraphs and list items,
+// otherwise a sectioned description arrives as one unreadable wall
+const toAdf = (text: string) => {
+  const content: unknown[] = [];
+  let bullets: unknown[] = [];
+
+  const flushBullets = () => {
+    if (bullets.length) {
+      content.push({ type: 'bulletList', content: bullets });
+      bullets = [];
+    }
+  };
+
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) {
+      flushBullets();
+      continue;
+    }
+
+    const bullet = /^[-*•]\s+(.+)$/.exec(line);
+    if (bullet) {
+      bullets.push({
+        type: 'listItem',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: bullet[1] }] },
+        ],
+      });
+      continue;
+    }
+
+    flushBullets();
+    content.push({
+      type: 'paragraph',
+      content: [{ type: 'text', text: line }],
+    });
+  }
+  flushBullets();
+
+  return {
+    type: 'doc',
+    version: 1,
+    content: content.length ? content : [{ type: 'paragraph' }],
+  };
+};
 
 @Injectable()
 export class JiraService implements ITaskTrackerService {
@@ -39,38 +80,30 @@ export class JiraService implements ITaskTrackerService {
       'Basic ' + Buffer.from(`${email}:${token}`).toString('base64');
   }
 
-  async createTask(
-    summary: string,
-    description?: string,
-  ): Promise<ICreatedTask> {
+  async createTask(task: INewTask): Promise<ICreatedTask> {
     if (!this.baseUrl) {
       throw new Error('JIRA_BASE_URL is not configured');
     }
 
+    // Resolved by name — the numeric ids differ between Jira schemes
+    const priorityId = task.priority
+      ? await this.priorityId(task.priority)
+      : undefined;
+
     const body = {
       fields: {
         project: { key: this.projectKey },
-        issuetype: { name: 'Task' },
-        summary,
-        ...(description ? { description: toAdf(description) } : {}),
+        issuetype: { name: task.type ?? 'Task' },
+        summary: task.summary,
+        ...(task.description ? { description: toAdf(task.description) } : {}),
+        ...(priorityId ? { priority: { id: priorityId } } : {}),
       },
     };
 
-    const response = await fetch(`${this.baseUrl}/rest/api/3/issue`, {
+    const response = await this.request(`${this.baseUrl}/rest/api/3/issue`, {
       method: 'POST',
-      headers: {
-        Authorization: this.authHeader,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
       body: JSON.stringify(body),
     });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      this.logger.error(`Jira ${response.status}: ${errorText}`);
-      throw new Error(`Jira responded with ${response.status}`);
-    }
 
     const data = (await response.json()) as { key: string };
     return {
@@ -94,25 +127,14 @@ export class JiraService implements ITaskTrackerService {
         : {}),
     };
 
-    const response = await fetch(
+    // A successful edit answers 204 with no body, so there is nothing to parse
+    await this.request(
       `${this.baseUrl}/rest/api/3/issue/${encodeURIComponent(key)}`,
       {
         method: 'PUT',
-        headers: {
-          Authorization: this.authHeader,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
         body: JSON.stringify({ fields }),
       },
     );
-
-    // A successful edit answers 204 with no body, so there is nothing to parse
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      this.logger.error(`Jira ${response.status}: ${errorText}`);
-      throw new Error(`Jira responded with ${response.status}`);
-    }
 
     return { key, url: `${this.baseUrl}/browse/${key}` };
   }
@@ -155,6 +177,30 @@ export class JiraService implements ITaskTrackerService {
       url: `${this.baseUrl}/browse/${key}`,
       status: match.to?.name ?? match.name,
     };
+  }
+
+  // Priority ids are per-instance: KAN uses Blocker 1 / High 2 / Normal 3 /
+  // Low 4, a default Jira scheme uses Highest..Lowest. Resolving by name
+  // survives both, and an unknown name simply leaves the field to Jira.
+  private priorities: Map<string, string> | null = null;
+
+  private async priorityId(name: string): Promise<string | undefined> {
+    try {
+      if (!this.priorities) {
+        const response = await this.request(
+          `${this.baseUrl}/rest/api/3/priority`,
+          { method: 'GET' },
+        );
+        const list = (await response.json()) as { id: string; name: string }[];
+        this.priorities = new Map(
+          list.map((p) => [p.name.toLowerCase(), p.id]),
+        );
+      }
+      return this.priorities.get(name.toLowerCase());
+    } catch (error) {
+      this.logger.warn(`Could not resolve priority "${name}": ${error}`);
+      return undefined;
+    }
   }
 
   private async request(url: string, init: RequestInit): Promise<Response> {

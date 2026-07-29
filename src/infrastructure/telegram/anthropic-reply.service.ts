@@ -9,6 +9,8 @@ import {
 import {
   ICreatedTask,
   ITaskTrackerService,
+  TaskPriority,
+  TaskType,
   TASK_TRACKER_SERVICE,
 } from '@application/telegram/task-tracker.service.interface';
 import { TELEGRAM_SYSTEM_PROMPT } from '@infrastructure/telegram/telegram.system-prompt';
@@ -36,11 +38,38 @@ const CREATE_JIRA_TASK_TOOL: Anthropic.Tool = {
       description: {
         type: 'string',
         description:
-          'Optional longer description. Also ALWAYS IN ENGLISH, same neutral ' +
-          'business language as the summary.',
+          'Task description in ENGLISH. Exactly these four sections, each header on its ' +
+          'own line, none omitted:\n' +
+          'Context: one or two sentences on why this is needed, from what the user said.\n' +
+          'Scope: bullet lines starting with "- " — what is to be done.\n' +
+          'Acceptance criteria: 1-3 bullet lines as "- Given <state>, when <action>, then ' +
+          '<observable result>". The "then" must be checkable by looking at something — a ' +
+          'screen, a message, a stored value, a request sent — never "works correctly".\n' +
+          'Open questions: lines starting with "- OPEN: ", one per unknown, each a question. ' +
+          'Write "- none" only when nothing is missing.\n\n' +
+          'NEVER invent a number, date, deadline, limit, version, name or owner the user did ' +
+          'not give. If a value is needed but unknown, leave it out of Scope and Acceptance ' +
+          'criteria and put it in Open questions instead. A chat message is usually one ' +
+          'sentence: three OPEN lines and a two-line Scope is a correct result — do not pad ' +
+          'the task to look complete. Neutral business language, no slang or roleplay.',
+      },
+      type: {
+        type: 'string',
+        enum: ['Task', 'Bug', 'Story'],
+        description:
+          'Bug only for something that is broken now, Story for a user-facing feature, ' +
+          'Task otherwise. Defaults to Task.',
+      },
+      priority: {
+        type: 'string',
+        enum: ['Blocker', 'High', 'Normal', 'Low'],
+        description:
+          'Blocker only when it stops everything right now; High when it blocks a feature ' +
+          'or sits on the core path; Low for polish. Omit for regular work — do not read ' +
+          'urgency into a neutral request.',
       },
     },
-    required: ['summary'],
+    required: ['summary', 'description'],
   },
 };
 
@@ -68,8 +97,10 @@ const UPDATE_JIRA_TASK_TOOL: Anthropic.Tool = {
       description: {
         type: 'string',
         description:
-          'New description, replacing the old one. ALWAYS IN ENGLISH, same neutral ' +
-          'business language.',
+          'New description, replacing the old one completely. ALWAYS IN ENGLISH, same four ' +
+          'sections and the same no-invented-values rule as create_jira_task. When the user ' +
+          'answers an open question, move the answer into Scope or Acceptance criteria and ' +
+          'delete its OPEN line — never leave both.',
       },
     },
     required: ['key'],
@@ -105,15 +136,35 @@ const TRANSITION_JIRA_TASK_TOOL: Anthropic.Tool = {
 const TASK_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
 
 const SUMMARY_LIMIT = 250;
-const DESCRIPTION_LIMIT = 2000;
+const DESCRIPTION_LIMIT = 4000;
 
 // The persona swears; the Jira board is seen by the whole team. Roots cover the
 // usual Ukrainian/Russian forms with their prefixes and endings.
 const PROFANITY =
   /\S*(?:хуй|хуе|хуё|хуї|пизд|піzd|піzd|бля|бляд|єбат|ебат|єбан|ебан|їбат|їбан|заєб|заеб|наєб|наеб|доєб|уєб|уеб|підар|пидор|гандон|мудак|мудил|срак|гівн|говн)\S*/giu;
 
+// Newlines carry the description's structure, so only spaces and tabs collapse
 const clean = (text: string): string =>
-  (text ?? '').replace(PROFANITY, '').replace(/\s+/g, ' ').trim();
+  (text ?? '')
+    .replace(PROFANITY, '')
+    .replace(/[^\S\n]+/g, ' ')
+    .replace(/ +\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+// Jira rejects a summary containing newlines
+const cleanSummary = (text: string): string => clean(text).replace(/\s+/g, ' ');
+
+// The model is told to list what it does not know; surfacing that in the chat
+// is the only way the asker learns the task has holes
+const OPEN_LINE = /^\s*[-*•]?\s*OPEN\b[:\s]/i;
+
+const openQuestions = (description?: string): string[] =>
+  (description ?? '')
+    .split('\n')
+    .filter((line) => OPEN_LINE.test(line))
+    .map((line) => line.replace(/^\s*[-*•]?\s*OPEN\b[:\s]*/i, '').trim())
+    .filter(Boolean);
 
 // Keeps the reply readable when the model dumps a whole spec into the field
 const RECEIPT_FIELD_LIMIT = 300;
@@ -169,7 +220,14 @@ export class AnthropicReplyService implements IAiReplyService {
         max_tokens: 10024,
         // thinking would eat into the 10024-token budget for a chat bot
         thinking: { type: 'disabled' },
-        system: TELEGRAM_SYSTEM_PROMPT,
+        system: [
+          {
+            type: 'text',
+            text: TELEGRAM_SYSTEM_PROMPT,
+            // tools render before system, so this one breakpoint caches both
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
         tools: [
           CREATE_JIRA_TASK_TOOL,
           UPDATE_JIRA_TASK_TOOL,
@@ -230,24 +288,33 @@ export class AnthropicReplyService implements IAiReplyService {
             is_error: true,
           };
         }
-        const { summary, description } = block.input as {
+        const { summary, description, type, priority } = block.input as {
           summary: string;
           description?: string;
+          type?: TaskType;
+          priority?: TaskPriority;
         };
-        // Jira rejects summaries past 255 chars and keeps newlines out of them
-        const sentSummary = clean(summary).slice(0, SUMMARY_LIMIT);
+        // Jira rejects summaries past 255 chars and refuses newlines in them
+        const sentSummary = cleanSummary(summary).slice(0, SUMMARY_LIMIT);
         const sentDescription = description
           ? clean(description).slice(0, DESCRIPTION_LIMIT)
           : undefined;
-        const task = await this.taskTracker.createTask(
-          sentSummary,
-          sentDescription,
-        );
+        const task = await this.taskTracker.createTask({
+          summary: sentSummary,
+          description: sentDescription,
+          type,
+          priority,
+        });
         state.createdTask = task;
+
+        const open = openQuestions(sentDescription);
         state.receipt = [
           `${task.key} — ${task.url}`,
           `Заголовок: ${trim(sentSummary)}`,
-          `Опис: ${sentDescription ? trim(sentDescription) : '—'}`,
+          `Тип: ${type ?? 'Task'}${priority ? ` · ${priority}` : ''}`,
+          open.length
+            ? `Треба уточнити:\n${open.map((q) => `• ${q}`).join('\n')}`
+            : 'Питань нема — усе було в повідомленні',
         ].join('\n');
         return {
           type: 'tool_result',
@@ -282,7 +349,7 @@ export class AnthropicReplyService implements IAiReplyService {
 
         const changes = {
           ...(summary
-            ? { summary: clean(summary).slice(0, SUMMARY_LIMIT) }
+            ? { summary: cleanSummary(summary).slice(0, SUMMARY_LIMIT) }
             : {}),
           ...(description
             ? { description: clean(description).slice(0, DESCRIPTION_LIMIT) }

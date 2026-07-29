@@ -11,12 +11,23 @@ export interface ITaskChanges {
   description?: string;
 }
 
+export type TaskType = 'Task' | 'Bug' | 'Story';
+// The KAN scheme, verified against the board: Blocker 1 · High 2 · Normal 3 · Low 4
+export type TaskPriority = 'Blocker' | 'High' | 'Normal' | 'Low';
+
+export interface INewTask {
+  summary: string;
+  description?: string;
+  type?: TaskType;
+  priority?: TaskPriority;
+}
+
 export interface IMovedTask extends ICreatedTask {
   status: string;
 }
 
 export interface ITaskTrackerService {
-  createTask(summary: string, description?: string): Promise<ICreatedTask>;
+  createTask(task: INewTask): Promise<ICreatedTask>;
   updateTask(key: string, changes: ITaskChanges): Promise<ICreatedTask>;
   // Rejects with the list of available statuses when the requested one is not
   // reachable from where the task currently sits
