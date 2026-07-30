@@ -15,7 +15,11 @@ jest.mock('@anthropic-ai/sdk', () => ({
 // Imported after the mock so the service picks up the stubbed SDK
 import { AnthropicReplyService } from '@infrastructure/telegram/anthropic-reply.service';
 
-const TASK = { key: 'KAN-1', url: 'https://jira.example/browse/KAN-1' };
+const TASK = {
+  key: 'KAN-1',
+  url: 'https://jira.example/browse/KAN-1',
+  status: 'Backlog',
+};
 
 const transitionUseResponse = (id: string, input: Record<string, unknown>) => ({
   stop_reason: 'tool_use',
@@ -149,7 +153,7 @@ describe('AnthropicReplyService', () => {
         '',
         `${TASK.key} — ${TASK.url}`,
         'Заголовок: Перша',
-        'Тип: Task',
+        'Тип: Task · Backlog',
         'Питань нема — усе було в повідомленні',
       ].join('\n'),
     );
@@ -401,7 +405,7 @@ describe('AnthropicReplyService', () => {
         '',
         `${TASK.key} — ${TASK.url}`,
         'Заголовок: Postpone icon replacement on mockups',
-        'Тип: Task',
+        'Тип: Task · Backlog',
         'Треба уточнити:\n• Which sprint?',
       ].join('\n'),
     );
@@ -418,7 +422,7 @@ describe('AnthropicReplyService', () => {
       [
         `${TASK.key} — ${TASK.url}`,
         'Заголовок: Fix the login flow',
-        'Тип: Task',
+        'Тип: Task · Backlog',
         'Питань нема — усе було в повідомленні',
       ].join('\n'),
     );

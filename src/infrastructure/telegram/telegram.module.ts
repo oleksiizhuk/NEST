@@ -6,6 +6,7 @@ import { AI_REPLY_SERVICE } from '@application/telegram/ai-reply.service.interfa
 import { TELEGRAM_CONFIG } from '@application/telegram/telegram.config.interface';
 import { TASK_TRACKER_SERVICE } from '@application/telegram/task-tracker.service.interface';
 import { JiraService } from '@infrastructure/jira/jira.service';
+import { DryRunTaskTracker } from '@infrastructure/jira/dry-run-task-tracker';
 import { TELEGRAM_MESSAGE_REPOSITORY } from '@domain/telegram/telegram-message.repository.interface';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
 import { TelegramMessageSchema } from '@infrastructure/database/schemas/telegram-message.schema';
@@ -32,7 +33,16 @@ import { telegramConfig } from '@infrastructure/telegram/telegram.config';
     // useExisting — one bot singleton shared by the gateway token and the polling bootstrap
     { provide: TELEGRAM_GATEWAY, useExisting: TelegramBotService },
     { provide: AI_REPLY_SERVICE, useClass: AnthropicReplyService },
-    { provide: TASK_TRACKER_SERVICE, useClass: JiraService },
+    {
+      // JIRA_DRY_RUN swaps the board for a stub: the model still runs, the
+      // reply still shows what it would have filed, nothing is created
+      provide: TASK_TRACKER_SERVICE,
+      useFactory: (configService: ConfigService) =>
+        configService.get<string>('JIRA_DRY_RUN') === 'true'
+          ? new DryRunTaskTracker()
+          : new JiraService(configService),
+      inject: [ConfigService],
+    },
     {
       provide: TELEGRAM_MESSAGE_REPOSITORY,
       useClass: MongoTelegramMessageRepository,

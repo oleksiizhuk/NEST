@@ -3,6 +3,8 @@ export const TASK_TRACKER_SERVICE = 'TASK_TRACKER_SERVICE';
 export interface ICreatedTask {
   key: string;
   url: string;
+  // Where the task ended up — set when it was moved after creation
+  status?: string;
 }
 
 // At least one field must be set — an empty update is rejected

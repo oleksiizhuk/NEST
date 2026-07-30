@@ -332,7 +332,9 @@ export class AnthropicReplyService implements IAiReplyService {
         state.receipt = [
           `${task.key} — ${task.url}`,
           `Заголовок: ${trim(sentSummary)}`,
-          `Тип: ${type ?? 'Task'}${priority ? ` · ${priority}` : ''}`,
+          `Тип: ${type ?? 'Task'}${priority ? ` · ${priority}` : ''}${
+            task.status ? ` · ${task.status}` : ''
+          }`,
           open.length
             ? `Треба уточнити:\n${open.map((q) => `• ${q}`).join('\n')}`
             : 'Питань нема — усе було в повідомленні',

@@ -67,6 +67,7 @@ export class JiraService implements ITaskTrackerService {
   private readonly baseUrl: string;
   private readonly projectKey: string;
   private readonly authHeader: string;
+  private readonly newTaskStatus: string;
 
   constructor(configService: ConfigService) {
     this.baseUrl = (configService.get<string>('JIRA_BASE_URL') ?? '').replace(
@@ -74,6 +75,10 @@ export class JiraService implements ITaskTrackerService {
       '',
     );
     this.projectKey = configService.get<string>('JIRA_PROJECT_KEY') ?? 'KAN';
+    // The KAN board has no Agile backlog list — "backlog" is a status, so a new
+    // task has to be transitioned there right after it is created
+    this.newTaskStatus =
+      configService.get<string>('JIRA_NEW_TASK_STATUS') ?? 'Backlog';
     const email = configService.get<string>('JIRA_EMAIL') ?? '';
     const token = configService.get<string>('JIRA_API_TOKEN') ?? '';
     this.authHeader =
@@ -106,10 +111,24 @@ export class JiraService implements ITaskTrackerService {
     });
 
     const data = (await response.json()) as { key: string };
-    return {
+    const created = {
       key: data.key,
       url: `${this.baseUrl}/browse/${data.key}`,
     };
+
+    if (!this.newTaskStatus) return created;
+    try {
+      const moved = await this.transitionTask(created.key, this.newTaskStatus);
+      return { ...created, status: moved.status };
+    } catch (error) {
+      // The task exists — a failed move must not turn that into an error
+      this.logger.warn(
+        `${created.key} stayed in its default status: ${
+          (error as Error).message
+        }`,
+      );
+      return created;
+    }
   }
 
   async updateTask(key: string, changes: ITaskChanges): Promise<ICreatedTask> {
