@@ -10,6 +10,7 @@ import { ProductModule } from '@infrastructure/http/product/product.module';
 import { ShoppingCartModule } from '@infrastructure/http/shopping-cart/shopping-cart.module';
 import { EmailHttpModule } from '@infrastructure/http/email/email.module';
 import { TelegramHttpModule } from '@infrastructure/http/telegram/telegram.module';
+import { McpHttpModule } from '@infrastructure/http/mcp/mcp.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { TelegramHttpModule } from '@infrastructure/http/telegram/telegram.modul
     ProductModule,
     ShoppingCartModule,
     TelegramHttpModule,
+    McpHttpModule,
     ConfigModule.forRoot(),
     MongooseModule.forRoot(
       process.env.MONGODB_URI ||

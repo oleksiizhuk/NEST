@@ -4,7 +4,7 @@
 
 NestJS REST API with Clean Architecture. MongoDB via Mongoose. JWT authentication. Swagger docs at `/api/docs`.
 
-**Stack:** NestJS 9 · MongoDB (Atlas) · Mongoose · Passport JWT · Swagger · Handlebars (email) · Tesseract.js (OCR) · Vercel (deployment)
+**Stack:** NestJS 9 · MongoDB (Atlas) · Mongoose · Passport JWT · Swagger · Handlebars (email) · Tesseract.js (OCR) · Anthropic SDK + MCP (IDE bridge) · Vercel (deployment)
 
 ---
 
@@ -44,18 +44,22 @@ src/
 │   ├── user/use-cases/              # GetUsers, CreateUser, GetById, GetByEmail, Update, Delete, UpdateShoppingCart
 │   ├── auth/use-cases/              # Login, Register, RefreshToken, GetProfile
 │   ├── product/use-cases/           # GetProducts, GetProductById, AddProduct
-│   └── shopping-cart/use-cases/    # CreateCart, AddItem, GetCart, CompleteOrder
+│   ├── shopping-cart/use-cases/    # CreateCart, AddItem, GetCart, CompleteOrder
+│   └── mcp/                         # ICodeAssistantService + AskClaudeUseCase
 │
 ├── infrastructure/
 │   ├── database/
 │   │   ├── schemas/                 # Mongoose schemas (UserDocument, ProductDocument, ShoppingCartDocument)
 │   │   ├── mappers/                 # DB doc → Domain entity (UserMapper, ProductMapper, ShoppingCartMapper)
 │   │   └── repositories/           # MongoUserRepository, MongoProductRepository, MongoShoppingCartRepository
+│   ├── anthropic/                   # AnthropicCodeAssistantService (Claude behind /mcp)
+│   ├── mcp/                         # createMcpServer() — registers the ask_claude tool
 │   └── http/
 │       ├── user/                    # Controller + DTO + Module
 │       ├── auth/                    # Controller + DTOs + Guards + Strategies + Module
 │       ├── product/                 # Controller + Module
-│       └── shopping-cart/          # Controller + Module
+│       ├── shopping-cart/          # Controller + Module
+│       └── mcp/                     # POST /mcp (MCP Streamable HTTP) + bearer guard + Module
 │
 ├── route/app/app.module.ts          # Root module — imports infrastructure modules
 └── route/email/                     # Email module (not yet migrated to Clean Architecture)
@@ -66,6 +70,7 @@ src/
 USER_REPOSITORY         // IUserRepository
 PRODUCT_REPOSITORY      // IProductRepository
 SHOPPING_CART_REPOSITORY // IShoppingCartRepository
+CODE_ASSISTANT_SERVICE  // ICodeAssistantService (Anthropic behind /mcp)
 ```
 
 Binding happens in each module's `providers`:
@@ -113,6 +118,10 @@ MAIL_SENDER=
 APP_NAME=
 B_API_KEY=              # Binance API key
 B_API_SECRET=           # Binance API secret
+ANTHROPIC_KEY=          # Anthropic API key (Telegram bot + /mcp)
+MCP_TOKEN=              # Bearer token an IDE must send to POST /mcp (unset = closed)
+MCP_AI_MODEL=           # Model behind ask_claude, default claude-opus-5
+MCP_AI_EFFORT=          # low|medium|high|xhigh|max, default high
 ENV=
 PORT=3000
 ```
@@ -149,7 +158,19 @@ PORT=3000
 | POST | `/shoppingCart/addItem` | JWT | Add item `{ itemID, count }` |
 | GET | `/shoppingCart` | JWT | Get user's cart |
 | POST | `/shoppingCart/completeOrder` | JWT | Complete order, clear cart |
+| POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_claude { prompt, context? }` |
 | GET | `/api/docs` | — | Swagger UI |
+
+### MCP endpoint (`/mcp`)
+
+Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405. Client config:
+
+```json
+{ "mcpServers": { "nest-claude": {
+  "url": "https://<host>/mcp",
+  "headers": { "Authorization": "Bearer <MCP_TOKEN>" }
+}}}
+```
 
 ---
 
