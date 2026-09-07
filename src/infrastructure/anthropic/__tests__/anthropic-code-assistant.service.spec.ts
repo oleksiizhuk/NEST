@@ -33,6 +33,7 @@ describe('AnthropicCodeAssistantService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
   });
 
   it('sends the prompt and context as separate blocks with the default model', async () => {
@@ -61,20 +62,41 @@ describe('AnthropicCodeAssistantService', () => {
     ]);
   });
 
-  it('honours MCP_AI_MODEL and MCP_AI_EFFORT, ignoring an unknown effort', async () => {
+  it('resolves MCP_AI_MODEL as a short name or a raw id and honours MCP_AI_EFFORT', async () => {
     mockFinalMessage.mockResolvedValue(textMessage('ok'));
 
     await new AnthropicCodeAssistantService(
-      configWith({ MCP_AI_MODEL: 'claude-sonnet-5', MCP_AI_EFFORT: 'low' }),
+      configWith({ MCP_AI_MODEL: 'sonnet', MCP_AI_EFFORT: 'low' }),
     ).ask({ prompt: 'a' });
     await new AnthropicCodeAssistantService(
-      configWith({ MCP_AI_EFFORT: 'turbo' }),
+      configWith({
+        MCP_AI_MODEL: 'claude-haiku-4-5-20251001',
+        MCP_AI_EFFORT: 'turbo',
+      }),
     ).ask({ prompt: 'b' });
 
     const [first, second] = mockStream.mock.calls.map((c) => c[0] as any);
     expect(first.model).toBe('claude-sonnet-5');
     expect(first.output_config).toEqual({ effort: 'low' });
+    expect(second.model).toBe('claude-haiku-4-5-20251001');
     expect(second.output_config).toEqual({ effort: 'high' });
+  });
+
+  it('lets a call pick its own model and falls back to the default otherwise', async () => {
+    mockFinalMessage.mockResolvedValue(textMessage('ok'));
+    const service = new AnthropicCodeAssistantService(
+      configWith({ MCP_AI_MODEL: 'sonnet' }),
+    );
+
+    await service.ask({ prompt: 'a', model: 'fable' });
+    await service.ask({ prompt: 'b', model: 'opus' });
+    await service.ask({ prompt: 'c' });
+
+    expect(mockStream.mock.calls.map((c) => (c[0] as any).model)).toEqual([
+      'claude-fable-5-1',
+      'claude-opus-5',
+      'claude-sonnet-5',
+    ]);
   });
 
   it('sends only the prompt when there is no context', async () => {

@@ -2,14 +2,25 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import {
+  ASSISTANT_MODELS,
+  AssistantModel,
+  DEFAULT_ASSISTANT_MODEL,
   IAskRequest,
   ICodeAssistantService,
 } from '@application/mcp/code-assistant.service.interface';
 
-const DEFAULT_MODEL = 'claude-opus-5';
+// The short names an IDE picks from, resolved to Anthropic model ids.
+// Bump the ids here when a new generation ships.
+const MODEL_IDS: Record<AssistantModel, string> = {
+  opus: 'claude-opus-5',
+  sonnet: 'claude-sonnet-5',
+  fable: 'claude-fable-5-1',
+};
+
 // The answer is relayed back into an IDE chat, so it has to finish inside
-// one HTTP request (Vercel caps the function at 60s). 8k output tokens is
-// plenty for a code review or a snippet and keeps the call inside that window.
+// one HTTP request (Vercel caps the function at 300s with Fluid Compute).
+// 8k output tokens is plenty for a code review or a snippet and keeps the
+// call inside that window.
 const MAX_TOKENS = 8192;
 
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -29,31 +40,37 @@ const SYSTEM_PROMPT =
 export class AnthropicCodeAssistantService implements ICodeAssistantService {
   private readonly logger = new Logger(AnthropicCodeAssistantService.name);
   private readonly client: Anthropic;
-  private readonly model: string;
+  private readonly defaultModel: string;
   private readonly effort: Effort;
 
   constructor(configService: ConfigService) {
     this.client = new Anthropic({
       apiKey: configService.get<string>('ANTHROPIC_KEY'),
     });
-    this.model = configService.get<string>('MCP_AI_MODEL') || DEFAULT_MODEL;
+    this.defaultModel = AnthropicCodeAssistantService.resolveModel(
+      configService.get<string>('MCP_AI_MODEL'),
+    );
     this.effort = AnthropicCodeAssistantService.parseEffort(
       configService.get<string>('MCP_AI_EFFORT'),
     );
   }
 
-  async ask({ prompt, context }: IAskRequest): Promise<string> {
+  async ask({ prompt, context, model }: IAskRequest): Promise<string> {
+    const modelId = model ? MODEL_IDS[model] : this.defaultModel;
+
     const content: Anthropic.ContentBlockParam[] = [];
     if (context) {
       content.push({ type: 'text', text: `<context>\n${context}\n</context>` });
     }
     content.push({ type: 'text', text: prompt });
 
+    this.logger.log(`ask_claude via ${modelId} (effort ${this.effort})`);
+
     // Streaming so a long answer cannot trip the SDK's request timeout;
     // finalMessage() collects it into one Message
     const response = await this.client.messages
       .stream({
-        model: this.model,
+        model: modelId,
         max_tokens: MAX_TOKENS,
         system: [
           {
@@ -88,6 +105,17 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
       .map((block) => ('text' in block ? block.text : ''))
       .join('\n\n')
       .trim();
+  }
+
+  // MCP_AI_MODEL is either one of the short names (opus, sonnet, fable) or a
+  // raw Anthropic model id for anything not in the list
+  private static resolveModel(value?: string): string {
+    if (!value) {
+      return MODEL_IDS[DEFAULT_ASSISTANT_MODEL];
+    }
+    return ASSISTANT_MODELS.includes(value as AssistantModel)
+      ? MODEL_IDS[value as AssistantModel]
+      : value;
   }
 
   private static parseEffort(value?: string): Effort {

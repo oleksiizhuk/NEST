@@ -22,6 +22,6 @@ export class AskClaudeUseCase {
     }
     const context = request.context?.trim() || undefined;
 
-    return this.assistant.ask({ prompt, context });
+    return this.assistant.ask({ prompt, context, model: request.model });
   }
 }

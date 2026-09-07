@@ -1,9 +1,10 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { AskClaudeUseCase } from '@application/mcp/use-cases/ask-claude.use-case';
+import { ASSISTANT_MODELS } from '@application/mcp/code-assistant.service.interface';
 
 export const MCP_SERVER_NAME = 'nest-claude';
-export const MCP_SERVER_VERSION = '1.0.0';
+export const MCP_SERVER_VERSION = '1.1.0';
 
 // One MCP server per HTTP request: the transport is stateless (serverless),
 // so there is nothing to keep between calls. Building it is cheap.
@@ -22,7 +23,10 @@ export function createMcpServer(askClaude: AskClaudeUseCase): McpServer {
         'direct answer: explain code, review a diff, suggest an implementation, ' +
         'debug an error. Put the question in `prompt`; put the relevant file ' +
         'contents, diff or error output in `context` so the answer is grounded ' +
-        'in the real code. Single-turn — include everything needed in one call.',
+        'in the real code. Single-turn — include everything needed in one call. ' +
+        'Pick `model` per call: opus (default) for design, reviews and hard bugs; ' +
+        'sonnet when speed and cost matter more than depth; fable for the ' +
+        'hardest problems where opus is not enough.',
       inputSchema: {
         prompt: z.string().min(1).describe('The question or instruction'),
         context: z
@@ -31,11 +35,18 @@ export function createMcpServer(askClaude: AskClaudeUseCase): McpServer {
           .describe(
             'Optional source code, diff, logs or other material the answer should use',
           ),
+        model: z
+          .enum(ASSISTANT_MODELS)
+          .optional()
+          .describe(
+            'Which Claude answers: opus (default, balanced), sonnet (fastest, ' +
+              'cheapest), fable (strongest, slowest)',
+          ),
       },
     },
-    async ({ prompt, context }) => {
+    async ({ prompt, context, model }) => {
       try {
-        const answer = await askClaude.execute({ prompt, context });
+        const answer = await askClaude.execute({ prompt, context, model });
         return { content: [{ type: 'text', text: answer }] };
       } catch (error) {
         return {

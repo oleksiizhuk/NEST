@@ -120,7 +120,7 @@ B_API_KEY=              # Binance API key
 B_API_SECRET=           # Binance API secret
 ANTHROPIC_KEY=          # Anthropic API key (Telegram bot + /mcp)
 MCP_TOKEN=              # Bearer token an IDE must send to POST /mcp (unset = closed)
-MCP_AI_MODEL=           # Model behind ask_claude, default claude-opus-5
+MCP_AI_MODEL=           # Default model for ask_claude: opus|sonnet|fable or raw id, default opus
 MCP_AI_EFFORT=          # low|medium|high|xhigh|max, default high
 ENV=
 PORT=3000
@@ -158,12 +158,12 @@ PORT=3000
 | POST | `/shoppingCart/addItem` | JWT | Add item `{ itemID, count }` |
 | GET | `/shoppingCart` | JWT | Get user's cart |
 | POST | `/shoppingCart/completeOrder` | JWT | Complete order, clear cart |
-| POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_claude { prompt, context? }` |
+| POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_claude { prompt, context?, model? }` |
 | GET | `/api/docs` | — | Swagger UI |
 
 ### MCP endpoint (`/mcp`)
 
-Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405. Client config:
+Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405. `model` picks the answering model per call: `opus` (default), `sonnet`, `fable`; the short name → model id map lives in `AnthropicCodeAssistantService`. Heavy calls run 1–2 min, so the client timeout must be raised (Vercel allows 300s). Client config:
 
 ```json
 { "mcpServers": { "nest-claude": {

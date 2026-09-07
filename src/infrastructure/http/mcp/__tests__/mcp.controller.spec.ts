@@ -61,6 +61,7 @@ describe('McpController (streamable HTTP)', () => {
     expect(tools[0].inputSchema).toMatchObject({
       type: 'object',
       required: ['prompt'],
+      properties: { model: { enum: ['opus', 'sonnet', 'fable'] } },
     });
   });
 
@@ -70,13 +71,18 @@ describe('McpController (streamable HTTP)', () => {
 
     const result = await client.callTool({
       name: 'ask_claude',
-      arguments: { prompt: 'why does this throw?', context: 'x.y' },
+      arguments: {
+        prompt: 'why does this throw?',
+        context: 'x.y',
+        model: 'fable',
+      },
     });
     await client.close();
 
     expect(assistant.ask).toHaveBeenCalledWith({
       prompt: 'why does this throw?',
       context: 'x.y',
+      model: 'fable',
     });
     expect(result.content).toEqual([{ type: 'text', text: 'Use ?. here.' }]);
     expect(result.isError).toBeFalsy();
@@ -88,7 +94,7 @@ describe('McpController (streamable HTTP)', () => {
 
     const result = await client.callTool({
       name: 'ask_claude',
-      arguments: { prompt: 'hi' },
+      arguments: { prompt: 'hi', model: 'sonnet' },
     });
     await client.close();
 
