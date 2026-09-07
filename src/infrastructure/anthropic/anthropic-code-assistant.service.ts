@@ -18,10 +18,16 @@ const MODEL_IDS: Record<AssistantModel, string> = {
 };
 
 // The answer is relayed back into an IDE chat, so it has to finish inside
-// one HTTP request (Vercel caps the function at 300s with Fluid Compute).
-// 8k output tokens is plenty for a code review or a snippet and keeps the
-// call inside that window.
-const MAX_TOKENS = 8192;
+// one HTTP request: Vercel cuts the function at 300s. Thinking is on by
+// default on these models and its tokens count against max_tokens, so the
+// budget must leave room for both the reasoning and the visible answer.
+// 16k tokens is about 220s of output at Opus speed, which fits the window
+// with margin; 8k was too small — a heavy review spent it all on thinking
+// and came back empty.
+const MAX_TOKENS = 16384;
+// Give up on Anthropic before Vercel gives up on us, so the IDE gets a
+// readable error instead of a 504 from the edge.
+const REQUEST_TIMEOUT_MS = 250_000;
 
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 const EFFORT_LEVELS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -46,6 +52,8 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
   constructor(configService: ConfigService) {
     this.client = new Anthropic({
       apiKey: configService.get<string>('ANTHROPIC_KEY'),
+      timeout: REQUEST_TIMEOUT_MS,
+      maxRetries: 1,
     });
     this.defaultModel = AnthropicCodeAssistantService.resolveModel(
       configService.get<string>('MCP_AI_MODEL'),
@@ -64,6 +72,7 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     }
     content.push({ type: 'text', text: prompt });
 
+    const startedAt = Date.now();
     this.logger.log(`ask_claude via ${modelId} (effort ${this.effort})`);
 
     // Streaming so a long answer cannot trip the SDK's request timeout;
@@ -79,10 +88,18 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
             cache_control: { type: 'ephemeral' },
           },
         ],
+        thinking: { type: 'adaptive' },
         output_config: { effort: this.effort },
         messages: [{ role: 'user', content }],
       })
       .finalMessage();
+
+    this.logger.log(
+      `ask_claude done: ${modelId} ${response.stop_reason} ` +
+        `in=${response.usage?.input_tokens ?? '?'} out=${
+          response.usage?.output_tokens ?? '?'
+        } ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+    );
 
     if (response.stop_reason === 'refusal') {
       const why = response.stop_details?.explanation;
@@ -94,6 +111,13 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
 
     const text = this.extractText(response);
     if (response.stop_reason === 'max_tokens') {
+      if (!text) {
+        return (
+          `Claude spent the whole ${MAX_TOKENS}-token budget thinking and ` +
+          'produced no answer. Ask a narrower question (one file, one ' +
+          'problem) or send less context.'
+        );
+      }
       return `${text}\n\n[answer truncated at ${MAX_TOKENS} tokens — ask for a narrower piece]`;
     }
     return text;
