@@ -6,6 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { McpController } from '@infrastructure/http/mcp/mcp.controller';
 import { McpTokenGuard } from '@infrastructure/http/mcp/guards/mcp-token.guard';
+import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
 import { AskClaudeUseCase } from '@application/mcp/use-cases/ask-claude.use-case';
 import { CODE_ASSISTANT_SERVICE } from '@application/mcp/code-assistant.service.interface';
 
@@ -32,6 +33,9 @@ describe('McpController (streamable HTTP)', () => {
       controllers: [McpController],
       providers: [
         McpTokenGuard,
+        // Daily-limit guard with no Mongo model injected (optional): with
+        // MCP_DAILY_LIMIT unset the cap is off, so it is a pass-through here.
+        McpDailyLimitGuard,
         AskClaudeUseCase,
         { provide: CODE_ASSISTANT_SERVICE, useValue: assistant },
         {
@@ -100,7 +104,10 @@ describe('McpController (streamable HTTP)', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content).toEqual([
-      { type: 'text', text: 'ask_advice failed: rate limited' },
+      {
+        type: 'text',
+        text: 'ask_advice could not complete the request. Check the server logs for the cause.',
+      },
     ]);
   });
 

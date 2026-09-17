@@ -152,7 +152,7 @@ describe('AnthropicCodeAssistantService', () => {
     expect(answer).toMatch(/spent the whole 16384-token budget thinking/);
   });
 
-  it('asks for adaptive thinking with a 16k budget and a timeout under the Vercel cap', async () => {
+  it('asks for adaptive thinking with a 16k budget, no retries and a timeout under the Vercel cap', async () => {
     mockFinalMessage.mockResolvedValue(textMessage('ok'));
 
     await new AnthropicCodeAssistantService(configWith({})).ask({
@@ -165,7 +165,7 @@ describe('AnthropicCodeAssistantService', () => {
     const Sdk = jest.requireMock('@anthropic-ai/sdk').default as jest.Mock;
     expect(Sdk.mock.calls[0][0]).toMatchObject({
       timeout: 250000,
-      maxRetries: 1,
+      maxRetries: 0,
     });
   });
 
