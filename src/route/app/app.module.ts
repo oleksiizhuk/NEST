@@ -22,11 +22,18 @@ import { McpHttpModule } from '@infrastructure/http/mcp/mcp.module';
     TelegramHttpModule,
     McpHttpModule,
     ConfigModule.forRoot(),
-    MongooseModule.forRoot(
-      process.env.MONGODB_URI ||
-        'mongodb+srv://oleksii:223132qq@cluster0.bzoaa.mongodb.net/?retryWrites=true&w=majority',
-      { autoCreate: true },
-    ),
+    MongooseModule.forRootAsync({
+      useFactory: () => {
+        const uri = process.env.MONGODB_URI;
+        if (!uri) {
+          throw new Error(
+            'MONGODB_URI is not set. Configure it in the environment ' +
+              '(and in Vercel) before starting the app.',
+          );
+        }
+        return { uri, autoCreate: true };
+      },
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],
