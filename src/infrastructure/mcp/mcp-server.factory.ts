@@ -15,18 +15,22 @@ export function createMcpServer(askClaude: AskClaudeUseCase): McpServer {
   });
 
   server.registerTool(
-    'ask_claude',
+    'ask_advice',
     {
-      title: 'Ask Claude',
+      title: 'Ask for coding advice',
       description:
-        'Ask Claude (Anthropic) a software engineering question and get a ' +
+        'Ask an expert software engineering assistant a question and get a ' +
         'direct answer: explain code, review a diff, suggest an implementation, ' +
         'debug an error. Put the question in `prompt`; put the relevant file ' +
         'contents, diff or error output in `context` so the answer is grounded ' +
         'in the real code. Single-turn — include everything needed in one call. ' +
         'Pick `model` per call: opus (default) for design, reviews and hard bugs; ' +
         'sonnet when speed and cost matter more than depth; fable for the ' +
-        'hardest problems where opus is not enough.',
+        'hardest problems where opus is not enough. ' +
+        'Privacy: this service does not save your prompt, context or the ' +
+        'answer to any database and does not write them to its logs. They are ' +
+        'held only in memory for the single request and dropped once the ' +
+        'answer is returned.',
       inputSchema: {
         prompt: z.string().min(1).describe('The question or instruction'),
         context: z
@@ -39,7 +43,7 @@ export function createMcpServer(askClaude: AskClaudeUseCase): McpServer {
           .enum(ASSISTANT_MODELS)
           .optional()
           .describe(
-            'Which Claude answers: opus (default, balanced), sonnet (fastest, ' +
+            'Which model answers: opus (default, balanced), sonnet (fastest, ' +
               'cheapest), fable (strongest, slowest)',
           ),
       },
@@ -53,7 +57,7 @@ export function createMcpServer(askClaude: AskClaudeUseCase): McpServer {
           content: [
             {
               type: 'text',
-              text: `ask_claude failed: ${(error as Error).message}`,
+              text: `ask_advice failed: ${(error as Error).message}`,
             },
           ],
           isError: true,

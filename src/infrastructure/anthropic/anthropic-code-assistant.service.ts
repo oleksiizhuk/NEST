@@ -73,7 +73,7 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     content.push({ type: 'text', text: prompt });
 
     const startedAt = Date.now();
-    this.logger.log(`ask_claude via ${modelId} (effort ${this.effort})`);
+    this.logger.log(`ask_advice via ${modelId} (effort ${this.effort})`);
 
     // Streaming so a long answer cannot trip the SDK's request timeout;
     // finalMessage() collects it into one Message
@@ -95,7 +95,7 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
       .finalMessage();
 
     this.logger.log(
-      `ask_claude done: ${modelId} ${response.stop_reason} ` +
+      `ask_advice done: ${modelId} ${response.stop_reason} ` +
         `in=${response.usage?.input_tokens ?? '?'} out=${
           response.usage?.output_tokens ?? '?'
         } ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
