@@ -20,11 +20,28 @@ export async function bootstrapServer(): Promise<express.Express> {
   const app = await NestFactory.create(
     AppModule,
     new ExpressAdapter(expressApp),
+    { bodyParser: false },
   );
+
+  // Raised body limit ONLY for /mcp: a `context` can carry a whole file plus
+  // a diff (up to ~250k chars, ~1MB in multibyte scripts), which overruns
+  // Express's default ~100kb. Registered first and path-scoped so every other
+  // route keeps the conservative default and its attack surface is unchanged.
+  app.use('/mcp', express.json({ limit: '2mb' }));
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   app.use(helmet(helmetConfig));
   app.useGlobalPipes(new ValidationPipe());
-  app.enableCors();
+
+  // Open by default; set CORS_ORIGIN (comma-separated) to restrict the
+  // browser-facing API to known front-ends.
+  const corsOrigin = process.env.CORS_ORIGIN;
+  app.enableCors(
+    corsOrigin
+      ? { origin: corsOrigin.split(',').map((o) => o.trim()) }
+      : undefined,
+  );
 
   app.use(
     '/static',

@@ -13,6 +13,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { AskClaudeUseCase } from '@application/mcp/use-cases/ask-claude.use-case';
 import { createMcpServer } from '@infrastructure/mcp/mcp-server.factory';
 import { McpTokenGuard } from '@infrastructure/http/mcp/guards/mcp-token.guard';
+import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
 
 // MCP Streamable HTTP endpoint. Point an MCP client (Kiro, Claude Code,
 // Cursor...) at POST /mcp with `Authorization: Bearer <MCP_TOKEN>`.
@@ -23,6 +24,7 @@ export class McpController {
   constructor(private readonly askClaude: AskClaudeUseCase) {}
 
   @Post()
+  @UseGuards(McpDailyLimitGuard)
   async handle(@Req() req: Request, @Res() res: Response): Promise<void> {
     // Stateless: no session id, plain JSON reply. Each request gets a fresh
     // server + transport, which is what a serverless function can offer —

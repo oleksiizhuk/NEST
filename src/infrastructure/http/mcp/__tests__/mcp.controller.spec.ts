@@ -6,6 +6,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { McpController } from '@infrastructure/http/mcp/mcp.controller';
 import { McpTokenGuard } from '@infrastructure/http/mcp/guards/mcp-token.guard';
+import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
 import { AskClaudeUseCase } from '@application/mcp/use-cases/ask-claude.use-case';
 import { CODE_ASSISTANT_SERVICE } from '@application/mcp/code-assistant.service.interface';
 
@@ -32,6 +33,9 @@ describe('McpController (streamable HTTP)', () => {
       controllers: [McpController],
       providers: [
         McpTokenGuard,
+        // Daily-limit guard with no Mongo model injected (optional): with
+        // MCP_DAILY_LIMIT unset the cap is off, so it is a pass-through here.
+        McpDailyLimitGuard,
         AskClaudeUseCase,
         { provide: CODE_ASSISTANT_SERVICE, useValue: assistant },
         {
@@ -52,12 +56,12 @@ describe('McpController (streamable HTTP)', () => {
   afterAll(() => app.close());
   beforeEach(() => jest.clearAllMocks());
 
-  it('lists the ask_claude tool', async () => {
+  it('lists the ask_advice tool', async () => {
     const client = await connect();
     const { tools } = await client.listTools();
     await client.close();
 
-    expect(tools.map((t) => t.name)).toEqual(['ask_claude']);
+    expect(tools.map((t) => t.name)).toEqual(['ask_advice']);
     expect(tools[0].inputSchema).toMatchObject({
       type: 'object',
       required: ['prompt'],
@@ -65,12 +69,12 @@ describe('McpController (streamable HTTP)', () => {
     });
   });
 
-  it('routes ask_claude to the use case and returns the answer', async () => {
+  it('routes ask_advice to the use case and returns the answer', async () => {
     assistant.ask.mockResolvedValue('Use ?. here.');
     const client = await connect();
 
     const result = await client.callTool({
-      name: 'ask_claude',
+      name: 'ask_advice',
       arguments: {
         prompt: 'why does this throw?',
         context: 'x.y',
@@ -93,14 +97,17 @@ describe('McpController (streamable HTTP)', () => {
     const client = await connect();
 
     const result = await client.callTool({
-      name: 'ask_claude',
+      name: 'ask_advice',
       arguments: { prompt: 'hi', model: 'sonnet' },
     });
     await client.close();
 
     expect(result.isError).toBe(true);
     expect(result.content).toEqual([
-      { type: 'text', text: 'ask_claude failed: rate limited' },
+      {
+        type: 'text',
+        text: 'ask_advice could not complete the request. Check the server logs for the cause.',
+      },
     ]);
   });
 
