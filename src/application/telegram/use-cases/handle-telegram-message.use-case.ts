@@ -154,7 +154,15 @@ export class HandleTelegramMessageUseCase {
         .toLowerCase()
         .includes(`@${botInfo.username.toLowerCase()}`);
       const isReply = msg.replyToBotId === botInfo.id;
-      const isOurCommand = command !== null && BOT_COMMANDS.includes(command);
+      // Commands skip the @mention only where they mean something: /pm_on and
+      // /pm_off anywhere (owner-only), the PM commands in PM chats. Elsewhere
+      // a bare "/status" is not addressed to this bot and costs nothing.
+      const isOurCommand =
+        command !== null &&
+        (command === '/pm_on' ||
+          command === '/pm_off' ||
+          (BOT_COMMANDS.includes(command) &&
+            (await this.isPmChat(chatId, msg))));
       if (!isMentioned && !isReply && !isOurCommand) return;
     }
 
@@ -261,6 +269,9 @@ export class HandleTelegramMessageUseCase {
         this.pmConfirm &&
         (command === '/confirm' ||
           (!command &&
+            // Only someone who may confirm turns "да" into a confirmation;
+            // for anyone else it is an ordinary answer to the bot
+            authorised &&
             CONFIRM_WORDS.test(text.trim()) &&
             // Nothing waiting: "да" is an answer for the model, not a confirmation
             (await this.pmConfirm.hasPending(chatId))))

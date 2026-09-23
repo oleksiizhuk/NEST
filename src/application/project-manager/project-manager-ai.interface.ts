@@ -10,6 +10,9 @@ export interface PmTurn {
 export interface PmTools {
   specs: ToolSpec[];
   run(name: string, input: Record<string, unknown>): Promise<string>;
+  // Called when a tool timed out and when the answer is final: tool work
+  // still running in the background must not store anything afterwards
+  close?(): void;
 }
 
 export interface PmRequest {

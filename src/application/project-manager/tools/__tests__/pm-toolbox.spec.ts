@@ -299,7 +299,7 @@ describe('PmToolbox stores and properties', () => {
     staging.findBrands.mockResolvedValue([{ id: 'b1', name: 'Test Brand' }]);
     staging.findCategories.mockResolvedValue([{ id: 'c2', name: 'Food' }]);
     staging.findMalls.mockResolvedValue([
-      { id: 'm1', name: 'Galleria (mall)' },
+      { id: 'm1', name: 'Galleria', type: 'mall', city: 'Riyadh' },
     ]);
     staging.getBrand.mockResolvedValue({
       id: 'b1',
@@ -410,8 +410,106 @@ describe('PmToolbox stores and properties', () => {
     );
     expect(actions.create.mock.calls[0][0]).toMatchObject({
       kind: 'publish_property',
-      payload: { propertyId: 'm1', propertyName: 'Galleria (mall)' },
+      payload: { propertyId: 'm1', propertyName: 'Galleria' },
     });
+  });
+});
+
+describe('PmToolbox review fixes', () => {
+  const toolbox = new PmToolbox(code, targets, actions as any);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    staging.isConfigured.mockReturnValue(true);
+    staging.findMalls.mockResolvedValue([
+      { id: 'm1', name: 'Riyadh Park', type: 'mall', city: 'Riyadh' },
+      { id: 'm2', name: 'Riyadh Park Extension', type: 'mall', city: 'Riyadh' },
+    ]);
+    staging.findCategories.mockResolvedValue([{ id: 'c1', name: 'Fashion' }]);
+    staging.findBrands.mockResolvedValue([]);
+  });
+
+  it('lets only one of two parallel proposals through', async () => {
+    const c = ctx();
+    const input = {
+      name_en: 'A',
+      name_ar: 'ا',
+      mall: 'Riyadh Park',
+      category: 'Fashion',
+    };
+    const results = await Promise.allSettled([
+      toolbox.run('propose_create_brand', input, c),
+      toolbox.run('propose_create_brand', { ...input, name_en: 'B' }, c),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(actions.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a proposal that lands after the turn was closed', async () => {
+    const c = ctx();
+    actions.create.mockImplementationOnce(async (a: any) => {
+      c.closed = true; // the loop timed the tool out meanwhile
+      return { ...a, id: 'LATE1', status: 'pending', result: null };
+    });
+    await expect(
+      toolbox.run(
+        'propose_create_brand',
+        {
+          name_en: 'A',
+          name_ar: 'ا',
+          mall: 'Riyadh Park',
+          category: 'Fashion',
+        },
+        c,
+      ),
+    ).rejects.toThrow(/discarded/);
+    expect(actions.cancel).toHaveBeenCalledWith('LATE1', -100);
+    expect(c.proposal).toBeNull();
+  });
+
+  it('frees the slot when a proposal only asked for clarification', async () => {
+    const c = ctx();
+    await toolbox.run(
+      'propose_create_brand',
+      { name_en: 'A', name_ar: 'ا', mall: 'Nowhere', category: 'Fashion' },
+      c,
+    );
+    await toolbox.run(
+      'propose_create_brand',
+      { name_en: 'A', name_ar: 'ا', mall: 'Riyadh Park', category: 'Fashion' },
+      c,
+    );
+    expect(actions.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('matches a property exactly even when a longer name shares the prefix', async () => {
+    await toolbox.run(
+      'propose_property_action',
+      { property: 'riyadh park', action: 'publish' },
+      ctx(),
+    );
+    expect(actions.create.mock.calls[0][0].payload).toMatchObject({
+      propertyId: 'm1',
+    });
+  });
+
+  it('allows the same name as another type or in another city', async () => {
+    await toolbox.run(
+      'propose_create_property',
+      { type: 'outlet', name_en: 'Riyadh Park', name_ar: 'ر', city: 'Riyadh' },
+      ctx(),
+    );
+    await toolbox.run(
+      'propose_create_property',
+      { type: 'mall', name_en: 'Riyadh Park', name_ar: 'ر', city: 'Jeddah' },
+      ctx(),
+    );
+    expect(actions.create).toHaveBeenCalledTimes(2);
+    const out = await toolbox.run(
+      'propose_create_property',
+      { type: 'mall', name_en: 'Riyadh Park', name_ar: 'ر', city: 'riyadh' },
+      ctx(),
+    );
+    expect(out).toMatch(/already exists/);
   });
 });
 

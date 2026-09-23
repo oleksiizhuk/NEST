@@ -287,4 +287,21 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     });
     expect(confirm.confirm).toHaveBeenCalledWith('K7Q2A', 555, 555, false);
   });
+
+  it('ignores a bare PM command in a group without PM mode', async () => {
+    registry.isEnabled.mockResolvedValue(false);
+    await useCase.execute(group(OTHER_GROUP, '/status'));
+    expect(pmAnswer.execute).not.toHaveBeenCalled();
+    expect(persona.generateReply).not.toHaveBeenCalled();
+    expect(telegram.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('treats "ок" from someone without rights as a normal answer', async () => {
+    await useCase.execute({
+      ...group(PM_GROUP, 'ок', 7),
+      replyToBotId: BOT.id,
+    });
+    expect(confirm.confirm).not.toHaveBeenCalled();
+    expect(pmAnswer.execute).toHaveBeenCalled();
+  });
 });

@@ -3,6 +3,9 @@ export const ADMIN_TARGETS = 'ADMIN_TARGETS';
 export interface NamedRef {
   id: string;
   name: string;
+  // For properties: mall / outlet / plaza and the city from the address
+  type?: string;
+  city?: string;
 }
 
 export interface NewBrand {

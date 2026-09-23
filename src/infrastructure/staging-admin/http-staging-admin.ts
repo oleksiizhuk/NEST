@@ -108,10 +108,23 @@ export class HttpStagingAdmin implements IStagingAdmin {
   async findMalls(query: string): Promise<NamedRef[]> {
     const q = encodeURIComponent(query);
     const data = await this.call('GET', `/properties/short?search=${q}`);
-    return listOf(data).map((p: Json) => ({
-      id: String(p.id),
-      name: `${nameOf(p)}${p.type ? ` (${p.type})` : ''}`,
-    }));
+    return listOf(data).map((p: Json) => {
+      const city = p.address?.city;
+      return {
+        id: String(p.id),
+        // The bare name, so an exact match on what people type works
+        name: nameOf(p),
+        ...(p.type ? { type: String(p.type) } : {}),
+        ...(city
+          ? {
+              city:
+                typeof city === 'string'
+                  ? city
+                  : String(city.en ?? city.ar ?? ''),
+            }
+          : {}),
+      };
+    });
   }
 
   async findCategories(query: string): Promise<NamedRef[]> {

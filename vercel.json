@@ -17,6 +17,10 @@
     {
       "path": "/cron/pm/daily",
       "schedule": "0 5 * * 1-5"
+    },
+    {
+      "path": "/cron/pm/refresh",
+      "schedule": "0 5 * * 0,6"
     }
   ]
 }

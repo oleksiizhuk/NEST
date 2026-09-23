@@ -37,6 +37,9 @@ import {
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { todayLine } from '@application/project-manager/release-clock';
 
+// Leaves room for sending the reply within the 300 s function limit
+const ANSWER_BUDGET_MS = 240_000;
+
 export interface PmAnswer {
   text: string;
   proposal: PendingAction | null;
@@ -73,6 +76,9 @@ export class AnswerProjectQuestionUseCase {
     now = new Date(),
     deadline?: number,
   ): Promise<PmAnswer> {
+    // The whole webhook has to finish inside Vercel's limit, so the model's
+    // budget counts from here, not from after the snapshot is loaded
+    const until = deadline ?? Date.now() + ANSWER_BUDGET_MS;
     const [snapshot, knowledge] = await Promise.all([
       this.currentSnapshot(now),
       renderKnowledge(this.knowledge),
@@ -88,18 +94,20 @@ export class AnswerProjectQuestionUseCase {
       tools: {
         specs: toolbox.specs(),
         run: (name, input) => toolbox.run(name, input, ctx),
+        close: () => {
+          ctx.closed = true;
+        },
       },
-      deadline,
+      deadline: until,
     });
     return { text, proposal: ctx.proposal };
   }
 
-  // The daily cron keeps it fresh; this covers a missed cron or a first run.
+  // Crons keep it fresh. A stale snapshot is still used (its date is in the
+  // prompt): rebuilding it here could push the webhook past the platform's
+  // time limit. Only the very first question builds one inline.
   private async currentSnapshot(now: Date): Promise<ProjectSnapshot> {
     const latest = await this.snapshots.findLatest();
-    if (latest && !latest.isOlderThan(now, this.config.maxSnapshotAgeHours)) {
-      return latest;
-    }
-    return this.refresh.execute(now);
+    return latest ?? this.refresh.execute(now);
   }
 }

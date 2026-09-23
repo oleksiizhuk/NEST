@@ -152,7 +152,7 @@ describe('AnswerProjectQuestionUseCase', () => {
     );
   });
 
-  it('rebuilds a stale or missing snapshot before answering', async () => {
+  it('builds a snapshot inline only when there is none at all', async () => {
     const snapshots = repo();
     snapshots.findLatest.mockResolvedValue(null);
     refresh.execute.mockResolvedValue(new ProjectSnapshot('r', now, []));
@@ -166,10 +166,32 @@ describe('AnswerProjectQuestionUseCase', () => {
       staging as any,
       actions as any,
     );
-
     await useCase.execute('q', [], { chatId: 1, requesterId: 1 }, now);
-
     expect(refresh.execute).toHaveBeenCalledWith(now);
+  });
+
+  it('answers from a stale snapshot instead of rebuilding it inside the webhook', async () => {
+    const snapshots = repo();
+    snapshots.findLatest.mockResolvedValue(
+      new ProjectSnapshot('old', new Date('2026-09-20T05:00:00Z'), []),
+    );
+    const useCase = new AnswerProjectQuestionUseCase(
+      snapshots as any,
+      refresh as any,
+      ai as any,
+      config,
+      knowledge as any,
+      code as any,
+      staging as any,
+      actions as any,
+    );
+    const started = Date.now();
+    await useCase.execute('q', [], { chatId: 1, requesterId: 1 }, now);
+    expect(refresh.execute).not.toHaveBeenCalled();
+    const request = ai.answer.mock.calls[ai.answer.mock.calls.length - 1][0];
+    expect(request.deadline).toBeGreaterThanOrEqual(started + 239_000);
+    expect(request.deadline).toBeLessThanOrEqual(Date.now() + 240_000);
+    request.tools.close();
   });
 });
 
