@@ -124,11 +124,31 @@ MCP_AI_EFFORT=          # low|medium|high|xhigh|max, default high
 MCP_DAILY_LIMIT=        # Hard cap on /mcp calls per UTC day (Mongo counter); unset/0 = no cap
 TELEGRAM_WEBHOOK_URL=   # Public webhook URL the prod app registers with Telegram on cold start
 CORS_ORIGIN=            # Comma-separated allowed CORS origins; unset = open
+TELEGRAM_PM_CHAT_IDS=   # Chats where the bot is project manager ("owner" = TELEGRAM_OWNER_ID); others get the persona
+PM_DIGEST_CHAT_ID=      # Chat for the weekday digest; unset = refresh only
+PM_RELEASE_DATE=        # YYYY-MM-DD the team is aiming at
+PM_PROJECT_BRIEF=       # Team, process, risks — project-specific, never committed
+PM_AI_MODEL=            # default claude-opus-5-5; PM_AI_EFFORT / PM_DIGEST_EFFORT default high
+PM_JIRA_PROJECTS=       # e.g. ABC,XYZ (uses JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN, read-only)
+PM_CONFLUENCE_PAGE_IDS= # Comma-separated page ids re-read on every refresh
+PM_GITHUB_TOKEN=        # Fine-grained, read-only; with PM_GITHUB_ORG, PM_GITHUB_REPOS, PM_GITHUB_COMPARES (repo:base...head)
+CRON_SECRET=            # Bearer secret Vercel Cron sends to /cron/pm/*
 ENV=
 PORT=3000
 ```
 
 > ⚠️ The MongoDB URI and JWT secret should always come from env vars, never hardcoded.
+
+---
+
+## Telegram project-manager mode
+
+In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager on `claude-opus-5-5`. Every other chat keeps the persona and never sees project data.
+- `RefreshProjectSnapshotUseCase` reads Jira, Confluence and GitHub through read-only `IProjectSource`s (`src/infrastructure/project-manager/`) into a `ProjectSnapshot` in Mongo. A failed source keeps its previous text, marked stale.
+- `AnswerProjectQuestionUseCase` answers from the latest snapshot plus `PM_PROJECT_BRIEF`, rebuilding it first when it is older than `PM_SNAPSHOT_MAX_AGE_HOURS` (30). Instructions are generic and live in the repo; everything project-specific comes from env and the snapshot, because the repo is public.
+- Commands: `/status` (verdict, focus per person, risks), `/refresh` (owner only).
+- `PostDailyDigestUseCase` runs from Vercel Cron on weekdays and posts to `PM_DIGEST_CHAT_ID`.
+- The webhook claims each `update_id` in Mongo first, so Telegram's retry of a slow answer is ignored.
 
 ---
 
@@ -165,6 +185,7 @@ PORT=3000
 | POST | `/email/send`, `/email/sendEmailTemple` | JWT | Email the caller's own address only |
 | POST | `/email/convert` | JWT | OCR an uploaded image (`file`, ≤ 5 MB) |
 | POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_advice { prompt, context?, model? }` |
+| GET | `/cron/pm/refresh`, `/cron/pm/daily` | Bearer `CRON_SECRET` | Rebuild the project snapshot; daily also posts the digest (Vercel Cron, weekdays 05:00 UTC) |
 | GET | `/api/docs` | — | Swagger UI |
 
 ### MCP endpoint (`/mcp`)

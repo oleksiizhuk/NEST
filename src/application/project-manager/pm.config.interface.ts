@@ -1,0 +1,16 @@
+export const PM_CONFIG = 'PM_CONFIG';
+
+export interface IPmConfig {
+  // Chats where the bot answers as project manager; everywhere else the
+  // regular persona answers and never sees project data
+  chatIds: number[];
+  // Where the weekday digest goes; null disables it
+  digestChatId: number | null;
+  // ISO date (YYYY-MM-DD) of the release the team is working towards
+  releaseDate: string | null;
+  // Standing context kept out of the public repo: team and roles, release
+  // process, known risks, how to read the sources
+  projectBrief: string;
+  // Rebuild the snapshot before answering when it is older than this
+  maxSnapshotAgeHours: number;
+}

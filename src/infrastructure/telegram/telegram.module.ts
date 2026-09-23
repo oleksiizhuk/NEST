@@ -16,10 +16,12 @@ import { AnthropicReplyService } from '@infrastructure/telegram/anthropic-reply.
 import { TelegramPollingBootstrap } from '@infrastructure/telegram/telegram-polling.bootstrap';
 import { TelegramWebhookBootstrap } from '@infrastructure/telegram/telegram-webhook.bootstrap';
 import { telegramConfig } from '@infrastructure/telegram/telegram.config';
+import { ProjectManagerModule } from '@infrastructure/project-manager/project-manager.module';
 
 @Module({
   imports: [
     ConfigModule,
+    ProjectManagerModule,
     MongooseModule.forFeature([
       { name: 'TelegramMessage', schema: TelegramMessageSchema },
     ]),
