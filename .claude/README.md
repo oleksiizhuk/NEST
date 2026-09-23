@@ -26,6 +26,11 @@ idea / task
 | `pr` | Branch, push, `gh pr create` |
 | `deploy` | Vercel production: merge, build status, smoke, env vars |
 | `onboard` | Fresh clone → running dev server and Swagger |
+| `pm-bot-ops` | Run the Telegram project-manager bot: health checks, chat controls, digest, env and secret rotation |
+| `pm-bot-debug` | Bot silent / wrong answer / failed action / failed deploy — symptom → check → fix |
+| `pm-bot-knowledge` | Refresh what the bot knows: project brief, codebase and design maps |
+| `pm-bot-add-action` | Add a new dev/staging action through the propose → /confirm pipeline |
+| `pm-bot-testing-assistant` | How the team uses the bot for QA and delivery; golden questions after changes |
 
 ## Agents
 
