@@ -1,6 +1,6 @@
 ---
 name: pr
-description: Prepare and create a pull request for this NestJS project.
+description: Prepare and create a pull request for this NestJS project — gates, branch, commit, push, gh pr create. Use for "открой PR", "create a PR". Merging and checking the deploy afterwards is the deploy skill.
 ---
 
 # Pull Request Workflow
@@ -20,29 +20,16 @@ Run `/quality-gates` before creating a PR.
 ## Step 3: Branch naming
 
 ```
-feature/<short-description>
+feat/<short-description>
 fix/<short-description>
 refactor/<short-description>
 ```
 
-Example: `feature/email-clean-architecture`, `fix/cart-price-calculation`
+Example: `feat/email-clean-architecture`, `fix/cart-price-calculation`
 
 ## Step 4: Commit
 
-```bash
-git add <specific-files>
-git commit -m "<type>: <description>"
-```
-
-Types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`
-
-Examples:
-```
-feat: add create-shopping-cart use case
-fix: correct cart price calculation in domain entity
-refactor: migrate product module to clean architecture
-test: add unit tests for login use case
-```
+Use the `commit` skill: Conventional Commits with a scope (`feat(mcp): ...`), diff shown to the user before committing.
 
 ## Step 5: Ask before pushing
 
@@ -50,12 +37,12 @@ test: add unit tests for login use case
 
 > "Запушить ветку `<branch-name>` на GitHub?"
 
-Wait for explicit confirmation before running `git push` or `gh pr create`.
+Wait for explicit confirmation before running `git push` or `gh pr create`. If the user's request already said to push ("запушь", "push and open a PR"), that is the confirmation.
 
 ## Step 6: Push & create PR (only after confirmation)
 
 ```bash
-git push -u origin <branch-name>
+git -c credential.helper='!gh auth git-credential' push -u origin <branch-name>
 gh pr create --title "<type>: <description>" --body "$(cat <<'EOF'
 ## Summary
 -
@@ -74,6 +61,7 @@ EOF
 ## Notes
 
 - Never push directly to `master`
-- Always ask before pushing — even if the user says "create a PR", confirm the push first
+- Ask before pushing unless this request explicitly asked for the push — "create a PR" alone is not a push request
+- End the PR body with the attribution line the session supplies
 - Always run `npm run build` before PR — TypeScript must compile cleanly
 - Swagger docs at `/api/docs` for manual verification
