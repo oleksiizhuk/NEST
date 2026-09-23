@@ -19,6 +19,7 @@ export class JiraIssueDetails implements IIssueDetails {
   private readonly baseUrl: string;
   private readonly auth: string;
   private readonly projects: string[];
+  private readonly boardId: string;
 
   constructor(config: ConfigService) {
     this.baseUrl = (
@@ -30,6 +31,8 @@ export class JiraIssueDetails implements IIssueDetails {
       config.get<string>('JIRA_EMAIL') ?? '',
       config.get<string>('JIRA_API_TOKEN') ?? '',
     );
+    const board = (config.get<string>('PM_JIRA_BOARD_ID') ?? '').trim();
+    this.boardId = /^\d{1,10}$/.test(board) ? board : '';
     this.projects = (config.get<string>('PM_JIRA_PROJECTS') ?? '')
       .split(',')
       .map((p) => p.trim().toUpperCase())
@@ -42,6 +45,81 @@ export class JiraIssueDetails implements IIssueDetails {
 
   private headers() {
     return { Authorization: this.auth };
+  }
+
+  sprintConfigured(): boolean {
+    return Boolean(this.baseUrl && this.boardId);
+  }
+
+  async activeSprint(now = new Date()): Promise<string> {
+    const headers = { Authorization: this.auth };
+    const { data: sprints } = await getJson<any>(
+      `${this.baseUrl}/rest/agile/1.0/board/${this.boardId}/sprint?state=active`,
+      headers,
+    );
+    const active = sprints.values ?? [];
+    const sprint = active[0];
+    if (!sprint) return 'No active sprint on the board.';
+    const others = active
+      .slice(1)
+      .map((s: any) => `"${s.name}"`)
+      .join(', ');
+    const issues: any[] = [];
+    for (let startAt = 0; startAt < 300; startAt += 100) {
+      const { data } = await getJson<any>(
+        `${this.baseUrl}/rest/agile/1.0/sprint/${sprint.id}/issue?fields=summary,status,assignee,created,issuetype&maxResults=100&startAt=${startAt}`,
+        headers,
+      );
+      issues.push(...(data.issues ?? []));
+      if ((data.issues ?? []).length < 100) break;
+    }
+    const category = (i: any): string =>
+      i.fields?.status?.statusCategory?.key ?? 'new';
+    const done = issues.filter((i) => category(i) === 'done');
+    const open = issues.filter((i) => category(i) !== 'done');
+    const inProgress = open.filter((i) => category(i) === 'indeterminate');
+    const byPerson = new Map<string, string[]>();
+    for (const i of open) {
+      const who = i.fields?.assignee?.displayName ?? 'UNASSIGNED';
+      byPerson.set(who, [...(byPerson.get(who) ?? []), i.key]);
+    }
+    const start = sprint.startDate ? new Date(sprint.startDate) : null;
+    const added = start
+      ? issues.filter(
+          (i) => i.fields?.created && new Date(i.fields.created) > start,
+        )
+      : [];
+    const end = sprint.endDate ? new Date(sprint.endDate) : null;
+    const daysLeft = end
+      ? Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 86_400_000))
+      : null;
+    return [
+      `Sprint "${sprint.name}" (${shortDate(sprint.startDate)} → ${shortDate(
+        sprint.endDate,
+      )}${daysLeft !== null ? `, ${daysLeft} calendar days left` : ''})`,
+      `Goal: ${sprint.goal || '(none set)'}`,
+      ...(others
+        ? [`Also active on this board: ${others} (not summarised)`]
+        : []),
+      `Issues: ${issues.length} — done ${done.length}, in progress ${
+        inProgress.length
+      }, to do ${open.length - inProgress.length}`,
+      `Created after the sprint started: ${added.length}${
+        added.length
+          ? ` (${added
+              .slice(0, 15)
+              .map((i) => i.key)
+              .join(', ')})`
+          : ''
+      }`,
+      'Still open by person:',
+      ...[...byPerson]
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(
+          ([who, keys]) =>
+            `- ${who}: ${keys.length} (${keys.slice(0, 10).join(', ')})`,
+        ),
+    ].join('\n');
   }
 
   async getIssue(key: string): Promise<string> {

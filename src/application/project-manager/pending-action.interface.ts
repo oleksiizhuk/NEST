@@ -24,12 +24,30 @@ export type ActionKind =
   | 'update_store'
   | 'create_property'
   | 'publish_property'
-  | 'unpublish_property';
+  | 'unpublish_property'
+  | 'remember';
+
+// A memory record waiting for confirmation
+export interface MemoryProposal {
+  kind: 'decision' | 'fact' | 'commitment' | 'person';
+  text: string;
+  // YYYY-MM-DD, commitments only
+  dueAt: string | null;
+  author: string;
+  tier?: undefined;
+  role?: undefined;
+}
 
 export interface PendingAction {
   id: string;
   kind: ActionKind;
-  payload: NewBrand | BrandTarget | StoreEdit | NewProperty | PropertyTarget;
+  payload:
+    | NewBrand
+    | BrandTarget
+    | StoreEdit
+    | NewProperty
+    | PropertyTarget
+    | MemoryProposal;
   summary: string;
   chatId: number;
   requesterId: number;

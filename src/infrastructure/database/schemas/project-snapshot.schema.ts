@@ -8,6 +8,7 @@ export class SnapshotSectionDocument {
   text: string;
   error: string | null;
   metrics?: Record<string, number>;
+  signals?: Array<{ rule: string; subject: string; text: string }>;
 }
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false } })

@@ -204,6 +204,7 @@ describe('AnswerProjectQuestionUseCase', () => {
       'propose_update_store',
       'propose_create_property',
       'propose_property_action',
+      'release_checklist',
       'offer_choices',
     ]);
     expect(request.question).toBe(

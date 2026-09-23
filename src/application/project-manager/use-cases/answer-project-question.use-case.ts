@@ -48,6 +48,12 @@ import {
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { todayLine } from '@application/project-manager/release-clock';
 import { loadKnowledge } from '@application/project-manager/knowledge-loader';
+import {
+  IPmMemory,
+  PM_MEMORY,
+  renderMemory,
+} from '@application/project-manager/memory.interface';
+import { readinessChecklist } from '@application/project-manager/readiness';
 
 // Leaves room for sending the reply within the 300 s function limit
 const ANSWER_BUDGET_MS = 240_000;
@@ -79,12 +85,15 @@ export class AnswerProjectQuestionUseCase {
     @Optional()
     @Inject(DOC_SEARCH)
     private readonly search?: IDocSearch,
+    @Optional()
+    @Inject(PM_MEMORY)
+    private readonly memory?: IPmMemory,
   ) {}
 
   async execute(
     question: string,
     history: PmTurn[],
-    chat: { chatId: number; requesterId: number } = {
+    chat: { chatId: number; requesterId: number; requesterName?: string } = {
       chatId: 0,
       requesterId: 0,
     },
@@ -94,10 +103,12 @@ export class AnswerProjectQuestionUseCase {
     // The whole webhook has to finish inside Vercel's limit, so the model's
     // budget counts from here, not from after the snapshot is loaded
     const until = deadline ?? Date.now() + ANSWER_BUDGET_MS;
-    const [snapshot, knowledge] = await Promise.all([
+    const [snapshot, knowledge, memories] = await Promise.all([
       this.currentSnapshot(now),
       loadKnowledge(this.knowledge, this.config.knowledgeInlineChars),
+      this.memory?.active(now).catch(() => []) ?? Promise.resolve([]),
     ]);
+    const memoryBlock = renderMemory(memories);
     const toolbox = new PmToolbox(this.code, this.targets, this.actions, {
       issues: this.issues,
       docs: this.docs,
@@ -108,12 +119,18 @@ export class AnswerProjectQuestionUseCase {
         read: async (key) =>
           knowledge.onDemand.find((d) => d.key === key)?.text ?? null,
       },
+      memory: Boolean(this.memory),
+      readiness: () => readinessChecklist(snapshot, knowledge.doc('core:dod')),
       team: this.config.team,
     });
     const ctx: ToolContext = { ...chat, proposal: null };
     let usage: PmUsage | undefined;
     const text = await this.ai.answer({
-      brief: knowledge.brief ?? this.config.projectBrief,
+      // Memory rides with the brief: it changes rarely, and this block is
+      // after the cached knowledge, so a new record does not evict it
+      brief: [knowledge.brief ?? this.config.projectBrief, memoryBlock]
+        .filter(Boolean)
+        .join('\n\n'),
       knowledge: knowledge.text,
       snapshot: snapshot.render(),
       history,

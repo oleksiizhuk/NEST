@@ -35,6 +35,15 @@ import {
 import { JiraIssueDetails } from '@infrastructure/project-manager/jira-issue-details';
 import { ConfluenceCommentsReader } from '@infrastructure/project-manager/confluence-comments.reader';
 import { ConfluenceSearch } from '@infrastructure/project-manager/confluence-search';
+import { PM_MEMORY } from '@application/project-manager/memory.interface';
+import { PM_ALERT_LOG } from '@application/project-manager/alert-log.interface';
+import { PM_GOLDEN } from '@application/project-manager/golden.interface';
+import { MongoPmMemory } from '@infrastructure/database/repositories/mongo-pm-memory';
+import { MongoAlertLog } from '@infrastructure/database/repositories/mongo-alert-log';
+import { MongoGoldenStore } from '@infrastructure/database/repositories/mongo-golden-store';
+import { PmMemorySchema } from '@infrastructure/database/schemas/pm-memory.schema';
+import { PmAlertSchema } from '@infrastructure/database/schemas/pm-alert.schema';
+import { PmGoldenSchema } from '@infrastructure/database/schemas/pm-golden.schema';
 import { FigmaDesignHost } from '@infrastructure/project-manager/figma-design.host';
 import { PM_CHAT_REGISTRY } from '@application/project-manager/pm-chat-registry.interface';
 import { PmChatSchema } from '@infrastructure/database/schemas/pm-chat.schema';
@@ -48,6 +57,9 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
       { name: 'PmChat', schema: PmChatSchema },
       { name: 'PmKnowledge', schema: PmKnowledgeSchema },
       { name: 'PmAction', schema: PmActionSchema },
+      { name: 'PmMemory', schema: PmMemorySchema },
+      { name: 'PmAlert', schema: PmAlertSchema },
+      { name: 'PmGolden', schema: PmGoldenSchema },
     ]),
   ],
   providers: [
@@ -89,6 +101,9 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     { provide: DOC_COMMENTS, useClass: ConfluenceCommentsReader },
     { provide: DESIGN_HOST, useClass: FigmaDesignHost },
     { provide: DOC_SEARCH, useClass: ConfluenceSearch },
+    { provide: PM_MEMORY, useClass: MongoPmMemory },
+    { provide: PM_ALERT_LOG, useClass: MongoAlertLog },
+    { provide: PM_GOLDEN, useClass: MongoGoldenStore },
     ConfirmPendingActionUseCase,
     RefreshProjectSnapshotUseCase,
     AnswerProjectQuestionUseCase,
@@ -96,6 +111,12 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
   exports: [
     PM_CONFIG,
     PROJECT_SNAPSHOT_REPOSITORY,
+    PM_MEMORY,
+    PM_ALERT_LOG,
+    PM_GOLDEN,
+    ISSUE_DETAILS,
+    DOC_COMMENTS,
+    DESIGN_HOST,
     PENDING_ACTIONS,
     ADMIN_TARGETS,
     PM_KNOWLEDGE,

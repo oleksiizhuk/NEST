@@ -7,6 +7,8 @@ import { PmCronController } from '@infrastructure/http/project-manager/pm-cron.c
 import { PmKnowledgeController } from '@infrastructure/http/project-manager/pm-knowledge.controller';
 import { TelegramController } from '@infrastructure/http/telegram/telegram.controller';
 import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
+import { WatchProjectUseCase } from '@application/project-manager/use-cases/watch-project.use-case';
+import { ConfirmPendingActionUseCase } from '@application/project-manager/use-cases/confirm-pending-action.use-case';
 import { PostDailyDigestUseCase } from '@application/project-manager/use-cases/post-daily-digest.use-case';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
 
@@ -20,6 +22,9 @@ const MODELS = [
   'PmAction',
   'TelegramMessage',
   'TelegramUpdate',
+  'PmMemory',
+  'PmAlert',
+  'PmGolden',
 ];
 
 describe('project-manager module wiring', () => {
@@ -48,8 +53,19 @@ describe('project-manager module wiring', () => {
     expect(
       optional(moduleRef.get(AnswerProjectQuestionUseCase), 'search'),
     ).toBeDefined();
+    expect(
+      optional(moduleRef.get(AnswerProjectQuestionUseCase), 'memory'),
+    ).toBeDefined();
+    expect(
+      optional(moduleRef.get(ConfirmPendingActionUseCase), 'memory'),
+    ).toBeDefined();
+    const watcher = moduleRef.get(WatchProjectUseCase);
+    for (const field of ['memory', 'issues', 'docs', 'design']) {
+      expect(optional(watcher, field)).toBeDefined();
+    }
     const handler = moduleRef.get(HandleTelegramMessageUseCase);
     for (const field of [
+      'pmMemory',
       'pmConfig',
       'pmAnswer',
       'pmRefresh',

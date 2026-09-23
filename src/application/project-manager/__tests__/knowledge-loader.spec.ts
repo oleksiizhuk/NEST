@@ -38,7 +38,8 @@ describe('loadKnowledge', () => {
     const loaded = await loadKnowledge({
       all: jest.fn().mockRejectedValue(new Error('down')),
     } as any);
-    expect(loaded).toEqual({ text: '', brief: null, onDemand: [] });
+    expect(loaded).toMatchObject({ text: '', brief: null, onDemand: [] });
+    expect(loaded.doc('core:dod')).toBeNull();
   });
 
   it('lets the model read an indexed doc through read_knowledge', async () => {

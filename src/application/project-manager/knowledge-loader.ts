@@ -16,6 +16,8 @@ export interface LoadedKnowledge {
   brief: string | null;
   // Docs the model reads with read_knowledge
   onDemand: KnowledgeDoc[];
+  // One doc by key (e.g. core:dod), whichever group it is in
+  doc(key: string): string | null;
 }
 
 const day = (d: Date): string =>
@@ -78,5 +80,6 @@ export const loadKnowledge = async (
     text: [...inline, index].filter(Boolean).join('\n'),
     brief,
     onDemand: indexed,
+    doc: (key) => docs.find((d) => d.key === key)?.text ?? null,
   };
 };

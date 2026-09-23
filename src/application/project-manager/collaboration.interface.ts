@@ -25,6 +25,9 @@ export interface IIssueDetails {
   getIssue(key: string): Promise<string>;
   // Comments on issues updated in the last `days`
   recentComments(days: number): Promise<Remark[]>;
+  // The active sprint on the configured board, when there is one
+  sprintConfigured?(): boolean;
+  activeSprint?(): Promise<string>;
 }
 
 export interface IDocComments {

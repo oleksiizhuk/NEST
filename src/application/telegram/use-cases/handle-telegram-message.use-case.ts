@@ -33,6 +33,10 @@ import {
   IPmChatRegistry,
   PM_CHAT_REGISTRY,
 } from '@application/project-manager/pm-chat-registry.interface';
+import {
+  IPmMemory,
+  PM_MEMORY,
+} from '@application/project-manager/memory.interface';
 
 // "Оксана @oksana" — whatever Telegram gave us, falling back to the numeric id
 const authorLabel = (from: {
@@ -56,6 +60,8 @@ const BOT_COMMANDS = [
   '/refresh',
   '/confirm',
   '/cancel',
+  '/memory',
+  '/forget',
 ];
 const CONFIRM_WORDS = /^(да|ага|yes|ok|ок|подтверждаю|confirm)[.!]*$/i;
 
@@ -117,6 +123,9 @@ export class HandleTelegramMessageUseCase {
     @Inject(PM_CHAT_REGISTRY)
     private readonly pmChats?: IPmChatRegistry,
     @Optional() private readonly pmConfirm?: ConfirmPendingActionUseCase,
+    @Optional()
+    @Inject(PM_MEMORY)
+    private readonly pmMemory?: IPmMemory,
   ) {}
 
   private canRunActions(userId: number): boolean {
@@ -377,6 +386,16 @@ export class HandleTelegramMessageUseCase {
           msg.from.id,
           authorised,
         );
+      } else if (this.pmMemory && command === '/memory') {
+        reply = await this.listMemory();
+      } else if (this.pmMemory && command === '/forget') {
+        reply = !authorised
+          ? 'Нет прав удалять из памяти.'
+          : !arg
+          ? 'Укажите id: /forget M7K2Q (список: /memory)'
+          : (await this.pmMemory.remove(arg))
+          ? `Забыл ${arg.toUpperCase()}.`
+          : `Записи ${arg.toUpperCase()} нет.`;
       } else if (this.pmConfirm && command === '/cancel') {
         reply = arg
           ? await this.pmConfirm.cancel(arg, chatId, authorised)
@@ -390,7 +409,11 @@ export class HandleTelegramMessageUseCase {
         const answer = await pmAnswer.execute(
           `${authorLabel(msg.from)}: ${question}`,
           history,
-          { chatId, requesterId: msg.from.id },
+          {
+            chatId,
+            requesterId: msg.from.id,
+            requesterName: authorLabel(msg.from),
+          },
         );
         if (answer.usage) usage = { ...answer.usage };
         if (answer.proposal) {
@@ -429,6 +452,23 @@ export class HandleTelegramMessageUseCase {
     } finally {
       clearInterval(typing);
     }
+  }
+
+  private async listMemory(): Promise<string> {
+    const records = (await this.pmMemory?.active(new Date())) ?? [];
+    if (!records.length) {
+      return 'Память пуста. Скажите, например: «запомни, что мы убираем фильтры из релиза».';
+    }
+    return [
+      `Помню ${records.length}:`,
+      ...records.map(
+        (r) =>
+          `${r.id} · ${r.kind}${
+            r.dueAt ? `, срок ${r.dueAt.toISOString().slice(0, 10)}` : ''
+          } · ${r.text}`,
+      ),
+      'Удалить: /forget ID',
+    ].join('\n');
   }
 
   private async loadPmHistory(chatId: number): Promise<PmTurn[]> {
