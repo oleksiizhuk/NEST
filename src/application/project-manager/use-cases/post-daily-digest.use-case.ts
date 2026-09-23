@@ -23,7 +23,7 @@ import {
   IKnowledgeStore,
   PM_KNOWLEDGE,
 } from '@application/project-manager/knowledge.interface';
-import { renderKnowledge } from '@application/project-manager/use-cases/answer-project-question.use-case';
+import { loadKnowledge } from '@application/project-manager/knowledge-loader';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { todayLine } from '@application/project-manager/release-clock';
 
@@ -64,6 +64,10 @@ export class PostDailyDigestUseCase {
     const previous = await this.snapshots
       ?.findLastDigest(snapshot.createdAt)
       .catch(() => null);
+    const knowledge = await loadKnowledge(
+      this.knowledge,
+      this.config.knowledgeInlineChars,
+    );
     const text = await this.ai.digest({
       history: previous
         ? [
@@ -75,8 +79,8 @@ export class PostDailyDigestUseCase {
             },
           ]
         : [],
-      brief: this.config.projectBrief,
-      knowledge: await renderKnowledge(this.knowledge),
+      brief: knowledge.brief ?? this.config.projectBrief,
+      knowledge: knowledge.text,
       snapshot: snapshot.render(),
       question: `${todayLine(
         now,

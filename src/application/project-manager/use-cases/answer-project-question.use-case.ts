@@ -46,6 +46,7 @@ import {
 } from '@application/project-manager/tools/pm-toolbox';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { todayLine } from '@application/project-manager/release-clock';
+import { loadKnowledge } from '@application/project-manager/knowledge-loader';
 
 // Leaves room for sending the reply within the 300 s function limit
 const ANSWER_BUDGET_MS = 240_000;
@@ -56,13 +57,6 @@ export interface PmAnswer {
   // Button labels to attach; ignored when there is a proposal
   choices: string[];
 }
-
-export const renderKnowledge = async (
-  store: IKnowledgeStore,
-): Promise<string> =>
-  (await store.all().catch(() => []))
-    .map((doc) => `<doc key="${doc.key}">\n${doc.text}\n</doc>`)
-    .join('\n');
 
 @Injectable()
 export class AnswerProjectQuestionUseCase {
@@ -99,19 +93,24 @@ export class AnswerProjectQuestionUseCase {
     const until = deadline ?? Date.now() + ANSWER_BUDGET_MS;
     const [snapshot, knowledge] = await Promise.all([
       this.currentSnapshot(now),
-      renderKnowledge(this.knowledge),
+      loadKnowledge(this.knowledge, this.config.knowledgeInlineChars),
     ]);
     const toolbox = new PmToolbox(this.code, this.targets, this.actions, {
       issues: this.issues,
       docs: this.docs,
       design: this.design,
       search: this.search,
+      knowledge: {
+        keys: knowledge.onDemand.map((d) => d.key),
+        read: async (key) =>
+          knowledge.onDemand.find((d) => d.key === key)?.text ?? null,
+      },
       team: this.config.team,
     });
     const ctx: ToolContext = { ...chat, proposal: null };
     const text = await this.ai.answer({
-      brief: this.config.projectBrief,
-      knowledge,
+      brief: knowledge.brief ?? this.config.projectBrief,
+      knowledge: knowledge.text,
       snapshot: snapshot.render(),
       history,
       question: `${todayLine(now, this.config.releaseDate)}\n\n${question}`,

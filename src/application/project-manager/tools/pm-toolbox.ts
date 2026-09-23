@@ -116,6 +116,8 @@ export class PmToolbox {
       docs?: IDocComments;
       design?: IDesignHost;
       search?: IDocSearch;
+      // Knowledge docs left out of the prompt, readable on demand
+      knowledge?: { keys: string[]; read(key: string): Promise<string | null> };
       // Display names of the team; a reply from one of them answers a question
       team?: string[];
     } = {},
@@ -467,6 +469,23 @@ export class PmToolbox {
             },
           ]
         : []),
+      ...(this.collab.knowledge?.keys.length
+        ? [
+            {
+              name: 'read_knowledge',
+              description:
+                'Read a reference doc listed in <doc_index> (codebase or design maps, notes) that is not loaded in full. Read it before searching code when the index says it covers the area.',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  key: { type: 'string', enum: this.collab.knowledge.keys },
+                },
+                required: ['key'],
+                additionalProperties: false,
+              },
+            },
+          ]
+        : []),
       {
         name: 'offer_choices',
         description:
@@ -500,6 +519,13 @@ export class PmToolbox {
     ctx: ToolContext,
   ): Promise<string> {
     switch (name) {
+      case 'read_knowledge': {
+        const key = str(input.key, 64);
+        const text = await this.collab.knowledge?.read(key);
+        if (text === null || text === undefined)
+          throw new Error(`No reference doc "${key}".`);
+        return wrapUntrusted(`knowledge:${key}`, text);
+      }
       case 'offer_choices':
         return this.offerChoices(input, ctx);
       case 'search_code': {

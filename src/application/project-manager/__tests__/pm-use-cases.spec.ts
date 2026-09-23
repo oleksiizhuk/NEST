@@ -188,7 +188,9 @@ describe('AnswerProjectQuestionUseCase', () => {
     expect(refresh.execute).not.toHaveBeenCalled();
     const request = ai.answer.mock.calls[0][0];
     expect(request.brief).toBe('Team: A (mobile)');
-    expect(request.knowledge).toBe('<doc key="map:api">\nAPI map\n</doc>');
+    expect(request.knowledge).toBe(
+      '<doc key="map:api" updated="2026-09-23">\nAPI map\n</doc>',
+    );
     expect(request.tools.specs.map((t: { name: string }) => t.name)).toEqual([
       'search_code',
       'read_file',

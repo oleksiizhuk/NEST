@@ -26,6 +26,10 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       '\n',
     ),
     maxSnapshotAgeHours: maxAge > 0 ? maxAge : 30,
+    knowledgeInlineChars:
+      Number(config.get<string>('PM_KNOWLEDGE_INLINE_CHARS')) > 0
+        ? Number(config.get<string>('PM_KNOWLEDGE_INLINE_CHARS'))
+        : undefined,
     team: (config.get<string>('PM_TEAM') ?? '')
       .split(',')
       .map((n) => n.trim())
