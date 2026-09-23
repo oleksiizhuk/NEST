@@ -132,6 +132,8 @@ PM_AI_MODEL=            # default claude-opus-5-5; PM_AI_EFFORT / PM_DIGEST_EFFO
 PM_JIRA_PROJECTS=       # e.g. ABC,XYZ (uses JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN, read-only)
 PM_RELEASE_VERSION=     # Jira fixVersion that is the release scope for the computed forecast; unset = all open issues
 PM_JIRA_SPRINT_FIELD=   # Sprint custom field id, default customfield_10020
+PM_JIRA_BOARD_ID=       # Jira board for the jira_sprint tool (active sprint); unset = off
+PM_ALERT_CHAT_IDS=      # Who gets proactive alerts and the weekly eval report; default "owner" (TELEGRAM_OWNER_ID's DM) only
 PM_CONFLUENCE_PAGE_IDS= # Comma-separated page ids re-read on every refresh
 PM_CONFLUENCE_SPACES=   # Space keys the bot may search/read on demand; PM_CONFLUENCE_EXCLUDE_PAGE_IDS never readable
 PM_KNOWLEDGE_INLINE_CHARS= # Total knowledge chars inlined in every prompt (default 60000); above it the largest docs go to an index read with read_knowledge. Upload cap 20000 chars per doc, 60000 for ref:* keys
@@ -166,6 +168,10 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 - Actions target a test environment (`dev` or `staging`, `AdminTargets` builds one client per configured `DEV_*` / `STAGING_*` prefix) and are never executed by the model: `propose_create_brand` stores a `PendingAction` (Mongo `pmactions`, 10 min) and the reply gets a `/confirm <id>` line. `ConfirmPendingActionUseCase` runs it only for the owner or `PM_ACTION_USER_IDS`, claims it atomically, re-checks for a duplicate, and records the outcome (`done` / `failed` / `unknown`, no automatic retry). `HttpStagingAdmin` fails closed unless the base URL is HTTPS on an allowlisted host.
 - `PUT /cron/pm/knowledge/:key` (CRON_SECRET) stores reference text such as codebase maps in Mongo `pmknowledges`. `core:brief` replaces `PM_PROJECT_BRIEF` without a redeploy; `ref:*` keys and the largest docs over `PM_KNOWLEDGE_INLINE_CHARS` are listed in a `<doc_index>` and read with `read_knowledge`; the rest is loaded into the cached prompt with its update date. `GET` lists keys and sizes only.
 - Each refresh keeps the computed numbers per section, and the next snapshot shows the change since yesterday and since a week ago. The digest sees its previous digest (stored on the snapshot).
+- Proactive alerts (`WatchProjectUseCase`): readers emit signals (blocker, unassigned high-priority release work, release branch red over 2 h, PR waiting for review); the watch adds client questions unanswered over 2 working days (needs `PM_TEAM`), overdue commitments from memory, and a readiness checklist at 5/2/1 working days before `PM_RELEASE_DATE`. Each rule+subject is sent once per chat (`pmalerts`, 30 days); no model call.
+- Long-term memory (`pmmemories`): `propose_remember` stores a proposal; after Confirm it is saved with an expiry (decision 90 d, fact 30 d, commitment due + 7 d, person kept). It rides in the brief block as `<memory>`. `/memory` lists, `/forget <id>` removes (authorised only).
+- `jira_sprint` (with `PM_JIRA_BOARD_ID`) and `release_checklist` (gates from the snapshot numbers plus `core:dod`).
+- Golden eval (`RunGoldenEvalUseCase`): cases from `PUT /cron/pm/golden` run weekly through the answer pipeline (chat 0), checked by mustContain / mustNotContain (`/regex/` allowed) / maxSeconds; the report goes to the alert chats once a week.
 - Plain answers carry 👍/👎 buttons; the vote and the answer's tokens, time and tools are stored on the message log (`GET /cron/pm/feedback`).
 
 ---
@@ -204,6 +210,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 | POST | `/email/convert` | JWT | OCR an uploaded image (`file`, ≤ 5 MB) |
 | POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_advice { prompt, context?, model? }` |
 | GET | `/cron/pm/actions`, `/cron/pm/ask?q=`, `/cron/pm/targets`, `/cron/pm/feedback` | Bearer `CRON_SECRET` | Diagnostics: recent actions with outcome, one question through the PM pipeline, dev/staging sign-in check, 👍/👎 and time/tokens of recent answers |
+| GET | `/cron/pm/watch?dry=1`, `/cron/pm/eval`, `/cron/pm/memory`, `/cron/pm/golden` · PUT `/cron/pm/golden` | Bearer `CRON_SECRET` | Alerts (Vercel Cron 08/11/14 UTC weekdays; `dry=1` lists without sending), weekly golden eval (Mon 02:00–02:40), memory records, golden questions |
 | GET | `/cron/pm/refresh`, `/cron/pm/daily` | Bearer `CRON_SECRET` | Rebuild the project snapshot; daily also posts the digest (Vercel Cron, weekdays 05:00 UTC) |
 | GET | `/api/docs` | — | Swagger UI |
 

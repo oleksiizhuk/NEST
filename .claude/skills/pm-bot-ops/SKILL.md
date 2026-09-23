@@ -24,6 +24,9 @@ curl -s -H "$H" $BASE/cron/pm/refresh   | jq '.sources[] | {source, ok, chars, e
 curl -s -H "$H" $BASE/cron/pm/targets   | jq '.[] | {tier, ok, malls, categories, error}'
 curl -s -H "$H" $BASE/cron/pm/knowledge | jq
 curl -s -H "$H" "$BASE/cron/pm/feedback?limit=100" | jq '{answers, up, down, avgSeconds, avgOutputTokens, disliked}'
+curl -s -H "$H" "$BASE/cron/pm/watch?dry=1" | jq '.signals'   # what the alerts would say now; sends nothing
+curl -s -H "$H" $BASE/cron/pm/memory | jq
+curl -s -H "$H" $BASE/cron/pm/golden | jq '.[] | {id, pass: .last.pass, failures: .last.failures}'
 ```
 
 Ask the user before running them: `refresh` rebuilds the snapshot (several API calls, up to a minute), `targets` signs in to each test environment. Neither writes to Jira/Confluence/GitHub/Figma or the admin API. Do not call `/cron/pm/daily` to "test" — it posts the digest to the team chat.

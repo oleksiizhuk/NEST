@@ -23,4 +23,7 @@ export interface IPmConfig {
   // Total characters of knowledge inlined in every prompt; above it the
   // largest docs are listed and read on demand
   knowledgeInlineChars?: number;
+  // Who gets proactive alerts and the weekly eval report; default: only
+  // the owner's private chat
+  alertChatIds?: number[];
 }

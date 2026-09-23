@@ -38,6 +38,10 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       .split(',')
       .map((u) => u.trim().replace(/^@/, '').toLowerCase())
       .filter((u) => /^[a-z0-9_]{4,32}$/.test(u)),
+    alertChatIds: ids(
+      config.get<string>('PM_ALERT_CHAT_IDS') || 'owner',
+      Number(config.get<string>('TELEGRAM_OWNER_ID')),
+    ),
     actionUserIds: ids(
       config.get<string>('PM_ACTION_USER_IDS'),
       Number(config.get<string>('TELEGRAM_OWNER_ID')),

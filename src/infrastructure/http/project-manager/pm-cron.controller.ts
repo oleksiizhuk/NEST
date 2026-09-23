@@ -1,4 +1,30 @@
-import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Inject,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { IsArray } from 'class-validator';
+import { WatchProjectUseCase } from '@application/project-manager/use-cases/watch-project.use-case';
+import { RunGoldenEvalUseCase } from '@application/project-manager/use-cases/run-golden-eval.use-case';
+import {
+  IGoldenStore,
+  PM_GOLDEN,
+} from '@application/project-manager/golden.interface';
+import {
+  IPmMemory,
+  PM_MEMORY,
+} from '@application/project-manager/memory.interface';
+import { parseGolden } from '@infrastructure/http/project-manager/golden.parser';
+
+export class GoldenBody {
+  @IsArray()
+  cases: unknown[];
+}
 import {
   IPendingActions,
   PENDING_ACTIONS,
@@ -30,7 +56,63 @@ export class PmCronController {
     private readonly answer: AnswerProjectQuestionUseCase,
     @Inject(TELEGRAM_MESSAGE_REPOSITORY)
     private readonly messages: ITelegramMessageRepository,
+    private readonly watcher: WatchProjectUseCase,
+    private readonly evaluator: RunGoldenEvalUseCase,
+    @Inject(PM_GOLDEN) private readonly golden: IGoldenStore,
+    @Inject(PM_MEMORY) private readonly memory: IPmMemory,
   ) {}
+
+  // Vercel Cron, a few times on weekdays: refresh, check the alert rules,
+  // send each new event once. ?dry=1 lists what would fire from the latest
+  // snapshot, sending and recording nothing.
+  @Get('watch')
+  async watch(@Query('dry') dry?: string) {
+    const result = await this.watcher.execute(new Date(), dry === '1');
+    return {
+      dry: dry === '1',
+      sent: result.sent,
+      signals: result.signals.map((s) => ({ rule: s.rule, text: s.text })),
+    };
+  }
+
+  // Vercel Cron, weekly: runs due golden questions, reports when all are done
+  @Get('eval')
+  eval() {
+    return this.evaluator.execute();
+  }
+
+  @Get('golden')
+  async goldenList() {
+    return (await this.golden.all()).map((c) => ({
+      id: c.id,
+      question: c.question,
+      last: c.last
+        ? {
+            at: c.last.at,
+            pass: c.last.pass,
+            seconds: c.last.seconds,
+            failures: c.last.failures,
+          }
+        : null,
+    }));
+  }
+
+  @Put('golden')
+  async goldenReplace(@Body() body: GoldenBody) {
+    let cases;
+    try {
+      cases = parseGolden(body.cases);
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+    await this.golden.replaceAll(cases);
+    return { cases: cases.length };
+  }
+
+  @Get('memory')
+  async memoryList() {
+    return this.memory.active(new Date());
+  }
 
   // Ratings, time and tokens of recent answers; the 👎 ones with their
   // questions, to turn into fixes or test questions

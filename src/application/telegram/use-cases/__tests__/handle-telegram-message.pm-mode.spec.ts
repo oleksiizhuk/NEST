@@ -98,6 +98,7 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     expect(pmAnswer.execute).toHaveBeenCalledWith('Dev @dev: как дела?', [], {
       chatId: PM_GROUP,
       requesterId: 7,
+      requesterName: 'Dev @dev',
     });
     expect(persona.generateReply).not.toHaveBeenCalled();
     const [chat, text, buttons] = telegram.sendMessage.mock.calls[0];
@@ -290,7 +291,7 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     expect(pmAnswer.execute).toHaveBeenCalledWith(
       'Dev @dev: Выбираю вариант: Galleria',
       [],
-      { chatId: PM_GROUP, requesterId: 7 },
+      { chatId: PM_GROUP, requesterId: 7, requesterName: 'Dev @dev' },
     );
   });
 
@@ -353,6 +354,34 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     expect(telegram.clearButtons).toHaveBeenCalledWith(PM_GROUP, 99);
     expect(pmAnswer.execute).not.toHaveBeenCalled();
     expect(telegram.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('lists memory for anyone and lets only the authorised forget', async () => {
+    const memory = {
+      active: jest.fn().mockResolvedValue([
+        {
+          id: 'M7K2Q',
+          kind: 'commitment',
+          text: 'Ivan merges PR 12',
+          dueAt: new Date('2026-09-25T23:59:59Z'),
+        },
+      ]),
+      remove: jest.fn().mockResolvedValue(true),
+      add: jest.fn(),
+    };
+    (useCase as any).pmMemory = memory;
+    await useCase.execute(group(PM_GROUP, '/memory', 7));
+    expect(telegram.sendMessage.mock.calls[0][1]).toContain(
+      'M7K2Q · commitment, срок 2026-09-25 · Ivan merges PR 12',
+    );
+    await useCase.execute(group(PM_GROUP, '/forget M7K2Q', 7));
+    expect(memory.remove).not.toHaveBeenCalled();
+    await useCase.execute(group(PM_GROUP, '/forget m7k2q', OWNER));
+    expect(memory.remove).toHaveBeenCalledWith('m7k2q');
+    expect(telegram.sendMessage).toHaveBeenLastCalledWith(
+      PM_GROUP,
+      'Забыл M7K2Q.',
+    );
   });
 
   it('ignores button presses in a chat without PM mode', async () => {

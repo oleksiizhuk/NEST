@@ -176,6 +176,39 @@ describe('PmToolbox', () => {
     expect(c.choices).toBeUndefined();
   });
 
+  it('proposes a memory record with its author; a commitment needs a due date', async () => {
+    const withMemory = new PmToolbox(code, targets, actions as any, {
+      memory: true,
+    });
+    expect(withMemory.specs().map((t) => t.name)).toContain('propose_remember');
+    expect(
+      await withMemory.run(
+        'propose_remember',
+        { kind: 'commitment', text: 'Ivan merges PR 12' },
+        ctx(),
+      ),
+    ).toContain('NOT PROPOSED');
+    const c = { ...ctx(), requesterName: 'Ann @ann' };
+    await withMemory.run(
+      'propose_remember',
+      { kind: 'decision', text: 'Filters  are out of the release' },
+      c,
+    );
+    expect(actions.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: 'remember',
+        payload: {
+          kind: 'decision',
+          text: 'Filters are out of the release',
+          dueAt: null,
+          author: 'Ann @ann',
+        },
+        summary: 'Запомнить (decision): «Filters are out of the release»',
+      }),
+    );
+    expect(c.proposal?.id).toBe('K7Q2A');
+  });
+
   it('allows one proposal per message', async () => {
     const c = ctx();
     await toolbox.run('propose_create_brand', brandInput, c);

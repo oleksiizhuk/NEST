@@ -66,6 +66,42 @@ describe('ConfirmPendingActionUseCase', () => {
     actions.claim.mockResolvedValue(action);
   });
 
+  it('saves a confirmed memory record with its expiry, touching no environment', async () => {
+    const memory = {
+      add: jest.fn(async (r) => ({ ...r, id: 'M7K2Q', createdAt: new Date() })),
+      active: jest.fn(),
+      remove: jest.fn(),
+    };
+    const withMemory = new ConfirmPendingActionUseCase(
+      actions as any,
+      targets,
+      memory,
+    );
+    actions.claim.mockResolvedValueOnce({
+      ...action,
+      kind: 'remember',
+      payload: {
+        kind: 'commitment',
+        text: 'Ivan merges PR 12',
+        dueAt: '2026-09-25',
+        author: 'Ann',
+      },
+    });
+    const reply = await withMemory.confirm('K7Q2A', -100, 1, true);
+    expect(reply).toBe(
+      'Запомнил (M7K2Q): Ivan merges PR 12. Забыть: /forget M7K2Q',
+    );
+    expect(memory.add).toHaveBeenCalledWith({
+      kind: 'commitment',
+      text: 'Ivan merges PR 12',
+      dueAt: new Date('2026-09-25T23:59:59Z'),
+      expiresAt: new Date('2026-10-02T23:59:59Z'),
+      author: 'Ann',
+    });
+    expect(targets.target).not.toHaveBeenCalled();
+    expect(actions.finish).toHaveBeenCalledWith('K7Q2A', 'done', reply);
+  });
+
   it('refuses people who may not run actions, without touching anything', async () => {
     await expect(useCase.confirm('K7Q2A', -100, 8, false)).resolves.toMatch(
       /Нет прав/,

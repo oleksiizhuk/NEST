@@ -354,3 +354,72 @@ describe('ConfluenceCommentsReader', () => {
     expect(maxInFlight).toBeGreaterThan(1);
   });
 });
+
+describe('JiraIssueDetails sprint', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+  const okJson = (data: unknown) =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(data),
+      headers: new Headers(),
+    });
+
+  it('summarises the active sprint on the configured board', async () => {
+    const issue = (
+      key: string,
+      cat: string,
+      who: string | null,
+      created: string,
+    ) => ({
+      key,
+      fields: {
+        status: { statusCategory: { key: cat } },
+        assignee: who ? { displayName: who } : null,
+        created,
+      },
+    });
+    global.fetch = jest.fn((url: string) =>
+      url.includes('/board/12/sprint')
+        ? okJson({
+            values: [
+              {
+                id: 5,
+                name: 'Sprint 7',
+                goal: 'Checkout',
+                startDate: '2026-09-15T08:00:00Z',
+                endDate: '2026-09-29T08:00:00Z',
+              },
+            ],
+          })
+        : okJson({
+            issues: [
+              issue('A-1', 'done', 'Ann', '2026-09-10T00:00:00Z'),
+              issue('A-2', 'indeterminate', 'Ann', '2026-09-10T00:00:00Z'),
+              issue('A-3', 'new', null, '2026-09-18T00:00:00Z'),
+            ],
+          }),
+    ) as any;
+    const details = new JiraIssueDetails({
+      get: (k: string) =>
+        ((
+          {
+            JIRA_BASE_URL: 'https://x.atlassian.net',
+            PM_JIRA_PROJECTS: 'A',
+            PM_JIRA_BOARD_ID: '12',
+          } as Record<string, string>
+        )[k]),
+    } as any);
+    expect(details.sprintConfigured()).toBe(true);
+    const text = await details.activeSprint(new Date('2026-09-23T08:00:00Z'));
+    expect(text).toContain(
+      'Sprint "Sprint 7" (09-15 → 09-29, 6 calendar days left)',
+    );
+    expect(text).toContain('Goal: Checkout');
+    expect(text).toContain('Issues: 3 — done 1, in progress 1, to do 1');
+    expect(text).toContain('Created after the sprint started: 1 (A-3)');
+    expect(text).toContain('- Ann: 1 (A-2)');
+    expect(text).toContain('- UNASSIGNED: 1 (A-3)');
+  });
+});

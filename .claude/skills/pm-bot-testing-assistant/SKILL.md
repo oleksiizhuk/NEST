@@ -66,6 +66,8 @@ The bot answers in PM chats only (`TELEGRAM_PM_CHAT_IDS` or a group switched on 
 
 Feed the list from real use: every 👎 in `GET /cron/pm/feedback` (`disliked`) is a candidate golden question with what a good answer must contain.
 
+The automatable rows also run weekly on their own: upload them with `PUT /cron/pm/golden` (CRON_SECRET), body `{"cases":[{"id":"status","question":"How are we doing?","mustContain":["/ON TRACK|AT RISK|OFF TRACK/"],"mustNotContain":[],"maxSeconds":120}]}` (≤ 50 cases, `/regex/` allowed, no client data in the repo — the cases live in Mongo). The report goes to `PM_ALERT_CHAT_IDS` once a week; action rows that need a human Confirm stay manual.
+
 Run in a PM test chat, on dev, as an authorised user unless stated. Record pass/fail per item.
 
 | # | Ask / do | Pass looks like |
