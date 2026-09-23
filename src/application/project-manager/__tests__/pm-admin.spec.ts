@@ -60,12 +60,10 @@ describe('settings', () => {
 describe('PmRuntimeConfig', () => {
   it('caches for 30 s, re-reads after invalidate, falls back to env on errors', async () => {
     const store = {
-      get: jest
-        .fn()
-        .mockResolvedValue({
-          values: { dailyQuestionLimit: 3 },
-          updatedAt: null,
-        }),
+      get: jest.fn().mockResolvedValue({
+        values: { dailyQuestionLimit: 3 },
+        updatedAt: null,
+      }),
       save: jest.fn(),
     };
     const runtime = new PmRuntimeConfig(base, store);
