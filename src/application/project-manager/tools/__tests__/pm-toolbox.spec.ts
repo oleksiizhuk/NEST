@@ -50,7 +50,7 @@ const ctx = (): ToolContext => ({
 const brandInput = {
   name_en: 'Test Brand',
   name_ar: 'تست',
-  mall: 'Centria',
+  mall: 'Galleria',
   category: 'Fashion',
 };
 
@@ -60,8 +60,8 @@ describe('PmToolbox', () => {
     jest.clearAllMocks();
     staging.isConfigured.mockReturnValue(true);
     staging.findMalls.mockResolvedValue([
-      { id: 'm1', name: 'Centria' },
-      { id: 'm2', name: 'Centria Plaza' },
+      { id: 'm1', name: 'Galleria' },
+      { id: 'm2', name: 'Galleria Plaza' },
     ]);
     staging.findCategories.mockResolvedValue([{ id: 'c1', name: 'Fashion' }]);
     staging.findBrands.mockResolvedValue([]);
@@ -144,7 +144,7 @@ describe('PmToolbox', () => {
       ctx(),
     );
     expect(out).toMatch(/NOT PROPOSED/);
-    expect(out).toContain('Centria (id m1)');
+    expect(out).toContain('Galleria (id m1)');
     expect(actions.create).not.toHaveBeenCalled();
   });
 
@@ -166,11 +166,11 @@ describe('PmToolbox', () => {
 describe('pickOne', () => {
   it('prefers an exact case-insensitive match, then a single partial match', () => {
     const refs = [
-      { id: '1', name: 'Centria' },
-      { id: '2', name: 'Centria Plaza' },
+      { id: '1', name: 'Galleria' },
+      { id: '2', name: 'Galleria Plaza' },
       { id: '3', name: 'Panorama' },
     ];
-    expect(pickOne('centria', refs).match?.id).toBe('1');
+    expect(pickOne('galleria', refs).match?.id).toBe('1');
     expect(pickOne('pano', refs).match?.id).toBe('3');
     expect(pickOne('cent', refs).match).toBeNull();
   });

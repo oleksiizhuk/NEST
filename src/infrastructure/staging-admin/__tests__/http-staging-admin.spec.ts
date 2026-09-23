@@ -95,7 +95,7 @@ describe('HttpStagingAdmin', () => {
       nameEn: 'Test Brand',
       nameAr: 'تست',
       mallId: 'm1',
-      mallName: 'Centria',
+      mallName: 'Galleria',
       categoryId: 'c1',
       categoryName: 'Fashion',
       floor: 'L1',
