@@ -7,12 +7,16 @@ export class SnapshotSectionDocument {
   fetchedAt: Date;
   text: string;
   error: string | null;
+  metrics?: Record<string, number>;
 }
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false } })
 export class ProjectSnapshotDocument extends Document {
   @Prop({ type: Array, required: true })
   sections: SnapshotSectionDocument[];
+
+  @Prop({ type: String, default: null })
+  digest: string | null;
 
   createdAt: Date;
 }

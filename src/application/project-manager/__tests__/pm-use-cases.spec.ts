@@ -16,7 +16,7 @@ const config = {
 };
 const source = (
   name: 'issues' | 'docs' | 'code',
-  result: string | Error,
+  result: string | Error | { text: string; metrics?: Record<string, number> },
   configured = true,
 ) => ({
   source: name,
@@ -28,6 +28,9 @@ const source = (
 const repo = () => ({
   save: jest.fn(async (sections) => new ProjectSnapshot('new', now, sections)),
   findLatest: jest.fn(),
+  findLatestBefore: jest.fn().mockResolvedValue(null),
+  saveDigest: jest.fn().mockResolvedValue(undefined),
+  findLastDigest: jest.fn().mockResolvedValue(null),
 });
 
 describe('RefreshProjectSnapshotUseCase', () => {
@@ -72,6 +75,46 @@ describe('RefreshProjectSnapshotUseCase', () => {
         error: 'github responded 500',
       },
     ]);
+  });
+
+  it('puts the change since yesterday and since a week ago on top of a section', async () => {
+    const snapshots = repo();
+    const at = (iso: string, open: number) =>
+      new ProjectSnapshot(iso, new Date(iso), [
+        {
+          source: 'issues',
+          ok: true,
+          fetchedAt: new Date(iso),
+          text: 'old',
+          error: null,
+          metrics: { open, stale: 2 },
+        },
+      ]);
+    snapshots.findLatest.mockResolvedValue(null);
+    snapshots.findLatestBefore.mockImplementation(async (d: Date) =>
+      d.getTime() === Date.UTC(2026, 8, 23)
+        ? at('2026-09-22T05:00:00Z', 40)
+        : at('2026-09-16T05:00:00Z', 35),
+    );
+    const useCase = new RefreshProjectSnapshotUseCase(
+      [
+        source('issues', {
+          text: 'metrics block',
+          metrics: { open: 44, stale: 2 },
+        }),
+      ] as any,
+      snapshots as any,
+    );
+
+    const [section] = (await useCase.execute(now)).sections;
+
+    expect(section.metrics).toEqual({ open: 44, stale: 2 });
+    expect(section.text).toBe(
+      '## Trend (computed)\n' +
+        'Since 2026-09-22: open items 40 → 44 (+4)\n' +
+        'Since 2026-09-16: open items 35 → 44 (+9)\n\n' +
+        'metrics block',
+    );
   });
 });
 

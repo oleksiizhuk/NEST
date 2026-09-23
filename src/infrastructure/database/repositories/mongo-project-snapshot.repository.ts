@@ -31,4 +31,35 @@ export class MongoProjectSnapshotRepository
         )
       : null;
   }
+
+  async findLatestBefore(date: Date): Promise<ProjectSnapshot | null> {
+    const doc = await this.model
+      .findOne({ createdAt: { $lt: date } })
+      .sort({ createdAt: -1 })
+      .lean();
+    return doc
+      ? ProjectSnapshotMapper.toDomain(
+          doc as unknown as ProjectSnapshotDocument,
+        )
+      : null;
+  }
+
+  async saveDigest(id: string, text: string): Promise<void> {
+    await this.model.updateOne({ _id: id }, { $set: { digest: text } });
+  }
+
+  async findLastDigest(
+    before: Date,
+  ): Promise<{ createdAt: Date; text: string } | null> {
+    const doc = await this.model
+      .findOne(
+        { createdAt: { $lt: before }, digest: { $type: 'string' } },
+        { digest: 1, createdAt: 1 },
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+    return doc?.digest
+      ? { createdAt: new Date(doc.createdAt), text: doc.digest }
+      : null;
+  }
 }

@@ -74,6 +74,8 @@ export const issueMetrics = (
   doneAll: IssueFact[],
   now: Date,
   options: IssueMetricsOptions,
+  // Filled with the headline numbers, for trends across snapshots
+  out: Record<string, number> = {},
 ): string => {
   const open = openAll.filter(isWork);
   const done = doneAll.filter(isWork);
@@ -89,6 +91,9 @@ export const issueMetrics = (
   const asOf = now.toISOString().slice(0, 10);
 
   const inProgress = open.filter((i) => i.category === 'indeterminate');
+  out.open = open.length;
+  out.inProgress = inProgress.length;
+  out.done14 = recentDone.length;
   lines.push(
     `Open work items: ${open.length}${lower} — to do ${
       open.length - inProgress.length
@@ -99,6 +104,7 @@ export const issueMetrics = (
   const scope = options.releaseVersion
     ? open.filter((i) => i.fixVersions.includes(options.releaseVersion ?? ''))
     : open;
+  out.scope = scope.length;
   const scopeName = options.releaseVersion
     ? `fixVersion ${options.releaseVersion}`
     : 'all open items (no release version set)';
@@ -149,6 +155,8 @@ export const issueMetrics = (
   // Attention lists
   const unassignedHigh = open.filter((i) => !i.assignee && isHigh(i));
   const unassigned = open.filter((i) => !i.assignee);
+  out.unassigned = unassigned.length;
+  out.unassignedHigh = unassignedHigh.length;
   lines.push(
     `Unassigned: ${unassigned.length}` +
       (unassignedHigh.length
@@ -164,6 +172,7 @@ export const issueMetrics = (
         workingDaysBetween(new Date(i.statusSince), now) > STALE_WORKING_DAYS,
     )
     .sort((a, b) => (a.statusSince ?? '').localeCompare(b.statusSince ?? ''));
+  out.stale = stale.length;
   if (stale.length) {
     lines.push(
       `In progress for more than ${STALE_WORKING_DAYS} working days: ${
@@ -182,12 +191,14 @@ export const issueMetrics = (
   }
   const today = now.toISOString().slice(0, 10);
   const overdue = open.filter((i) => i.due && i.due < today);
+  out.overdue = overdue.length;
   if (overdue.length) {
     lines.push(`Past due date: ${overdue.length} — ${keys(overdue)}.`);
   }
 
   // Bugs
   const openBugs = open.filter(isBug);
+  out.openBugs = openBugs.length;
   if (openBugs.length || done.some(isBug)) {
     const byPriority = new Map<string, number>();
     openBugs.forEach((b) => {
@@ -198,6 +209,8 @@ export const issueMetrics = (
       (i) => isBug(i) && i.created && new Date(i.created) >= since,
     ).length;
     const fixedBugs = recentDone.filter(isBug).length;
+    out.bugsReported14 = newBugs;
+    out.bugsFixed14 = fixedBugs;
     lines.push(
       `Open bugs: ${openBugs.length} (${
         [...byPriority].map(([p, n]) => `${p} ${n}`).join(', ') || 'none'
@@ -272,6 +285,7 @@ export const codeMetrics = (
   now: Date,
   // Repos that could not be read; their PRs and runs are not in the numbers
   missing: string[] = [],
+  out: Record<string, number> = {},
 ): string => {
   const lines: string[] = [];
   if (missing.length) {
@@ -303,6 +317,9 @@ export const codeMetrics = (
         workingDaysBetween(new Date(p.updatedAt), now) > REVIEW_WAIT_DAYS,
     )
     .map((p) => `${p.repo}#${p.number} ${p.author}`);
+  out.openPrs = pulls.length;
+  out.waitingReview = waiting.length;
+  out.changesStalled = changes.length;
   lines.push(
     `Open PRs: ${pulls.length} (${pulls.length - ready.length} drafts).`,
   );
@@ -349,6 +366,40 @@ export const codeMetrics = (
           now,
         )} working days)`,
     );
+  out.redPipelines = red.length;
   lines.push(`Red pipelines: ${red.length ? red.join('; ') : 'none'}.`);
   return lines.join('\n');
+};
+
+const LABELS: Record<string, string> = {
+  open: 'open items',
+  inProgress: 'in progress',
+  scope: 'release scope open',
+  done14: 'finished in 14 days',
+  unassigned: 'unassigned',
+  unassignedHigh: 'unassigned high priority',
+  stale: 'stuck in progress',
+  overdue: 'past due',
+  openBugs: 'open bugs',
+  bugsReported14: 'bugs reported in 14 days',
+  bugsFixed14: 'bugs fixed in 14 days',
+  openPrs: 'open PRs',
+  waitingReview: 'PRs waiting for review',
+  changesStalled: 'stalled change requests',
+  redPipelines: 'red pipelines',
+};
+
+// "open items 40 → 44 (+4)" for every number that moved since `base`
+export const trendLine = (
+  now: Record<string, number>,
+  base: Record<string, number> | undefined,
+): string => {
+  if (!base) return 'no earlier numbers';
+  const moved = Object.keys(LABELS)
+    .filter((k) => k in now && k in base && now[k] !== base[k])
+    .map((k) => {
+      const d = now[k] - base[k];
+      return `${LABELS[k]} ${base[k]} → ${now[k]} (${d > 0 ? '+' : ''}${d})`;
+    });
+  return moved.length ? moved.join('; ') : 'no change';
 };

@@ -8,6 +8,9 @@ export interface SnapshotSection {
   // earlier copy to fall back on
   text: string;
   error: string | null;
+  // Numbers computed from this section's data (open items, PRs waiting…),
+  // kept so later snapshots can show the trend
+  metrics?: Record<string, number>;
 }
 
 export class ProjectSnapshot {
@@ -15,6 +18,8 @@ export class ProjectSnapshot {
     public readonly id: string,
     public readonly createdAt: Date,
     public readonly sections: SnapshotSection[],
+    // The digest posted from this snapshot, if any
+    public readonly digest: string | null = null,
   ) {}
 
   ageHours(now: Date): number {

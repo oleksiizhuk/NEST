@@ -10,7 +10,14 @@ import {
 import {
   IProjectSource,
   PROJECT_SOURCES,
+  SourceResult,
 } from '@application/project-manager/project-source.interface';
+import { trendLine } from '@application/project-manager/metrics';
+
+const DAY_MS = 86_400_000;
+
+const asResult = (value: string | SourceResult): SourceResult =>
+  typeof value === 'string' ? { text: value } : value;
 
 @Injectable()
 export class RefreshProjectSnapshotUseCase {
@@ -25,19 +32,49 @@ export class RefreshProjectSnapshotUseCase {
   // Sources are fetched in parallel; one failing never loses the others, and
   // a failed source keeps its previous text marked as stale.
   async execute(now = new Date()): Promise<ProjectSnapshot> {
-    const previous = await this.snapshots.findLatest().catch(() => null);
+    const startOfDay = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const [previous, yesterday, weekAgo] = await Promise.all([
+      this.snapshots.findLatest().catch(() => null),
+      // Baselines for trends: the last snapshot of an earlier day, and the
+      // last one at least a week old
+      this.snapshots.findLatestBefore(startOfDay).catch(() => null),
+      this.snapshots
+        .findLatestBefore(new Date(now.getTime() - 7 * DAY_MS))
+        .catch(() => null),
+    ]);
     const configured = this.sources.filter((s) => s.isConfigured());
 
     const results = await Promise.allSettled(configured.map((s) => s.fetch()));
     const sections: SnapshotSection[] = configured.map((source, i) => {
       const result = results[i];
       if (result.status === 'fulfilled') {
+        const { text, metrics } = asResult(result.value);
+        const trends = metrics
+          ? [yesterday, weekAgo]
+              .filter((base): base is ProjectSnapshot => Boolean(base))
+              .map(
+                (base) =>
+                  `Since ${base.createdAt
+                    .toISOString()
+                    .slice(0, 10)}: ${trendLine(
+                    metrics,
+                    base.section(source.source)?.metrics,
+                  )}`,
+              )
+          : [];
         return {
           source: source.source,
           ok: true,
           fetchedAt: now,
-          text: result.value,
+          text: trends.length
+            ? `## Trend (computed)\n${[...new Set(trends)].join(
+                '\n',
+              )}\n\n${text}`
+            : text,
           error: null,
+          ...(metrics ? { metrics } : {}),
         };
       }
       const error = String((result.reason as Error)?.message ?? result.reason);

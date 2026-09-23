@@ -98,9 +98,10 @@ describe('Jira reader', () => {
         PM_JIRA_PROJECTS: 'ABC, XYZ',
       }),
     );
-    const text = await reader.fetch();
+    const { text, metrics } = await reader.fetch();
 
     expect(text.startsWith('## Computed metrics')).toBe(true);
+    expect(metrics).toMatchObject({ open: 2, done14: 0 });
     expect(text).toContain('Open work items: 2 — to do 2, in progress 0.');
     expect(text).toContain('## Open issues: 2');
     expect(firstFields(fetchMock)).toEqual(
@@ -249,7 +250,7 @@ describe('GitHub reader', () => {
       return Promise.resolve({ ok: false, status: 404 });
     }) as any;
 
-    const text = await new GitHubActivityReader(
+    const { text, metrics } = await new GitHubActivityReader(
       env({
         PM_GITHUB_TOKEN: 't',
         PM_GITHUB_ORG: 'o',
@@ -267,6 +268,7 @@ describe('GitHub reader', () => {
     expect(text).toContain(
       'Red pipelines: api:Deploy@main since 2026-09-22 (1 working days).',
     );
+    expect(metrics).toMatchObject({ openPrs: 1, waitingReview: 1, redPipelines: 1 });
     expect(text).toContain('1 work PRs (dev 1)');
     expect(text).toContain('Branch promotions: staging→main #7 09-21');
     expect(text).toContain('Deploy@main: failure (09-22)');
