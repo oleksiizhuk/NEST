@@ -2,6 +2,7 @@ import { Remark } from '@application/project-manager/collaboration.interface';
 import {
   isAnswered,
   looksLikeQuestion,
+  openQuestions,
 } from '@application/project-manager/tools/open-questions';
 
 const r = (over: Partial<Remark>): Remark => ({
@@ -67,5 +68,47 @@ describe('open questions', () => {
         ['Eugene'],
       ),
     ).toBe(true);
+  });
+
+  it.each([
+    'Do not merge until QA',
+    'Will deploy tomorrow',
+    'Is fixed on staging',
+    'من الواضح أن التصميم جاهز',
+    'Please scan your badge',
+  ])('does not treat the statement %p as a question', (text) =>
+    expect(looksLikeQuestion(text)).toBe(false),
+  );
+
+  it('still catches those openers when there is a question mark', () => {
+    expect(looksLikeQuestion('Is it fixed on staging?')).toBe(true);
+  });
+
+  it('names the team member who answered, not the last replier', () => {
+    const q = r({
+      text: 'When is the release?',
+      createdAt: new Date(Date.now() - 86_400_000),
+      replies: [
+        {
+          author: 'Eugene Tretyak',
+          createdAt: new Date(Date.now() - 3_600_000),
+        },
+        { author: 'Faisal', createdAt: new Date() },
+      ],
+    });
+    const out = openQuestions(
+      [q],
+      { includeAnswered: true },
+      ['Eugene'],
+      new Date(),
+    );
+    expect(out).toContain('answered by Eugene Tretyak');
+    const resolved = openQuestions(
+      [r({ text: 'Why?', resolved: true, createdAt: new Date() })],
+      { includeAnswered: true },
+      [],
+      new Date(),
+    );
+    expect(resolved).toContain('· resolved');
   });
 });

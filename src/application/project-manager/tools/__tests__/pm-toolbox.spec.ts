@@ -97,7 +97,6 @@ describe('PmToolbox', () => {
       'propose_update_store',
       'propose_create_property',
       'propose_property_action',
-      'find_open_questions',
     ]);
     expect(
       (specs[0].input_schema.properties.repo as { enum: string[] }).enum,
@@ -672,6 +671,69 @@ describe('PmToolbox collaboration tools', () => {
     await expect(
       toolbox.run('figma_image_link', { id: '1:2' }, c),
     ).rejects.toThrow(/At most 3/);
+  });
+});
+
+describe('find_open_questions reliability', () => {
+  const q = (over: Partial<Remark>): Remark => ({
+    source: 'jira',
+    where: 'ABC-1',
+    link: null,
+    author: 'Faisal',
+    createdAt: new Date(),
+    text: 'Any update?',
+    replies: [],
+    resolved: false,
+    ...over,
+  });
+
+  it('keeps what fast sources returned when one is too slow, and says which was not read', async () => {
+    jest.useFakeTimers();
+    const issues = {
+      isConfigured: () => true,
+      getIssue: jest.fn(),
+      recentComments: jest.fn().mockResolvedValue([q({})]),
+    };
+    const docs = {
+      isConfigured: () => true,
+      recentComments: jest.fn(() => new Promise<Remark[]>(() => undefined)),
+    };
+    const toolbox = new PmToolbox(code, targets, actions as any, {
+      issues,
+      docs,
+    });
+    const pending = toolbox.run('find_open_questions', {}, ctx());
+    await jest.advanceTimersByTimeAsync(12_500);
+    const out = await pending;
+    jest.useRealTimers();
+    expect(out).toContain(
+      'Sources read: jira. NOT read: confluence (too slow)',
+    );
+    expect(out).toContain('«Any update?»');
+  });
+
+  it('never says "no questions" when it could not read anything', async () => {
+    const docs = {
+      isConfigured: () => true,
+      recentComments: jest.fn().mockRejectedValue(new Error('403')),
+    };
+    const toolbox = new PmToolbox(code, targets, actions as any, { docs });
+    const out = await toolbox.run(
+      'find_open_questions',
+      { sources: ['confluence', 'figma'] },
+      ctx(),
+    );
+    expect(out).toMatch(/COULD NOT CHECK/);
+    expect(out).toContain('confluence (403)');
+    expect(out).toContain('figma (not configured)');
+    expect(out).not.toMatch(/No matching questions/);
+  });
+
+  it('hides the tool when no source is configured', () => {
+    const toolbox = new PmToolbox(code, targets, actions as any, {});
+    expect(toolbox.specs().map((t) => t.name)).not.toContain(
+      'find_open_questions',
+    );
   });
 });
 

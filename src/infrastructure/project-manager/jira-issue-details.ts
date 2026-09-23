@@ -79,7 +79,25 @@ export class JiraIssueDetails implements IIssueDetails {
           : '',
       )
       .filter(Boolean);
-    const transitions = (issue.changelog?.histories ?? [])
+    // expand=changelog returns at most the first 100 entries; for a long
+    // ticket fetch the newest page so "recent changes" really are recent
+    let histories: any[] = issue.changelog?.histories ?? [];
+    const total: number = issue.changelog?.total ?? histories.length;
+    if (total > histories.length) {
+      const { data: page } = await getJson<any>(
+        `${this.baseUrl}/rest/api/3/issue/${k}/changelog?startAt=${Math.max(
+          0,
+          total - 50,
+        )}&maxResults=50`,
+        this.headers(),
+      ).catch(() => ({ data: { values: [] as any[] } }));
+      if (page.values?.length) histories = page.values;
+    }
+    histories = [...histories].sort(
+      (a: any, b: any) =>
+        new Date(a.created).getTime() - new Date(b.created).getTime(),
+    );
+    const transitions = histories
       .flatMap((h: any) =>
         (h.items ?? [])
           .filter((i: any) => i.field === 'status' || i.field === 'assignee')
