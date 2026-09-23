@@ -9,6 +9,9 @@ import {
 
 export interface IssueFact {
   key: string;
+  summary?: string;
+  // Keys of open issues this one is blocked by
+  blockedBy?: string[];
   type: string;
   status: string;
   // Jira status category: new (to do), indeterminate (in progress), done
@@ -38,6 +41,17 @@ const STALE_WORKING_DAYS = 5;
 const WIP_LIMIT = 2;
 const MAX_KEYS = 8;
 const HIGH_PRIORITIES = new Set(['highest', 'high', 'critical', 'blocker']);
+const BLOCKER_PRIORITIES = new Set(['highest', 'critical', 'blocker']);
+// Branches whose red pipeline is worth an alert
+const RELEASE_BRANCHES = new Set([
+  'main',
+  'master',
+  'production',
+  'preproduction',
+  'staging',
+  'dev',
+]);
+const RED_ALERT_MS = 2 * 3_600_000;
 
 const keys = (items: IssueFact[]): string =>
   items
@@ -50,6 +64,11 @@ const isHigh = (i: IssueFact): boolean =>
   HIGH_PRIORITIES.has((i.priority ?? '').toLowerCase());
 
 const isBug = (i: IssueFact): boolean => /bug|defect/i.test(i.type);
+
+export const isBlocker = (i: IssueFact): boolean =>
+  BLOCKER_PRIORITIES.has((i.priority ?? '').toLowerCase()) ||
+  /block/i.test(i.status) ||
+  Boolean(i.blockedBy?.length);
 
 // Epics are containers; counting them next to their stories double-counts
 const isWork = (i: IssueFact): boolean => !/^epic$/i.test(i.type);
@@ -199,6 +218,8 @@ export const issueMetrics = (
   // Bugs
   const openBugs = open.filter(isBug);
   out.openBugs = openBugs.length;
+  out.openHighBugs = openBugs.filter(isHigh).length;
+  out.blockers = scope.filter(isBlocker).length;
   if (openBugs.length || done.some(isBug)) {
     const byPriority = new Map<string, number>();
     openBugs.forEach((b) => {
@@ -279,6 +300,30 @@ const NEUTRAL = new Set([
 
 const waitStart = (p: PullFact): Date => new Date(p.readyAt || p.createdAt);
 
+// Runs arrive newest first; a workflow is red while its latest run failed.
+// "Red since" is the oldest failure in the unbroken streak we can see.
+const redStreaks = (
+  runs: RunFact[],
+): Array<[string, { red: boolean; since: string; done: boolean }]> => {
+  const streaks = new Map<
+    string,
+    { red: boolean; since: string; done: boolean }
+  >();
+  for (const run of runs) {
+    const key = `${run.repo}:${run.workflow}@${run.branch}`;
+    if (run.conclusion === null || NEUTRAL.has(run.conclusion)) continue;
+    const failed = FAILED.has(run.conclusion);
+    const streak = streaks.get(key);
+    if (!streak) {
+      streaks.set(key, { red: failed, since: run.createdAt, done: !failed });
+    } else if (!streak.done) {
+      if (failed) streak.since = run.createdAt;
+      else streak.done = true;
+    }
+  }
+  return [...streaks].filter(([, st]) => st.red);
+};
+
 export const codeMetrics = (
   pulls: PullFact[],
   runs: RunFact[],
@@ -339,33 +384,14 @@ export const codeMetrics = (
     );
   }
 
-  // Runs arrive newest first; a workflow is red while its latest run failed.
-  // "Red since" is the oldest failure in the unbroken streak we can see.
-  const streaks = new Map<
-    string,
-    { red: boolean; since: string; done: boolean }
-  >();
-  for (const run of runs) {
-    const key = `${run.repo}:${run.workflow}@${run.branch}`;
-    if (run.conclusion === null || NEUTRAL.has(run.conclusion)) continue;
-    const failed = FAILED.has(run.conclusion);
-    const streak = streaks.get(key);
-    if (!streak) {
-      streaks.set(key, { red: failed, since: run.createdAt, done: !failed });
-    } else if (!streak.done) {
-      if (failed) streak.since = run.createdAt;
-      else streak.done = true;
-    }
-  }
-  const red = [...streaks]
-    .filter(([, s]) => s.red)
-    .map(
-      ([key, s]) =>
-        `${key} since ${s.since.slice(0, 10)} (${workingDaysBetween(
-          new Date(s.since),
-          now,
-        )} working days)`,
-    );
+  const streaks = redStreaks(runs);
+  const red = streaks.map(
+    ([key, s]) =>
+      `${key} since ${s.since.slice(0, 10)} (${workingDaysBetween(
+        new Date(s.since),
+        now,
+      )} working days)`,
+  );
   out.redPipelines = red.length;
   lines.push(`Red pipelines: ${red.length ? red.join('; ') : 'none'}.`);
   return lines.join('\n');
@@ -402,4 +428,75 @@ export const trendLine = (
       return `${LABELS[k]} ${base[k]} → ${now[k]} (${d > 0 ? '+' : ''}${d})`;
     });
   return moved.length ? moved.join('; ') : 'no change';
+};
+
+const short = (i: IssueFact): string =>
+  `${i.key}${i.summary ? ` «${i.summary.slice(0, 80)}»` : ''} — ${
+    i.assignee ?? 'без исполнителя'
+  }`;
+
+// Item-level events for alerts; the same scope rules as the metrics
+export const issueSignals = (
+  openAll: IssueFact[],
+  releaseVersion: string | null,
+): Array<{ rule: string; subject: string; text: string }> => {
+  const open = openAll.filter(isWork);
+  const scope = releaseVersion
+    ? open.filter((i) => i.fixVersions.includes(releaseVersion))
+    : open;
+  return [
+    ...open.filter(isBlocker).map((i) => ({
+      rule: 'blocker',
+      subject: i.key,
+      text: `${short(i)}${
+        i.blockedBy?.length ? `, заблокирована ${i.blockedBy.join(', ')}` : ''
+      } (${i.priority ?? '-'}, ${i.status})`,
+    })),
+    ...scope
+      .filter((i) => !i.assignee && isHigh(i))
+      .map((i) => ({
+        rule: 'release-unassigned',
+        subject: i.key,
+        text: `${short(i)} (${i.priority})`,
+      })),
+  ];
+};
+
+// Red release branches (red for over 2 hours) and PRs waiting for review
+export const codeSignals = (
+  pulls: PullFact[],
+  runs: RunFact[],
+  now: Date,
+): Array<{ rule: string; subject: string; text: string }> => {
+  const signals: Array<{ rule: string; subject: string; text: string }> = [];
+  for (const p of pulls) {
+    if (
+      !p.draft &&
+      p.reviews === 0 &&
+      workingDaysBetween(waitStart(p), now) > REVIEW_WAIT_DAYS
+    ) {
+      signals.push({
+        rule: 'review-wait',
+        subject: `${p.repo}#${p.number}`,
+        text: `${p.repo}#${p.number} от ${
+          p.author
+        } ждёт ревью ${workingDaysBetween(waitStart(p), now)} раб. дн.`,
+      });
+    }
+  }
+  for (const [key, s] of redStreaks(runs)) {
+    const branch = key.split('@').pop() ?? '';
+    if (
+      RELEASE_BRANCHES.has(branch) &&
+      now.getTime() - new Date(s.since).getTime() > RED_ALERT_MS
+    ) {
+      signals.push({
+        rule: 'red-pipeline',
+        // A new red streak is a new event
+        subject: `${key}:${s.since}`,
+        text: `${key} красный с ${s.since.slice(0, 16).replace('T', ' ')} UTC`,
+      });
+    }
+  }
+  return signals;
 };

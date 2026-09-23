@@ -50,7 +50,7 @@ export class RefreshProjectSnapshotUseCase {
     const sections: SnapshotSection[] = configured.map((source, i) => {
       const result = results[i];
       if (result.status === 'fulfilled') {
-        const { text, metrics } = asResult(result.value);
+        const { text, metrics, signals } = asResult(result.value);
         const trends = metrics
           ? [yesterday, weekAgo]
               .filter((base): base is ProjectSnapshot => Boolean(base))
@@ -75,6 +75,7 @@ export class RefreshProjectSnapshotUseCase {
             : text,
           error: null,
           ...(metrics ? { metrics } : {}),
+          ...(signals?.length ? { signals } : {}),
         };
       }
       const error = String((result.reason as Error)?.message ?? result.reason);

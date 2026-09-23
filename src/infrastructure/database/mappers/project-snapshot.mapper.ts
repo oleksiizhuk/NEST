@@ -16,6 +16,7 @@ export class ProjectSnapshotMapper {
         text: s.text ?? '',
         error: s.error ?? null,
         ...(s.metrics ? { metrics: s.metrics } : {}),
+        ...(s.signals ? { signals: s.signals } : {}),
       })),
       doc.digest ?? null,
     );

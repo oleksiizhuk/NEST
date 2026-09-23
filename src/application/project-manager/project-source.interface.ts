@@ -16,4 +16,14 @@ export interface IProjectSource {
 export interface SourceResult {
   text: string;
   metrics?: Record<string, number>;
+  signals?: Signal[];
+}
+
+// Something a manager would want to hear about without asking: a new
+// blocker, a red pipeline. `rule` + `subject` identify it, so the same one
+// is reported once.
+export interface Signal {
+  rule: string;
+  subject: string;
+  text: string;
 }

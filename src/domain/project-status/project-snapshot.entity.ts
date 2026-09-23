@@ -11,6 +11,8 @@ export interface SnapshotSection {
   // Numbers computed from this section's data (open items, PRs waiting…),
   // kept so later snapshots can show the trend
   metrics?: Record<string, number>;
+  // Events for proactive alerts (rule + subject + text), from fresh data only
+  signals?: Array<{ rule: string; subject: string; text: string }>;
 }
 
 export class ProjectSnapshot {

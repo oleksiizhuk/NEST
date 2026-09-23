@@ -4,7 +4,11 @@ import {
   IProjectSource,
   SourceResult,
 } from '@application/project-manager/project-source.interface';
-import { IssueFact, issueMetrics } from '@application/project-manager/metrics';
+import {
+  IssueFact,
+  issueMetrics,
+  issueSignals,
+} from '@application/project-manager/metrics';
 import {
   basicAuth,
   getJson,
@@ -77,8 +81,21 @@ const names = (list?: Array<{ name?: string }>): string[] =>
 export const toFact = (issue: JiraIssue): IssueFact => {
   const f = issue.fields;
   const category = f.status?.statusCategory?.key;
+  const blockedBy = (f.issuelinks ?? [])
+    .filter(
+      (l) =>
+        /blocked by/i.test(l.type?.inward ?? '') &&
+        l.inwardIssue &&
+        !/done|closed|resolved|released/i.test(
+          l.inwardIssue.fields?.status?.name ?? '',
+        ),
+    )
+    .map((l) => l.inwardIssue?.key ?? '')
+    .filter(Boolean);
   return {
     key: issue.key,
+    summary: f.summary ?? '',
+    blockedBy,
     type: f.issuetype?.name ?? '?',
     status: f.status?.name ?? '?',
     category:
@@ -242,7 +259,10 @@ export class JiraIssueReader implements IProjectSource {
     ].join('\n\n');
     // Counts from a capped list are lower bounds; as a trend they would read
     // as "no change" while scope grows
-    return caps.some(Boolean) ? { text } : { text, metrics: numbers };
+    const signals = issueSignals(open.map(toFact), this.releaseVersion);
+    return caps.some(Boolean)
+      ? { text, signals }
+      : { text, metrics: numbers, signals };
   }
 
   private async search(query: Query): Promise<JiraIssue[]> {

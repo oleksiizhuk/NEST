@@ -6,6 +6,7 @@ import {
 } from '@application/project-manager/project-source.interface';
 import {
   codeMetrics,
+  codeSignals,
   PullFact,
   RunFact,
 } from '@application/project-manager/metrics';
@@ -159,14 +160,21 @@ export class GitHubActivityReader implements IProjectSource {
       )}`,
       ...activity.map((a) => a.text),
     ];
-    const drift = await Promise.all(
+    const compared = await Promise.all(
       this.compares.map((c) =>
-        this.compare(c.spec).catch(
-          (error) =>
-            `${c.spec}: could not compare (${(error as Error).message})`,
-        ),
+        this.compare(c.spec).catch((error) => ({
+          text: `${c.spec}: could not compare (${(error as Error).message})`,
+          ahead: null as number | null,
+        })),
       ),
     );
+    const drift = compared.map((c) => c.text);
+    const aheads = compared
+      .map((c) => c.ahead)
+      .filter((n): n is number => n !== null);
+    if (aheads.length === compared.length && aheads.length) {
+      numbers.driftAhead = Math.max(...aheads);
+    }
     const text = [
       ...repoParts,
       drift.length
@@ -176,7 +184,14 @@ export class GitHubActivityReader implements IProjectSource {
       .filter(Boolean)
       .join('\n\n');
     // Partial numbers would read as a trend (PRs "dropped"); keep none
-    return missing.length ? { text } : { text, metrics: numbers };
+    const signals = codeSignals(
+      activity.flatMap((a) => a.pulls),
+      activity.flatMap((a) => a.runs),
+      now,
+    );
+    return missing.length
+      ? { text, signals }
+      : { text, metrics: numbers, signals };
   }
 
   private get headers(): Record<string, string> {
@@ -316,7 +331,9 @@ export class GitHubActivityReader implements IProjectSource {
     return { text, pulls, runs: runFacts };
   }
 
-  private async compare(spec: string): Promise<string> {
+  private async compare(
+    spec: string,
+  ): Promise<{ text: string; ahead: number | null }> {
     const [repo, range] = spec.split(':');
     const { data } = await getJson<{
       ahead_by: number;
@@ -324,6 +341,9 @@ export class GitHubActivityReader implements IProjectSource {
       status: string;
     }>(`${API}/repos/${this.org}/${repo}/compare/${range}`, this.headers);
     const [baseRef, headRef] = range.split('...');
-    return `${repo}: ${headRef} is ${data.ahead_by} commits ahead of ${baseRef} (${data.behind_by} behind)`;
+    return {
+      text: `${repo}: ${headRef} is ${data.ahead_by} commits ahead of ${baseRef} (${data.behind_by} behind)`,
+      ahead: data.ahead_by,
+    };
   }
 }
