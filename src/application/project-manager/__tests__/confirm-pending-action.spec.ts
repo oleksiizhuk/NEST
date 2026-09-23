@@ -33,6 +33,7 @@ describe('ConfirmPendingActionUseCase', () => {
     create: jest.fn(),
     claim: jest.fn(),
     latestPending: jest.fn(),
+    recent: jest.fn(),
     finish: jest.fn(),
     cancel: jest.fn(),
   };

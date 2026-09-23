@@ -15,4 +15,7 @@ export interface IPmConfig {
   maxSnapshotAgeHours: number;
   // Besides the owner, who may confirm actions on staging
   actionUserIds: number[];
+  // Telegram usernames (lowercase, no @) allowed to talk to the bot in a
+  // private chat; their DMs get project-manager mode
+  dmUsernames: string[];
 }

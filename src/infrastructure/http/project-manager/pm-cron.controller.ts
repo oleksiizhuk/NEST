@@ -1,4 +1,9 @@
-import { Controller, Get, Inject, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
+import {
+  IPendingActions,
+  PENDING_ACTIONS,
+} from '@application/project-manager/pending-action.interface';
+import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
 import {
   ADMIN_TARGETS,
   IAdminTargets,
@@ -16,7 +21,54 @@ export class PmCronController {
     private readonly refresh: RefreshProjectSnapshotUseCase,
     private readonly digest: PostDailyDigestUseCase,
     @Inject(ADMIN_TARGETS) private readonly targets: IAdminTargets,
+    @Inject(PENDING_ACTIONS) private readonly actions: IPendingActions,
+    private readonly answer: AnswerProjectQuestionUseCase,
   ) {}
+
+  // Last proposals with their outcome (the audit trail)
+  @Get('actions')
+  async recentActions() {
+    return (await this.actions.recent(15)).map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      status: a.status,
+      createdAt: a.createdAt,
+      summary: a.summary,
+      result: a.result,
+    }));
+  }
+
+  // Runs one question through the PM pipeline outside Telegram and returns
+  // the answer or the exact error. Chat id 0: nothing is posted anywhere,
+  // and a proposal it creates can never be confirmed from a chat.
+  @Get('ask')
+  async ask(@Query('q') q?: string) {
+    const question = (q ?? '').slice(0, 500);
+    if (!question) return { error: 'pass ?q=' };
+    const started = Date.now();
+    try {
+      const result = await this.answer.execute(`diagnostics: ${question}`, [], {
+        chatId: 0,
+        requesterId: 0,
+      });
+      return {
+        seconds: (Date.now() - started) / 1000,
+        text: result.text,
+        proposal: result.proposal
+          ? {
+              id: result.proposal.id,
+              kind: result.proposal.kind,
+              summary: result.proposal.summary,
+            }
+          : null,
+      };
+    } catch (error) {
+      return {
+        seconds: (Date.now() - started) / 1000,
+        error: String((error as Error)?.message ?? error).slice(0, 2000),
+      };
+    }
+  }
 
   // Read-only health of each test environment: can the bot sign in and see
   // malls and categories. Creates nothing.

@@ -54,4 +54,6 @@ export interface IPendingActions {
   latestPending(chatId: number, now: Date): Promise<PendingAction | null>;
   finish(id: string, status: ActionStatus, result: string): Promise<void>;
   cancel(id: string, chatId: number): Promise<boolean>;
+  // Newest first, for diagnostics
+  recent(limit: number): Promise<Array<PendingAction & { createdAt: Date }>>;
 }

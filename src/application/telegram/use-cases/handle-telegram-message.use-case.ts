@@ -105,8 +105,22 @@ export class HandleTelegramMessageUseCase {
 
   // Project data only ever reaches chats the owner listed; any other group
   // gets the persona, which has no access to it.
-  private async isPmChat(chatId: number): Promise<boolean> {
+  private isTeamDm(msg: IncomingTelegramMessage): boolean {
+    const username = msg.from.username?.toLowerCase();
+    return Boolean(
+      this.pmAnswer &&
+        msg.chatType === 'private' &&
+        username &&
+        this.pmConfig?.dmUsernames.includes(username),
+    );
+  }
+
+  private async isPmChat(
+    chatId: number,
+    msg?: IncomingTelegramMessage,
+  ): Promise<boolean> {
     if (!this.pmAnswer) return false;
+    if (msg && this.isTeamDm(msg)) return true;
     if (this.pmConfig?.chatIds.includes(chatId)) return true;
     return this.pmChats
       ? this.pmChats.isEnabled(chatId).catch(() => false)
@@ -121,8 +135,15 @@ export class HandleTelegramMessageUseCase {
     const isGroup = chatType === 'group' || chatType === 'supergroup';
     if (!isPrivate && !isGroup) return;
 
-    // Groups are open — the mention/reply check below is the only gate there
-    if (isPrivate && msg.from.id !== this.config.ownerId) return;
+    // Groups are open — the mention/reply check below is the only gate there.
+    // In private, only the owner and the team members listed for PM DMs.
+    if (
+      isPrivate &&
+      msg.from.id !== this.config.ownerId &&
+      !this.isTeamDm(msg)
+    ) {
+      return;
+    }
 
     const botInfo = await this.telegram.getBotInfo();
 
@@ -146,7 +167,7 @@ export class HandleTelegramMessageUseCase {
       .replace(new RegExp(`@${botInfo.username}`, 'gi'), '')
       .trim();
 
-    if (await this.isPmChat(chatId)) {
+    if (await this.isPmChat(chatId, msg)) {
       await this.handleAsProjectManager(msg, cleanText || text);
       return;
     }

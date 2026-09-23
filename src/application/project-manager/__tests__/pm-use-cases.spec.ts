@@ -11,6 +11,7 @@ const config = {
   projectBrief: 'Team: A (mobile)',
   maxSnapshotAgeHours: 30,
   actionUserIds: [] as number[],
+  dmUsernames: [] as string[],
 };
 const source = (
   name: 'issues' | 'docs' | 'code',
@@ -93,6 +94,7 @@ const actions = {
   create: jest.fn(),
   claim: jest.fn(),
   latestPending: jest.fn(),
+  recent: jest.fn(),
   finish: jest.fn(),
   cancel: jest.fn(),
 };
