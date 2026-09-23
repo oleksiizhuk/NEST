@@ -20,9 +20,10 @@ export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
 };
 
 // Callback data written by the bot: "c:<id>" confirm, "x:<id>" cancel,
-// "o:<n>" the n-th option. An option's meaning is its button label, read
+// "o:<n>" the n-th option, "f:+:<token>" / "f:-:<token>" feedback. An option's meaning is its button label, read
 // back from the message itself, so nothing has to be stored for it.
 const ACTION_ID = /^[A-Z0-9]{1,16}$/i;
+const FEEDBACK = /^f:([+-]):([a-z0-9]{6,16})$/i;
 
 export const mapCallbackToIncoming = (
   query: CallbackQuery,
@@ -33,8 +34,14 @@ export const mapCallbackToIncoming = (
   const [prefix, value = ''] = data.split(':', 2);
 
   let text: string;
-  let kind: 'confirm' | 'cancel' | 'option';
-  if ((prefix === 'c' || prefix === 'x') && ACTION_ID.test(value)) {
+  let kind: 'confirm' | 'cancel' | 'option' | 'feedback';
+  let feedback: { vote: 1 | -1; token: string } | null = null;
+  const vote = data.match(FEEDBACK);
+  if (vote) {
+    kind = 'feedback';
+    feedback = { vote: vote[1] === '+' ? 1 : -1, token: vote[2] };
+    text = vote[1] === '+' ? '👍' : '👎';
+  } else if ((prefix === 'c' || prefix === 'x') && ACTION_ID.test(value)) {
     kind = prefix === 'c' ? 'confirm' : 'cancel';
     text = `/${kind} ${value}`;
   } else if (prefix === 'o') {
@@ -64,6 +71,11 @@ export const mapCallbackToIncoming = (
       firstName: query.from.first_name ?? null,
       lastName: query.from.last_name ?? null,
     },
-    callback: { id: query.id, messageId: message.message_id, kind },
+    callback: {
+      id: query.id,
+      messageId: message.message_id,
+      kind,
+      ...(feedback ?? {}),
+    },
   };
 };

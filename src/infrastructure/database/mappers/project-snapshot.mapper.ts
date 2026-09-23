@@ -15,7 +15,9 @@ export class ProjectSnapshotMapper {
         fetchedAt: new Date(s.fetchedAt),
         text: s.text ?? '',
         error: s.error ?? null,
+        ...(s.metrics ? { metrics: s.metrics } : {}),
       })),
+      doc.digest ?? null,
     );
   }
 }

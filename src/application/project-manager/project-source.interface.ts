@@ -8,6 +8,12 @@ export interface IProjectSource {
   readonly source: SnapshotSource;
   // False when credentials are missing; the section is then skipped
   isConfigured(): boolean;
-  // Compact text for the model. Throws on failure.
-  fetch(): Promise<string>;
+  // Compact text for the model, optionally with computed numbers that are
+  // kept for trends. Throws on failure.
+  fetch(): Promise<string | SourceResult>;
+}
+
+export interface SourceResult {
+  text: string;
+  metrics?: Record<string, number>;
 }

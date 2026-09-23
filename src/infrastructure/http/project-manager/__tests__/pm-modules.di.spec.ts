@@ -6,6 +6,9 @@ import { TelegramHttpModule } from '@infrastructure/http/telegram/telegram.modul
 import { PmCronController } from '@infrastructure/http/project-manager/pm-cron.controller';
 import { PmKnowledgeController } from '@infrastructure/http/project-manager/pm-knowledge.controller';
 import { TelegramController } from '@infrastructure/http/telegram/telegram.controller';
+import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
+import { PostDailyDigestUseCase } from '@application/project-manager/use-cases/post-daily-digest.use-case';
+import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
 
 // Builds the real module graph with only the Mongo models stubbed, so a
 // provider that is not exported or not injectable fails here instead of
@@ -35,6 +38,26 @@ describe('project-manager module wiring', () => {
     expect(moduleRef.get(PmCronController)).toBeDefined();
     expect(moduleRef.get(PmKnowledgeController)).toBeDefined();
     expect(moduleRef.get(TelegramController)).toBeDefined();
+    // Optional dependencies resolve to undefined when a module forgets to
+    // export them; the features behind them would then be silently off
+    const optional = (instance: object, field: string) =>
+      (instance as Record<string, unknown>)[field];
+    expect(
+      optional(moduleRef.get(PostDailyDigestUseCase), 'snapshots'),
+    ).toBeDefined();
+    expect(
+      optional(moduleRef.get(AnswerProjectQuestionUseCase), 'search'),
+    ).toBeDefined();
+    const handler = moduleRef.get(HandleTelegramMessageUseCase);
+    for (const field of [
+      'pmConfig',
+      'pmAnswer',
+      'pmRefresh',
+      'pmChats',
+      'pmConfirm',
+    ]) {
+      expect(optional(handler, field)).toBeDefined();
+    }
     await moduleRef.close();
   });
 });

@@ -1,4 +1,8 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  IProjectSnapshotRepository,
+  PROJECT_SNAPSHOT_REPOSITORY,
+} from '@domain/project-status/project-snapshot.repository.interface';
 import {
   IPmConfig,
   PM_CONFIG,
@@ -6,6 +10,7 @@ import {
 import {
   IProjectManagerAiService,
   PM_AI_SERVICE,
+  PM_UNAVAILABLE_REPLY,
 } from '@application/project-manager/project-manager-ai.interface';
 import {
   ITelegramGateway,
@@ -19,7 +24,7 @@ import {
   IKnowledgeStore,
   PM_KNOWLEDGE,
 } from '@application/project-manager/knowledge.interface';
-import { renderKnowledge } from '@application/project-manager/use-cases/answer-project-question.use-case';
+import { loadKnowledge } from '@application/project-manager/knowledge-loader';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { todayLine } from '@application/project-manager/release-clock';
 
@@ -38,6 +43,10 @@ export class PostDailyDigestUseCase {
     @Inject(PM_CONFIG) private readonly config: IPmConfig,
     @Inject(PM_CHAT_REGISTRY) private readonly chats: IPmChatRegistry,
     @Inject(PM_KNOWLEDGE) private readonly knowledge: IKnowledgeStore,
+    // Remembers each digest so the next one can say what changed since
+    @Optional()
+    @Inject(PROJECT_SNAPSHOT_REPOSITORY)
+    private readonly snapshots?: IProjectSnapshotRepository,
   ) {}
 
   // Always rebuilds the snapshot first: the digest is the morning's source
@@ -53,9 +62,26 @@ export class PostDailyDigestUseCase {
       this.logger.log('No digest chat configured; snapshot refreshed only');
       return { posted: false };
     }
+    const previous = await this.snapshots
+      ?.findLastDigest(snapshot.createdAt)
+      .catch(() => null);
+    const knowledge = await loadKnowledge(
+      this.knowledge,
+      this.config.knowledgeInlineChars,
+    );
     const text = await this.ai.digest({
-      brief: this.config.projectBrief,
-      knowledge: await renderKnowledge(this.knowledge),
+      history: previous
+        ? [
+            {
+              userText: `(${previous.createdAt
+                .toISOString()
+                .slice(0, 10)}) ${DIGEST_REQUEST}`,
+              botResponse: previous.text,
+            },
+          ]
+        : [],
+      brief: knowledge.brief ?? this.config.projectBrief,
+      knowledge: knowledge.text,
       snapshot: snapshot.render(),
       question: `${todayLine(
         now,
@@ -63,13 +89,22 @@ export class PostDailyDigestUseCase {
       )}\n\n${DIGEST_REQUEST}`,
       deadline,
     });
+    let delivered = 0;
     for (const chatId of targets) {
       // One unreachable chat (bot removed) must not stop the others
       try {
         await this.telegram.sendMessage(chatId, text);
+        delivered += 1;
       } catch (error) {
         this.logger.error(`digest to ${chatId}: ${error}`);
       }
+    }
+    // Tomorrow's digest builds on this one: keep it only if it is a real
+    // digest that someone actually received
+    if (delivered && text !== PM_UNAVAILABLE_REPLY) {
+      await this.snapshots
+        ?.saveDigest(snapshot.id, text)
+        .catch((error) => this.logger.error(`digest not saved: ${error}`));
     }
     return { posted: true };
   }

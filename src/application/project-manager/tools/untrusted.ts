@@ -23,9 +23,13 @@ export const redactSecrets = (text: string): string =>
     text,
   );
 
+// Text that closes the wrapper itself could pose as instructions after it
+const neutralizeWrapper = (text: string): string =>
+  text.replace(/<(\/?)\s*tool_data/gi, '<$1tool-data');
+
 export const wrapUntrusted = (source: string, text: string): string =>
-  `<tool_data source="${source.replace(/"/g, "'")}">\n${redactSecrets(
-    text,
+  `<tool_data source="${source.replace(/"/g, "'")}">\n${neutralizeWrapper(
+    redactSecrets(text),
   )}\n</tool_data>`;
 
 const DENIED_PATH = [

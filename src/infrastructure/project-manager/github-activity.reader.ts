@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { IProjectSource } from '@application/project-manager/project-source.interface';
+import {
+  IProjectSource,
+  SourceResult,
+} from '@application/project-manager/project-source.interface';
 import {
   codeMetrics,
   PullFact,
@@ -129,7 +132,7 @@ export class GitHubActivityReader implements IProjectSource {
     return Boolean(this.token && this.org && this.repos.length);
   }
 
-  async fetch(now = new Date()): Promise<string> {
+  async fetch(now = new Date()): Promise<SourceResult> {
     const activity = await Promise.all(
       this.repos.map((repo) =>
         this.repo(repo, now).catch(
@@ -142,6 +145,8 @@ export class GitHubActivityReader implements IProjectSource {
         ),
       ),
     );
+    const missing = this.repos.filter((_, i) => activity[i].failed);
+    const numbers: Record<string, number> = {};
     const repoParts = [
       `## Computed metrics (exact; computed ${now
         .toISOString()
@@ -149,7 +154,8 @@ export class GitHubActivityReader implements IProjectSource {
         activity.flatMap((a) => a.pulls),
         activity.flatMap((a) => a.runs),
         now,
-        this.repos.filter((_, i) => activity[i].failed),
+        missing,
+        numbers,
       )}`,
       ...activity.map((a) => a.text),
     ];
@@ -161,7 +167,7 @@ export class GitHubActivityReader implements IProjectSource {
         ),
       ),
     );
-    return [
+    const text = [
       ...repoParts,
       drift.length
         ? `## Branch drift (commits ahead)\n${drift.join('\n')}`
@@ -169,6 +175,8 @@ export class GitHubActivityReader implements IProjectSource {
     ]
       .filter(Boolean)
       .join('\n\n');
+    // Partial numbers would read as a trend (PRs "dropped"); keep none
+    return missing.length ? { text } : { text, metrics: numbers };
   }
 
   private get headers(): Record<string, string> {

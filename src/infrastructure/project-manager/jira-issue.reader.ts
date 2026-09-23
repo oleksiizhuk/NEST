@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { IProjectSource } from '@application/project-manager/project-source.interface';
+import {
+  IProjectSource,
+  SourceResult,
+} from '@application/project-manager/project-source.interface';
 import { IssueFact, issueMetrics } from '@application/project-manager/metrics';
 import {
   basicAuth,
@@ -201,7 +204,7 @@ export class JiraIssueReader implements IProjectSource {
     return Boolean(this.baseUrl && this.queries.length);
   }
 
-  async fetch(now = new Date()): Promise<string> {
+  async fetch(now = new Date()): Promise<SourceResult> {
     const parts: string[] = [];
     const results: JiraIssue[][] = [];
     const caps: boolean[] = [];
@@ -218,18 +221,28 @@ export class JiraIssueReader implements IProjectSource {
       );
     }
     const [open = [], done = []] = results;
-    const metrics = issueMetrics(open.map(toFact), done.map(toFact), now, {
-      releaseDate: this.releaseDate,
-      releaseVersion: this.releaseVersion,
-      openCapped: caps[0] ?? false,
-      doneCapped: caps[1] ?? false,
-    });
-    return [
+    const numbers: Record<string, number> = {};
+    const metrics = issueMetrics(
+      open.map(toFact),
+      done.map(toFact),
+      now,
+      {
+        releaseDate: this.releaseDate,
+        releaseVersion: this.releaseVersion,
+        openCapped: caps[0] ?? false,
+        doneCapped: caps[1] ?? false,
+      },
+      numbers,
+    );
+    const text = [
       `## Computed metrics (exact, from the lists below; computed ${now
         .toISOString()
         .slice(0, 16)} UTC)\n${metrics}`,
       ...parts,
     ].join('\n\n');
+    // Counts from a capped list are lower bounds; as a trend they would read
+    // as "no change" while scope grows
+    return caps.some(Boolean) ? { text } : { text, metrics: numbers };
   }
 
   private async search(query: Query): Promise<JiraIssue[]> {

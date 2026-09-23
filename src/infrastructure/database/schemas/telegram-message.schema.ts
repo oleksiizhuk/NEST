@@ -33,9 +33,19 @@ export class TelegramMessageDocument extends Document {
   @Prop({ type: String, default: null })
   mode: string | null;
 
+  @Prop({ type: Object, default: null })
+  usage: Record<string, unknown> | null;
+
+  @Prop({ type: String, default: null })
+  feedbackToken: string | null;
+
+  @Prop({ type: Object, default: null })
+  feedback: { vote: number; userId: number; at: Date } | null;
+
   createdAt: Date;
 }
 
 export const TelegramMessageSchema = SchemaFactory.createForClass(
   TelegramMessageDocument,
 );
+TelegramMessageSchema.index({ feedbackToken: 1 }, { sparse: true });

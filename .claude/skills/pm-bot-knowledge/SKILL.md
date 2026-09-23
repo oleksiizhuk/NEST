@@ -11,11 +11,14 @@ The repo is **public**. Nothing project-specific goes into git, this file, commi
 
 | Layer | Where | Size | Refresh when |
 |---|---|---|---|
-| Brief | Vercel env `PM_PROJECT_BRIEF` (`pm.config.ts`) | ~5 KB | team, roles, process, critical path or deadline change |
-| Knowledge docs | Mongo `pmknowledges`, keys like `map:mobile`, `map:backend`, `map:dashboard`, `map:design`, `note:staging-api` | ≤ 20 000 chars each | structure, modules, API or design changed noticeably; the bot answers "where is X" wrongly |
+| Brief | knowledge key `core:brief` (preferred, no redeploy) or Vercel env `PM_PROJECT_BRIEF` (fallback) | ~5 KB | team, roles, process, critical path or deadline change |
+| Knowledge docs | Mongo `pmknowledges`, keys like `map:mobile`, `map:backend`, `map:dashboard`, `map:design`, `note:staging-api` | ≤ 20 000 chars each (`ref:*` up to 60 000, always on demand) | structure, modules, API or design changed noticeably; the bot answers "where is X" wrongly |
 | Snapshot | Mongo, built by `RefreshProjectSnapshotUseCase` from Jira/Confluence/GitHub/Figma | automatic | never by hand — daily cron, `/refresh` (owner), or on demand when older than `PM_SNAPSHOT_MAX_AGE_HOURS` |
 
-Prompt order (`AnthropicProjectManagerService.system`): instructions → `<knowledge>` (all docs, `renderKnowledge` wraps each in `<doc key="...">`, 1 h cache breakpoint) → `<brief>` + snapshot (second 1 h breakpoint). Every doc is sent on every question, so keep them dense and delete keys that are no longer useful.
+Prompt order (`AnthropicProjectManagerService.system`): instructions → `<knowledge>` (`loadKnowledge` in `application/project-manager/knowledge-loader.ts`, 1 h cache breakpoint) → `<brief>` + snapshot (second 1 h breakpoint).
+- Docs are inlined as `<doc key="..." updated="YYYY-MM-DD">` while their total stays under `PM_KNOWLEDGE_INLINE_CHARS` (default 60 000). Beyond that the largest docs, and every `ref:*` key, go to a `<doc_index>` with size, date and first line; the bot reads them with the `read_knowledge` tool.
+- Start each doc with a one-line `# Title` that says what it covers: that line is all the index shows.
+- Short, always-needed docs (glossary, definition of done, environments without secrets) stay inline; long maps can be `ref:` from the start.
 
 ## Regenerate maps
 
@@ -71,6 +74,9 @@ curl -sS -X DELETE "$API/cron/pm/knowledge/$KEY" -H "Authorization: Bearer $(cat
 A 400 means a bad key or text over 20 000 chars; 401/403 means a wrong secret. Uploads take effect on the next question (no redeploy); the knowledge cache block is rewritten once.
 
 ## Update the brief
+
+Preferred: upload it as the knowledge key `core:brief` (see "Upload, list, delete"). It applies on the next question, no redeploy. The env route below is the fallback.
+
 
 1. Write the new brief to `<scratchpad>/brief.txt`: team and roles, process (sprints, reviews, release flow), critical path, deadline, known risks. ~5 KB, no secrets.
 2. Vercel env values are single-line; `pm.config.ts` turns a literal `\n` back into a newline. Flatten:

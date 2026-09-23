@@ -133,6 +133,8 @@ PM_JIRA_PROJECTS=       # e.g. ABC,XYZ (uses JIRA_BASE_URL / JIRA_EMAIL / JIRA_A
 PM_RELEASE_VERSION=     # Jira fixVersion that is the release scope for the computed forecast; unset = all open issues
 PM_JIRA_SPRINT_FIELD=   # Sprint custom field id, default customfield_10020
 PM_CONFLUENCE_PAGE_IDS= # Comma-separated page ids re-read on every refresh
+PM_CONFLUENCE_SPACES=   # Space keys the bot may search/read on demand; PM_CONFLUENCE_EXCLUDE_PAGE_IDS never readable
+PM_KNOWLEDGE_INLINE_CHARS= # Total knowledge chars inlined in every prompt (default 60000); above it the largest docs go to an index read with read_knowledge. Upload cap 20000 chars per doc, 60000 for ref:* keys
 PM_GITHUB_TOKEN=        # Fine-grained, read-only; with PM_GITHUB_ORG, PM_GITHUB_REPOS, PM_GITHUB_COMPARES (repo:base...head)
 PM_FIGMA_TOKEN=         # Figma personal token (read: file content, comments, versions) with PM_FIGMA_FILE_KEYS
 CRON_SECRET=            # Bearer secret Vercel Cron sends to /cron/pm/*
@@ -162,7 +164,9 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 - The webhook claims each `update_id` in Mongo first, so Telegram's retry of a slow answer is ignored.
 - Tools (`PmToolbox`, application layer): `search_code`, `read_file`, `list_dir`, `get_pull_request` over the allowlisted repos (read-only; `.env`/key files refused, secrets masked, output wrapped as `<tool_data>`), `staging_lookup`, and `propose_create_brand`. The loop in `AnthropicProjectManagerService` is bounded (8 iterations, 16 calls, deadline) and forces a final answer with `tool_choice: none`.
 - Actions target a test environment (`dev` or `staging`, `AdminTargets` builds one client per configured `DEV_*` / `STAGING_*` prefix) and are never executed by the model: `propose_create_brand` stores a `PendingAction` (Mongo `pmactions`, 10 min) and the reply gets a `/confirm <id>` line. `ConfirmPendingActionUseCase` runs it only for the owner or `PM_ACTION_USER_IDS`, claims it atomically, re-checks for a duplicate, and records the outcome (`done` / `failed` / `unknown`, no automatic retry). `HttpStagingAdmin` fails closed unless the base URL is HTTPS on an allowlisted host.
-- `PUT /cron/pm/knowledge/:key` (CRON_SECRET) stores reference text such as codebase maps in Mongo `pmknowledges`; it is loaded into the cached prompt. `GET` lists keys and sizes only.
+- `PUT /cron/pm/knowledge/:key` (CRON_SECRET) stores reference text such as codebase maps in Mongo `pmknowledges`. `core:brief` replaces `PM_PROJECT_BRIEF` without a redeploy; `ref:*` keys and the largest docs over `PM_KNOWLEDGE_INLINE_CHARS` are listed in a `<doc_index>` and read with `read_knowledge`; the rest is loaded into the cached prompt with its update date. `GET` lists keys and sizes only.
+- Each refresh keeps the computed numbers per section, and the next snapshot shows the change since yesterday and since a week ago. The digest sees its previous digest (stored on the snapshot).
+- Plain answers carry 👍/👎 buttons; the vote and the answer's tokens, time and tools are stored on the message log (`GET /cron/pm/feedback`).
 
 ---
 
@@ -199,7 +203,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 | POST | `/email/send`, `/email/sendEmailTemple` | JWT | Email the caller's own address only |
 | POST | `/email/convert` | JWT | OCR an uploaded image (`file`, ≤ 5 MB) |
 | POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_advice { prompt, context?, model? }` |
-| GET | `/cron/pm/actions`, `/cron/pm/ask?q=`, `/cron/pm/targets` | Bearer `CRON_SECRET` | Diagnostics: recent actions with outcome, one question through the PM pipeline, dev/staging sign-in check |
+| GET | `/cron/pm/actions`, `/cron/pm/ask?q=`, `/cron/pm/targets`, `/cron/pm/feedback` | Bearer `CRON_SECRET` | Diagnostics: recent actions with outcome, one question through the PM pipeline, dev/staging sign-in check, 👍/👎 and time/tokens of recent answers |
 | GET | `/cron/pm/refresh`, `/cron/pm/daily` | Bearer `CRON_SECRET` | Rebuild the project snapshot; daily also posts the digest (Vercel Cron, weekdays 05:00 UTC) |
 | GET | `/api/docs` | — | Swagger UI |
 

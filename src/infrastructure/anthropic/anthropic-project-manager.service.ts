@@ -4,6 +4,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   IProjectManagerAiService,
   PmRequest,
+  PmTurn,
+  PmUsage,
+  PM_UNAVAILABLE_REPLY,
 } from '@application/project-manager/project-manager-ai.interface';
 import { PROJECT_MANAGER_SYSTEM_PROMPT } from '@infrastructure/anthropic/project-manager.system-prompt';
 
@@ -20,8 +23,7 @@ const MAX_TOOL_CALLS = 16;
 const TOOL_TIMEOUT_MS = 15_000;
 const MAX_TOOL_CHARS_PER_TURN = 150_000;
 
-export const PM_UNAVAILABLE_REPLY =
-  'Не получилось подготовить ответ — попробуйте ещё раз чуть позже.';
+export { PM_UNAVAILABLE_REPLY };
 
 const WRAP_UP =
   'Tool budget or time is used up. Answer now from what you already have, and say briefly what you could not check.';
@@ -137,10 +139,12 @@ export class AnthropicProjectManagerService
     };
   }
 
-  async digest(request: Omit<PmRequest, 'history' | 'tools'>): Promise<string> {
+  async digest(
+    request: Omit<PmRequest, 'history' | 'tools'> & { history?: PmTurn[] },
+  ): Promise<string> {
     const response = await this.create(
       this.buildParams(
-        { ...request, history: [] },
+        { ...request, history: request.history ?? [] },
         this.digestEffort,
         DIGEST_MAX_TOKENS,
       ),
@@ -151,14 +155,31 @@ export class AnthropicProjectManagerService
   }
 
   async answer(request: PmRequest): Promise<string> {
+    const usage: PmUsage = {
+      model: this.model,
+      iterations: 0,
+      tools: [],
+      inputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      outputTokens: 0,
+      ms: 0,
+    };
+    const started = Date.now();
     try {
-      return await this.loop(request);
+      return await this.loop(request, usage);
     } finally {
       request.tools?.close?.();
+      usage.ms = Date.now() - started;
+      try {
+        request.onUsage?.(usage);
+      } catch {
+        // telemetry never breaks an answer
+      }
     }
   }
 
-  private async loop(request: PmRequest): Promise<string> {
+  private async loop(request: PmRequest, usage: PmUsage): Promise<string> {
     const deadline = request.deadline ?? Date.now() + DEFAULT_BUDGET_MS;
     const params = this.buildParams(request, this.chatEffort, CHAT_MAX_TOKENS);
     const messages = params.messages;
@@ -195,6 +216,12 @@ export class AnthropicProjectManagerService
         `answer#${iteration}`,
       );
 
+      usage.iterations += 1;
+      usage.inputTokens += response.usage?.input_tokens ?? 0;
+      usage.cacheReadTokens += response.usage?.cache_read_input_tokens ?? 0;
+      usage.cacheWriteTokens +=
+        response.usage?.cache_creation_input_tokens ?? 0;
+      usage.outputTokens += response.usage?.output_tokens ?? 0;
       if (response.stop_reason === 'refusal') return PM_UNAVAILABLE_REPLY;
       lastText = this.textOf(response) || lastText;
       if (response.stop_reason !== 'tool_use' || wrapUp || !request.tools) {
@@ -207,6 +234,7 @@ export class AnthropicProjectManagerService
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
       );
       toolCalls += calls.length;
+      usage.tools.push(...calls.map((c) => c.name));
       const timeout = Math.max(
         3_000,
         Math.min(TOOL_TIMEOUT_MS, deadline - Date.now() - RESERVE_FOR_FINAL_MS),

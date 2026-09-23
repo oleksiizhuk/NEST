@@ -15,6 +15,9 @@ export interface IncomingTelegramMessage {
   callback?: {
     id: string;
     messageId: number;
-    kind: 'confirm' | 'cancel' | 'option';
+    kind: 'confirm' | 'cancel' | 'option' | 'feedback';
+    // For feedback: 👍 = 1, 👎 = -1, and the answer's token
+    vote?: 1 | -1;
+    token?: string;
   };
 }

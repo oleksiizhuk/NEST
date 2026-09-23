@@ -2,6 +2,7 @@ import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity'
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
 import { PostDailyDigestUseCase } from '@application/project-manager/use-cases/post-daily-digest.use-case';
+import { PM_UNAVAILABLE_REPLY } from '@application/project-manager/project-manager-ai.interface';
 
 const now = new Date('2026-09-23T06:00:00Z');
 const config = {
@@ -16,7 +17,7 @@ const config = {
 };
 const source = (
   name: 'issues' | 'docs' | 'code',
-  result: string | Error,
+  result: string | Error | { text: string; metrics?: Record<string, number> },
   configured = true,
 ) => ({
   source: name,
@@ -28,6 +29,9 @@ const source = (
 const repo = () => ({
   save: jest.fn(async (sections) => new ProjectSnapshot('new', now, sections)),
   findLatest: jest.fn(),
+  findLatestBefore: jest.fn().mockResolvedValue(null),
+  saveDigest: jest.fn().mockResolvedValue(undefined),
+  findLastDigest: jest.fn().mockResolvedValue(null),
 });
 
 describe('RefreshProjectSnapshotUseCase', () => {
@@ -72,6 +76,46 @@ describe('RefreshProjectSnapshotUseCase', () => {
         error: 'github responded 500',
       },
     ]);
+  });
+
+  it('puts the change since yesterday and since a week ago on top of a section', async () => {
+    const snapshots = repo();
+    const at = (iso: string, open: number) =>
+      new ProjectSnapshot(iso, new Date(iso), [
+        {
+          source: 'issues',
+          ok: true,
+          fetchedAt: new Date(iso),
+          text: 'old',
+          error: null,
+          metrics: { open, stale: 2 },
+        },
+      ]);
+    snapshots.findLatest.mockResolvedValue(null);
+    snapshots.findLatestBefore.mockImplementation(async (d: Date) =>
+      d.getTime() === Date.UTC(2026, 8, 23)
+        ? at('2026-09-22T05:00:00Z', 40)
+        : at('2026-09-16T05:00:00Z', 35),
+    );
+    const useCase = new RefreshProjectSnapshotUseCase(
+      [
+        source('issues', {
+          text: 'metrics block',
+          metrics: { open: 44, stale: 2 },
+        }),
+      ] as any,
+      snapshots as any,
+    );
+
+    const [section] = (await useCase.execute(now)).sections;
+
+    expect(section.metrics).toEqual({ open: 44, stale: 2 });
+    expect(section.text).toBe(
+      '## Trend (computed)\n' +
+        'Since 2026-09-22: open items 40 → 44 (+4)\n' +
+        'Since 2026-09-16: open items 35 → 44 (+9)\n\n' +
+        'metrics block',
+    );
   });
 });
 
@@ -145,7 +189,9 @@ describe('AnswerProjectQuestionUseCase', () => {
     expect(refresh.execute).not.toHaveBeenCalled();
     const request = ai.answer.mock.calls[0][0];
     expect(request.brief).toBe('Team: A (mobile)');
-    expect(request.knowledge).toBe('<doc key="map:api">\nAPI map\n</doc>');
+    expect(request.knowledge).toBe(
+      '<doc key="map:api" updated="2026-09-23">\nAPI map\n</doc>',
+    );
     expect(request.tools.specs.map((t: { name: string }) => t.name)).toEqual([
       'search_code',
       'read_file',
@@ -250,6 +296,51 @@ describe('PostDailyDigestUseCase', () => {
     await expect(useCase.execute(now)).resolves.toEqual({ posted: true });
     expect(refresh.execute).toHaveBeenCalled();
     expect(telegram.sendMessage).toHaveBeenCalledWith(-100, 'digest text');
+  });
+
+  it('shows the previous digest to the model and stores the new one', async () => {
+    const snapshots = repo();
+    snapshots.findLastDigest.mockResolvedValue({
+      createdAt: new Date('2026-09-22T05:00:00Z'),
+      text: 'yesterday: AT RISK',
+    });
+    const useCase = new PostDailyDigestUseCase(
+      refresh as any,
+      ai as any,
+      telegram,
+      config,
+      chats([]),
+      knowledge as any,
+      snapshots as any,
+    );
+    await useCase.execute(now);
+    expect(snapshots.findLastDigest).toHaveBeenCalledWith(now);
+    expect(ai.digest.mock.calls[0][0].history).toEqual([
+      {
+        userText: expect.stringContaining('(2026-09-22)'),
+        botResponse: 'yesterday: AT RISK',
+      },
+    ]);
+    expect(snapshots.saveDigest).toHaveBeenCalledWith('r', 'digest text');
+  });
+
+  it('does not remember a digest nobody received or an error reply', async () => {
+    const snapshots = repo();
+    const build = () =>
+      new PostDailyDigestUseCase(
+        refresh as any,
+        ai as any,
+        telegram,
+        config,
+        chats([]),
+        knowledge as any,
+        snapshots as any,
+      );
+    telegram.sendMessage.mockRejectedValueOnce(new Error('bot removed'));
+    await build().execute(now);
+    ai.digest.mockResolvedValueOnce(PM_UNAVAILABLE_REPLY);
+    await build().execute(now);
+    expect(snapshots.saveDigest).not.toHaveBeenCalled();
   });
 
   it('only refreshes when no digest chat is configured', async () => {
