@@ -1,6 +1,9 @@
 import {
   BrandTarget,
   NewBrand,
+  NewProperty,
+  PropertyTarget,
+  StoreEdit,
 } from '@application/project-manager/staging-admin.interface';
 
 export const PENDING_ACTIONS = 'PENDING_ACTIONS';
@@ -17,13 +20,16 @@ export type ActionKind =
   | 'create_brand'
   | 'publish_brand'
   | 'unpublish_brand'
-  | 'delete_brand';
+  | 'delete_brand'
+  | 'update_store'
+  | 'create_property'
+  | 'publish_property'
+  | 'unpublish_property';
 
 export interface PendingAction {
   id: string;
   kind: ActionKind;
-  // NewBrand for create_brand, BrandTarget for the others
-  payload: NewBrand | BrandTarget;
+  payload: NewBrand | BrandTarget | StoreEdit | NewProperty | PropertyTarget;
   summary: string;
   chatId: number;
   requesterId: number;

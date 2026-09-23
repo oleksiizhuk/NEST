@@ -47,6 +47,10 @@ describe('ConfirmPendingActionUseCase', () => {
     publishStores: jest.fn(),
     unpublishStores: jest.fn(),
     deleteBrand: jest.fn(),
+    updateStore: jest.fn(),
+    createProperty: jest.fn(),
+    publishProperties: jest.fn(),
+    unpublishProperties: jest.fn(),
   };
   const targets = { tiers: () => ['staging'], target: jest.fn(() => staging) };
   const useCase = new ConfirmPendingActionUseCase(actions as any, targets);
@@ -181,5 +185,64 @@ describe('ConfirmPendingActionUseCase', () => {
     await expect(useCase.hasPending(-100)).resolves.toBe(false);
     actions.latestPending.mockResolvedValueOnce(action);
     await expect(useCase.hasPending(-100)).resolves.toBe(true);
+  });
+
+  it('edits the store on confirmation', async () => {
+    const changes = { floor: 'L2' };
+    actions.claim.mockResolvedValue({
+      ...action,
+      kind: 'update_store',
+      payload: {
+        tier: 'dev',
+        brandId: 'b1',
+        brandName: 'Test Brand',
+        storeId: 's1',
+        storeLabel: 's1 в "Galleria"',
+        changes,
+      },
+    });
+    await expect(useCase.confirm('K7Q2A', -100, 1, true)).resolves.toBe(
+      'Готово на dev: магазин s1 в "Galleria" бренда "Test Brand" обновлён.',
+    );
+    expect(staging.updateStore).toHaveBeenCalledWith('b1', 's1', changes);
+  });
+
+  it('creates and publishes a property on confirmation', async () => {
+    actions.claim.mockResolvedValueOnce({
+      ...action,
+      kind: 'create_property',
+      payload: {
+        tier: 'dev',
+        type: 'mall',
+        nameEn: 'QA Mall',
+        nameAr: 'م',
+        city: 'Riyadh',
+        district: null,
+        street: null,
+        latitude: null,
+        longitude: null,
+      },
+    });
+    staging.createProperty.mockResolvedValue({
+      id: 'p1',
+      name: 'QA Mall',
+      note: 'создан черновиком',
+    });
+    await expect(useCase.confirm('K7Q2A', -100, 1, true)).resolves.toMatch(
+      /на dev создан mall "QA Mall" \(id p1\)/,
+    );
+
+    actions.claim.mockResolvedValueOnce({
+      ...action,
+      kind: 'publish_property',
+      payload: { tier: 'dev', propertyId: 'p1', propertyName: 'QA Mall' },
+    });
+    staging.publishProperties.mockResolvedValue({
+      done: [],
+      failed: [{ id: 'p1', missingFields: ['logo'] }],
+    });
+    await expect(useCase.confirm('K7Q2A', -100, 1, true)).resolves.toBe(
+      'Не получилось опубликовать "QA Mall" на dev: не хватает logo.',
+    );
   });
 });

@@ -33,6 +33,10 @@ const staging = {
   publishStores: jest.fn(),
   unpublishStores: jest.fn(),
   deleteBrand: jest.fn(),
+  updateStore: jest.fn(),
+  createProperty: jest.fn(),
+  publishProperties: jest.fn(),
+  unpublishProperties: jest.fn(),
 };
 const targets = {
   tiers: () => (staging.isConfigured() ? ['dev', 'staging'] : []),
@@ -86,6 +90,9 @@ describe('PmToolbox', () => {
       'propose_create_brand',
       'staging_get_brand',
       'propose_brand_action',
+      'propose_update_store',
+      'propose_create_property',
+      'propose_property_action',
     ]);
     expect(
       (specs[0].input_schema.properties.repo as { enum: string[] }).enum,
@@ -280,6 +287,130 @@ describe('PmToolbox brand actions', () => {
     );
     expect(out).toMatch(/NOT PROPOSED/);
     expect(actions.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('PmToolbox stores and properties', () => {
+  const toolbox = new PmToolbox(code, targets, actions as any);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    staging.isConfigured.mockReturnValue(true);
+    staging.findBrands.mockResolvedValue([{ id: 'b1', name: 'Test Brand' }]);
+    staging.findCategories.mockResolvedValue([{ id: 'c2', name: 'Food' }]);
+    staging.findMalls.mockResolvedValue([
+      { id: 'm1', name: 'Galleria (mall)' },
+    ]);
+    staging.getBrand.mockResolvedValue({
+      id: 'b1',
+      name: 'Test Brand',
+      stores: [
+        { id: 's1', name: 'Test Brand', status: 'draft', property: 'Galleria' },
+        {
+          id: 's2',
+          name: 'Test Brand',
+          status: 'active',
+          property: 'Panorama',
+        },
+      ],
+    });
+  });
+
+  it('proposes a store edit with only the given fields, choosing the store by mall', async () => {
+    const out = await toolbox.run(
+      'propose_update_store',
+      {
+        brand: 'Test Brand',
+        store: 'panorama',
+        floor: null,
+        open: '09:00',
+        category: 'Food',
+      },
+      ctx(),
+    );
+    expect(out).toMatch(/NOT executed/);
+    const call = actions.create.mock.calls[0][0];
+    expect(call.kind).toBe('update_store');
+    expect(call.payload).toMatchObject({
+      brandId: 'b1',
+      storeId: 's2',
+      changes: { floor: null, open: '09:00', categoryId: 'c2' },
+    });
+    expect(call.payload.changes).not.toHaveProperty('wing');
+    expect(call.summary).toContain('Остальные магазины бренда не меняются');
+    expect(staging.updateStore).not.toHaveBeenCalled();
+  });
+
+  it('asks which store when the brand has several and none is named', async () => {
+    const out = await toolbox.run(
+      'propose_update_store',
+      { brand: 'Test Brand', floor: 'L2' },
+      ctx(),
+    );
+    expect(out).toMatch(/pick one store/);
+    expect(actions.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects bad hours and empty edits', async () => {
+    await expect(
+      toolbox.run(
+        'propose_update_store',
+        { brand: 'Test Brand', store: 's1', open: '9am' },
+        ctx(),
+      ),
+    ).rejects.toThrow(/HH:MM/);
+    await expect(
+      toolbox.run(
+        'propose_update_store',
+        { brand: 'Test Brand', store: 's1' },
+        ctx(),
+      ),
+    ).rejects.toThrow(/nothing to change/);
+  });
+
+  it('proposes a new mall as a draft and refuses an existing name', async () => {
+    staging.findMalls.mockResolvedValueOnce([]);
+    await toolbox.run(
+      'propose_create_property',
+      {
+        type: 'mall',
+        name_en: 'QA Mall',
+        name_ar: 'مول',
+        city: 'Riyadh',
+        latitude: 24.7,
+        longitude: 46.6,
+      },
+      ctx(),
+    );
+    const call = actions.create.mock.calls[0][0];
+    expect(call).toMatchObject({
+      kind: 'create_property',
+      payload: {
+        type: 'mall',
+        nameEn: 'QA Mall',
+        city: 'Riyadh',
+        latitude: 24.7,
+      },
+    });
+    expect(call.summary).toContain('Будет черновиком');
+
+    const out = await toolbox.run(
+      'propose_create_property',
+      { type: 'mall', name_en: 'Galleria', name_ar: 'غ', city: 'Riyadh' },
+      ctx(),
+    );
+    expect(out).toMatch(/already exists/);
+  });
+
+  it('proposes publishing a property resolved by name', async () => {
+    await toolbox.run(
+      'propose_property_action',
+      { property: 'Galleria', action: 'publish' },
+      ctx(),
+    );
+    expect(actions.create.mock.calls[0][0]).toMatchObject({
+      kind: 'publish_property',
+      payload: { propertyId: 'm1', propertyName: 'Galleria (mall)' },
+    });
   });
 });
 
