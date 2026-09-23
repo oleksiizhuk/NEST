@@ -1,7 +1,13 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  IPmMemory,
+  memoryExpiry,
+  PM_MEMORY,
+} from '@application/project-manager/memory.interface';
 import {
   IPendingActions,
   PENDING_ACTIONS,
+  MemoryProposal,
   PendingAction,
 } from '@application/project-manager/pending-action.interface';
 import {
@@ -30,6 +36,9 @@ export class ConfirmPendingActionUseCase {
   constructor(
     @Inject(PENDING_ACTIONS) private readonly actions: IPendingActions,
     @Inject(ADMIN_TARGETS) private readonly targets: IAdminTargets,
+    @Optional()
+    @Inject(PM_MEMORY)
+    private readonly memory?: IPmMemory,
   ) {}
 
   // id null = the newest pending action in this chat (a bare "да")
@@ -82,6 +91,7 @@ export class ConfirmPendingActionUseCase {
   }
 
   private async execute(action: PendingAction): Promise<string> {
+    if (action.kind === 'remember') return this.remember(action);
     // Proposals from before tiers existed were always staging
     const tier = action.payload.tier || 'staging';
     try {
@@ -108,6 +118,31 @@ export class ConfirmPendingActionUseCase {
       this.logger.error(
         `action ${action.id} failed: ${(error as Error).message}`,
       );
+      return text;
+    }
+  }
+
+  private async remember(action: PendingAction): Promise<string> {
+    const p = action.payload as MemoryProposal;
+    try {
+      if (!this.memory) throw new Error('memory is not configured');
+      const now = new Date();
+      const dueAt = p.dueAt ? new Date(`${p.dueAt}T23:59:59Z`) : null;
+      const saved = await this.memory.add({
+        kind: p.kind,
+        text: p.text,
+        dueAt,
+        expiresAt: memoryExpiry(p.kind, now, dueAt),
+        author: p.author,
+      });
+      const text = `Запомнил (${saved.id}): ${saved.text}. Забыть: /forget ${saved.id}`;
+      await this.actions.finish(action.id, 'done', text);
+      return text;
+    } catch (error) {
+      const text = `Не получилось запомнить: ${(error as Error).message}`;
+      await this.actions
+        .finish(action.id, 'failed', text)
+        .catch(() => undefined);
       return text;
     }
   }
