@@ -7,7 +7,6 @@ import {
   IPendingActions,
   PendingAction,
 } from '@application/project-manager/pending-action.interface';
-import { NewBrand } from '@application/project-manager/staging-admin.interface';
 import { PmActionDocument } from '@infrastructure/database/schemas/pm-action.schema';
 
 // Unambiguous characters only: easy to type back in /confirm
@@ -18,7 +17,7 @@ export const newActionId = (): string =>
 const toAction = (d: PmActionDocument): PendingAction => ({
   id: d.actionId,
   kind: d.kind as PendingAction['kind'],
-  payload: d.payload as unknown as NewBrand,
+  payload: d.payload as unknown as PendingAction['payload'],
   summary: d.summary,
   chatId: d.chatId,
   requesterId: d.requesterId,

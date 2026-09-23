@@ -239,7 +239,10 @@ export class HandleTelegramMessageUseCase {
       } else if (
         this.pmConfirm &&
         (command === '/confirm' ||
-          (!command && CONFIRM_WORDS.test(text.trim())))
+          (!command &&
+            CONFIRM_WORDS.test(text.trim()) &&
+            // Nothing waiting: "да" is an answer for the model, not a confirmation
+            (await this.pmConfirm.hasPending(chatId))))
       ) {
         reply = await this.pmConfirm.confirm(
           command === '/confirm' && arg ? arg : null,

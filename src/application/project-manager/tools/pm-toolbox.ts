@@ -172,6 +172,39 @@ export class PmToolbox {
           additionalProperties: false,
         },
       },
+      {
+        name: 'staging_get_brand',
+        description:
+          'Read-only: one brand on a test environment with its stores, their status (draft / active / inactive) and malls. Pass the brand name or id. Use before publishing, unpublishing or deleting, and to answer "is X published".',
+        input_schema: {
+          type: 'object',
+          properties: { tier, brand: { type: 'string', maxLength: 100 } },
+          required: ['brand'],
+          additionalProperties: false,
+        },
+      },
+      {
+        name: 'propose_brand_action',
+        description:
+          'PROPOSE publishing all stores of a brand ("publish"), taking them off ("unpublish") or deleting the brand ("delete" — a soft delete that cannot be undone through the API) on a test environment. Nothing happens until an authorised person confirms with /confirm. Same rules as propose_create_brand: only when the human in this conversation asks, one proposal per message, never claim it is done.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            tier,
+            brand: {
+              type: 'string',
+              maxLength: 100,
+              description: 'Brand name or id',
+            },
+            action: {
+              type: 'string',
+              enum: ['publish', 'unpublish', 'delete'],
+            },
+          },
+          required: ['brand', 'action'],
+          additionalProperties: false,
+        },
+      },
     ];
   }
 
@@ -245,6 +278,28 @@ export class PmToolbox {
       }
       case 'propose_create_brand':
         return this.proposeBrand(input, ctx);
+      case 'staging_get_brand': {
+        const { name: tierName, admin } = this.admin(input.tier);
+        const brand = await this.resolveBrand(admin, str(input.brand, 100));
+        if (typeof brand === 'string') return brand;
+        const details = await admin.getBrand(brand.id);
+        const stores = details.stores.length
+          ? details.stores
+              .map(
+                (st) =>
+                  `- store ${st.id}: ${st.status}${
+                    st.property ? ` in ${st.property}` : ''
+                  }`,
+              )
+              .join('\n')
+          : '(no stores)';
+        return wrapUntrusted(
+          `${tierName}:brand`,
+          `${details.name} (id ${details.id})\n${stores}`,
+        );
+      }
+      case 'propose_brand_action':
+        return this.proposeBrandAction(input, ctx);
       default:
         throw new Error(`Unknown tool ${name}`);
     }
@@ -266,6 +321,72 @@ export class PmToolbox {
       );
     }
     return { name, admin: this.targets.target(name) };
+  }
+
+  private isUuid(value: string): boolean {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    );
+  }
+
+  // A brand by id, or by name resolving to exactly one; otherwise a message
+  // for the model listing what it found
+  private async resolveBrand(
+    admin: IStagingAdmin,
+    query: string,
+  ): Promise<NamedRef | string> {
+    if (this.isUuid(query)) return { id: query, name: query };
+    const found = pickOne(query, await admin.findBrands(query));
+    if (found.match) return found.match;
+    return `No single brand matches "${query}". Candidates:\n${list(
+      found.candidates,
+    )}`;
+  }
+
+  private async proposeBrandAction(
+    input: Record<string, unknown>,
+    ctx: ToolContext,
+  ): Promise<string> {
+    const { name: tierName, admin } = this.admin(input.tier);
+    if (ctx.proposal) {
+      throw new Error(
+        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
+      );
+    }
+    const action = str(input.action, 20);
+    if (!['publish', 'unpublish', 'delete'].includes(action)) {
+      throw new Error('action must be publish, unpublish or delete');
+    }
+    const brand = await this.resolveBrand(admin, str(input.brand, 100));
+    if (typeof brand === 'string') return `NOT PROPOSED — ${brand}`;
+    const details = await admin.getBrand(brand.id);
+    const stores = details.stores.length;
+    const verb =
+      action === 'publish'
+        ? `Опубликовать все магазины (${stores}) бренда`
+        : action === 'unpublish'
+        ? `Снять с публикации все магазины (${stores}) бренда`
+        : 'Удалить (без возможности восстановления через API) бренд';
+    const summary = `${verb} "${details.name}" (id ${
+      details.id
+    }) на ${tierName.toUpperCase()} (${admin.describeTarget()}).`;
+    const stored = await this.actions.create({
+      kind: `${action}_brand` as
+        | 'publish_brand'
+        | 'unpublish_brand'
+        | 'delete_brand',
+      payload: { tier: tierName, brandId: details.id, brandName: details.name },
+      summary,
+      chatId: ctx.chatId,
+      requesterId: ctx.requesterId,
+      expiresAt: new Date(Date.now() + ACTION_TTL_MS),
+    });
+    ctx.proposal = stored;
+    return (
+      `Proposal ${stored.id} stored, NOT executed. It awaits confirmation by an authorised person ` +
+      '(the confirmation line is appended to your reply automatically). ' +
+      'Tell the user briefly what will happen; do not repeat the command.'
+    );
   }
 
   private async proposeBrand(
@@ -320,16 +441,24 @@ export class PmToolbox {
       mallName: mall.match.name,
       categoryId: category.match.id,
       categoryName: category.match.name,
-      floor: str(input.floor, 3) || 'L1',
-      wing: str(input.wing, 3) || 'A',
-      nearestGate: str(input.nearest_gate, 3) || 'G1',
+      floor: str(input.floor, 3),
+      wing: str(input.wing, 3),
+      nearestGate: str(input.nearest_gate, 3),
       open,
       close,
     };
     const summary =
       `Создать на ${tierName.toUpperCase()} (${admin.describeTarget()}) бренд "${nameEn}" / "${nameAr}"` +
       ` с магазином в "${payload.mallName}", категория "${payload.categoryName}",` +
-      ` этаж ${payload.floor}, крыло ${payload.wing}, вход ${payload.nearestGate},` +
+      ` ${
+        [
+          payload.floor ? `этаж ${payload.floor}` : '',
+          payload.wing ? `крыло ${payload.wing}` : '',
+          payload.nearestGate ? `вход ${payload.nearestGate}` : '',
+        ]
+          .filter(Boolean)
+          .join(', ') || 'этаж, крыло и вход не указаны'
+      },` +
       ` ежедневно ${open}–${close}.`;
     const action = await this.actions.create({
       kind: 'create_brand',

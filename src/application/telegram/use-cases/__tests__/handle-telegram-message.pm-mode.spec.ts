@@ -52,6 +52,7 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
   const confirm = {
     confirm: jest.fn().mockResolvedValue('Готово'),
     cancel: jest.fn().mockResolvedValue('Отменено'),
+    hasPending: jest.fn().mockResolvedValue(true),
   };
   let useCase: HandleTelegramMessageUseCase;
 
@@ -228,5 +229,15 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
   it('routes /cancel', async () => {
     await useCase.execute(group(PM_GROUP, '/cancel K7Q2A', OWNER));
     expect(confirm.cancel).toHaveBeenCalledWith('K7Q2A', PM_GROUP, true);
+  });
+
+  it('sends a bare "да" to the model when nothing waits for confirmation', async () => {
+    confirm.hasPending.mockResolvedValueOnce(false);
+    await useCase.execute({
+      ...group(PM_GROUP, 'да', OWNER),
+      replyToBotId: BOT.id,
+    });
+    expect(confirm.confirm).not.toHaveBeenCalled();
+    expect(pmAnswer.execute).toHaveBeenCalled();
   });
 });

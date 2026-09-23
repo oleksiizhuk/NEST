@@ -1,7 +1,9 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  BrandDetails,
   CreatedBrand,
+  PublishResult,
   IAdminTargets,
   IStagingAdmin,
   NamedRef,
@@ -193,6 +195,58 @@ export class HttpStagingAdmin implements IStagingAdmin {
               ? `; для публикации не хватает: ${missing.join(', ')}`
               : ''
           }`,
+    };
+  }
+
+  async getBrand(id: string): Promise<BrandDetails> {
+    const b = await this.call(
+      'GET',
+      `/businesses/brands/${encodeURIComponent(id)}`,
+    );
+    const brand = b?.body ?? b;
+    const stores: Json[] = Array.isArray(brand?.stores) ? brand.stores : [];
+    return {
+      id: String(brand?.id ?? id),
+      name: nameOf(brand),
+      stores: stores.map((st) => ({
+        id: String(st.id),
+        name: nameOf(st),
+        status: String(st.status ?? 'unknown'),
+        property:
+          (st.property && nameOf(st.property)) ??
+          (st.propertyName as string | undefined) ??
+          (st.propertyId ? String(st.propertyId) : null),
+      })),
+    };
+  }
+
+  publishStores(ids: string[]): Promise<PublishResult> {
+    return this.storeStatus('publish', ids);
+  }
+
+  unpublishStores(ids: string[]): Promise<PublishResult> {
+    return this.storeStatus('unpublish', ids);
+  }
+
+  async deleteBrand(id: string): Promise<void> {
+    await this.call('DELETE', `/businesses/brands/${encodeURIComponent(id)}`);
+  }
+
+  private async storeStatus(
+    verb: 'publish' | 'unpublish',
+    ids: string[],
+  ): Promise<PublishResult> {
+    const data = await this.call('POST', `/businesses/stores/${verb}`, { ids });
+    const done: unknown[] = data?.published ?? data?.unpublished ?? [];
+    const failed: Json[] = data?.failed ?? [];
+    return {
+      done: done.map((x) => String((x as Json)?.id ?? x)),
+      failed: failed.map((f) => ({
+        id: String(f.id),
+        missingFields: (f.missingFields ?? []).map((m: Json | string) =>
+          typeof m === 'string' ? m : String(m?.field ?? m?.code ?? '?'),
+        ),
+      })),
     };
   }
 

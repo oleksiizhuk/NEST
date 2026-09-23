@@ -43,6 +43,10 @@ describe('ConfirmPendingActionUseCase', () => {
     findCategories: jest.fn(),
     findBrands: jest.fn().mockResolvedValue([]),
     createBrand: jest.fn(),
+    getBrand: jest.fn(),
+    publishStores: jest.fn(),
+    unpublishStores: jest.fn(),
+    deleteBrand: jest.fn(),
   };
   const targets = { tiers: () => ['staging'], target: jest.fn(() => staging) };
   const useCase = new ConfirmPendingActionUseCase(actions as any, targets);
@@ -135,5 +139,47 @@ describe('ConfirmPendingActionUseCase', () => {
       expect.any(String),
     );
     expect(staging.createBrand).toHaveBeenCalledTimes(2);
+  });
+
+  it('publishes every store of the brand and reports what failed', async () => {
+    actions.claim.mockResolvedValue({
+      ...action,
+      kind: 'publish_brand',
+      payload: { tier: 'dev', brandId: 'b1', brandName: 'Test Brand' },
+    });
+    staging.getBrand.mockResolvedValue({
+      id: 'b1',
+      name: 'Test Brand',
+      stores: [{ id: 's1' }, { id: 's2' }],
+    });
+    staging.publishStores.mockResolvedValue({
+      done: ['s1'],
+      failed: [{ id: 's2', missingFields: ['image'] }],
+    });
+    const reply = await useCase.confirm('K7Q2A', -100, 1, true);
+    expect(staging.publishStores).toHaveBeenCalledWith(['s1', 's2']);
+    expect(targets.target).toHaveBeenCalledWith('dev');
+    expect(reply).toBe(
+      'Готово на dev: у бренда "Test Brand" опубликовано магазинов: 1 из 2. Не получилось для 1: s2 (не хватает: image).',
+    );
+  });
+
+  it('deletes the brand on confirmation', async () => {
+    actions.claim.mockResolvedValue({
+      ...action,
+      kind: 'delete_brand',
+      payload: { tier: 'dev', brandId: 'b1', brandName: 'Test Brand' },
+    });
+    await expect(useCase.confirm('K7Q2A', -100, 1, true)).resolves.toBe(
+      'Готово: бренд "Test Brand" удалён на dev.',
+    );
+    expect(staging.deleteBrand).toHaveBeenCalledWith('b1');
+  });
+
+  it('knows whether anything waits for confirmation', async () => {
+    actions.latestPending.mockResolvedValueOnce(null);
+    await expect(useCase.hasPending(-100)).resolves.toBe(false);
+    actions.latestPending.mockResolvedValueOnce(action);
+    await expect(useCase.hasPending(-100)).resolves.toBe(true);
   });
 });

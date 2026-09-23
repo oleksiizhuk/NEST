@@ -139,6 +139,8 @@ describe('AnswerProjectQuestionUseCase', () => {
       'get_pull_request',
       'staging_lookup',
       'propose_create_brand',
+      'staging_get_brand',
+      'propose_brand_action',
     ]);
     expect(request.question).toBe(
       'Today is Wednesday 2026-09-23. Release date 2026-09-30: 5 working days left.\n\nA: how are we doing?',

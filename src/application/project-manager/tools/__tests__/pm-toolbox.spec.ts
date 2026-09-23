@@ -29,6 +29,10 @@ const staging = {
   findCategories: jest.fn(),
   findBrands: jest.fn(),
   createBrand: jest.fn(),
+  getBrand: jest.fn(),
+  publishStores: jest.fn(),
+  unpublishStores: jest.fn(),
+  deleteBrand: jest.fn(),
 };
 const targets = {
   tiers: () => (staging.isConfigured() ? ['dev', 'staging'] : []),
@@ -80,6 +84,8 @@ describe('PmToolbox', () => {
       'get_pull_request',
       'staging_lookup',
       'propose_create_brand',
+      'staging_get_brand',
+      'propose_brand_action',
     ]);
     expect(
       (specs[0].input_schema.properties.repo as { enum: string[] }).enum,
@@ -184,6 +190,96 @@ describe('PmToolbox environments', () => {
         ctx(),
       ),
     ).rejects.toThrow(/Unknown environment "production"/);
+  });
+});
+
+describe('PmToolbox brand actions', () => {
+  const toolbox = new PmToolbox(code, targets, actions as any);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    staging.isConfigured.mockReturnValue(true);
+    staging.findMalls.mockResolvedValue([{ id: 'm1', name: 'Galleria' }]);
+    staging.findCategories.mockResolvedValue([{ id: 'c1', name: 'Fashion' }]);
+    staging.findBrands.mockResolvedValue([{ id: 'b1', name: 'Test Brand' }]);
+    staging.getBrand.mockResolvedValue({
+      id: 'b1',
+      name: 'Test Brand',
+      stores: [
+        { id: 's1', name: 'Test Brand', status: 'draft', property: 'Galleria' },
+      ],
+    });
+  });
+
+  it('leaves floor, wing and gate empty unless given', async () => {
+    staging.findBrands.mockResolvedValue([]);
+    await toolbox.run(
+      'propose_create_brand',
+      { name_en: 'New', name_ar: 'ن', mall: 'Galleria', category: 'Fashion' },
+      ctx(),
+    );
+    const call = actions.create.mock.calls[0][0];
+    expect(call.payload).toMatchObject({
+      floor: '',
+      wing: '',
+      nearestGate: '',
+    });
+    expect(call.summary).toContain('этаж, крыло и вход не указаны');
+  });
+
+  it('shows a brand with its stores and their status', async () => {
+    const out = await toolbox.run(
+      'staging_get_brand',
+      { brand: 'Test Brand' },
+      ctx(),
+    );
+    expect(out).toContain('Test Brand (id b1)');
+    expect(out).toContain('- store s1: draft in Galleria');
+  });
+
+  it('stores a publish proposal for the resolved brand, executing nothing', async () => {
+    const c = ctx();
+    const out = await toolbox.run(
+      'propose_brand_action',
+      { brand: 'Test Brand', action: 'publish' },
+      c,
+    );
+    expect(out).toMatch(/NOT executed/);
+    expect(actions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'publish_brand',
+        payload: { tier: 'dev', brandId: 'b1', brandName: 'Test Brand' },
+        summary: expect.stringContaining(
+          'Опубликовать все магазины (1) бренда "Test Brand"',
+        ),
+      }),
+    );
+    expect(staging.publishStores).not.toHaveBeenCalled();
+  });
+
+  it('accepts a brand id directly and marks delete as irreversible', async () => {
+    await toolbox.run(
+      'propose_brand_action',
+      { brand: '01a0ce3c-3716-7349-aad0-c6efd1707153', action: 'delete' },
+      ctx(),
+    );
+    expect(staging.findBrands).not.toHaveBeenCalled();
+    expect(actions.create.mock.calls[0][0].summary).toMatch(
+      /Удалить \(без возможности восстановления/,
+    );
+  });
+
+  it('asks instead of guessing when the brand name is ambiguous', async () => {
+    staging.findBrands.mockResolvedValue([
+      { id: 'b1', name: 'Test A' },
+      { id: 'b2', name: 'Test B' },
+    ]);
+    const out = await toolbox.run(
+      'propose_brand_action',
+      { brand: 'Test', action: 'publish' },
+      ctx(),
+    );
+    expect(out).toMatch(/NOT PROPOSED/);
+    expect(actions.create).not.toHaveBeenCalled();
   });
 });
 
