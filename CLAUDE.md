@@ -122,6 +122,7 @@ MCP_TOKEN=              # Bearer token an IDE must send to POST /mcp (unset = cl
 MCP_AI_MODEL=           # Default model for ask_advice: opus|sonnet|fable or raw id, default opus
 MCP_AI_EFFORT=          # low|medium|high|xhigh|max, default high
 MCP_DAILY_LIMIT=        # Hard cap on /mcp calls per UTC day (Mongo counter); unset/0 = no cap
+TELEGRAM_WEBHOOK_URL=   # Public webhook URL the prod app registers with Telegram on cold start
 CORS_ORIGIN=            # Comma-separated allowed CORS origins; unset = open
 ENV=
 PORT=3000

@@ -78,6 +78,25 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
     await this.bot.api.sendChatAction(chatId, 'typing');
   }
 
+  // Points Telegram at our webhook with the shared secret. Idempotent, so it
+  // is safe on every cold start. Returns what Telegram reported before the
+  // change, for the log.
+  async registerWebhook(
+    url: string,
+    secret: string,
+  ): Promise<{ url: string; pending: number; lastError: string | null }> {
+    const before = await this.bot.api.getWebhookInfo();
+    await this.bot.api.setWebhook(url, {
+      secret_token: secret,
+      allowed_updates: ['message'],
+    });
+    return {
+      url: before.url,
+      pending: before.pending_update_count,
+      lastError: before.last_error_message ?? null,
+    };
+  }
+
   // Local long polling only; production receives updates on the webhook.
   onMessage(handler: (message: Message) => void): void {
     this.bot.on('message', (ctx) => handler(ctx.message));
