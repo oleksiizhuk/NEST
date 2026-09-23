@@ -66,6 +66,11 @@ export class HttpStagingAdmin implements IStagingAdmin {
   private readonly email: string;
   private readonly password: string;
   private token: { value: string; until: number } | null = null;
+  private loggingIn: Promise<string> | null = null;
+  // The admin API updates the session on every request, and concurrent
+  // requests on one session deadlock there; it also allows ~10 req/min.
+  // So requests to one environment run strictly one after another.
+  private queue: Promise<unknown> = Promise.resolve();
   private company: string | null = null;
 
   constructor(config: ConfigService, prefix = 'STAGING') {
@@ -241,20 +246,42 @@ export class HttpStagingAdmin implements IStagingAdmin {
     return this.company;
   }
 
-  private async login(): Promise<string> {
-    if (this.token && this.token.until > Date.now()) return this.token.value;
-    const data = await this.raw('POST', '/auth/login', {
-      email: this.email,
-      password: this.password,
-    });
-    const value = data?.accessToken ?? data?.body?.accessToken;
-    if (!value)
-      throw new StagingHttpError(401, 'staging login returned no token');
-    this.token = { value, until: Date.now() + TOKEN_TTL_MS };
-    return value;
+  // One login shared by every concurrent caller
+  private login(): Promise<string> {
+    if (this.token && this.token.until > Date.now()) {
+      return Promise.resolve(this.token.value);
+    }
+    if (!this.loggingIn) {
+      this.loggingIn = this.raw('POST', '/auth/login', {
+        email: this.email,
+        password: this.password,
+      })
+        .then((data) => {
+          const value = data?.accessToken ?? data?.body?.accessToken;
+          if (!value) {
+            throw new StagingHttpError(401, 'login returned no token');
+          }
+          this.token = { value, until: Date.now() + TOKEN_TTL_MS };
+          return value as string;
+        })
+        .finally(() => {
+          this.loggingIn = null;
+        });
+    }
+    return this.loggingIn;
   }
 
-  private async call(
+  private serial<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(task, task);
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  private call(method: string, path: string, body?: unknown): Promise<any> {
+    return this.serial(() => this.callNow(method, path, body));
+  }
+
+  private async callNow(
     method: string,
     path: string,
     body?: unknown,
