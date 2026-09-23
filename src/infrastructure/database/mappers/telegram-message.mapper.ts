@@ -15,6 +15,7 @@ export class TelegramMessageMapper {
       doc.chatTitle,
       doc.text,
       doc.botResponse,
+      doc.mode ?? null,
     );
   }
 }

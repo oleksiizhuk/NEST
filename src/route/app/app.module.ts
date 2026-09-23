@@ -1,3 +1,4 @@
+import { PmCronHttpModule } from '@infrastructure/http/project-manager/pm-cron.module';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -21,6 +22,7 @@ import { McpHttpModule } from '@infrastructure/http/mcp/mcp.module';
     ShoppingCartModule,
     TelegramHttpModule,
     McpHttpModule,
+    PmCronHttpModule,
     ConfigModule.forRoot(),
     MongooseModule.forRootAsync({
       useFactory: () => {

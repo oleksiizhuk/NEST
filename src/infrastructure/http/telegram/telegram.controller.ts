@@ -1,4 +1,15 @@
-import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  Inject,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ITelegramUpdateRegistry,
+  TELEGRAM_UPDATE_REGISTRY,
+} from '@application/telegram/telegram-update-registry.interface';
 import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import type { Update } from 'grammy/types';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
@@ -10,6 +21,8 @@ import { TelegramWebhookGuard } from '@infrastructure/http/telegram/guards/teleg
 export class TelegramController {
   constructor(
     private readonly handleTelegramMessage: HandleTelegramMessageUseCase,
+    @Inject(TELEGRAM_UPDATE_REGISTRY)
+    private readonly updates: ITelegramUpdateRegistry,
   ) {}
 
   @Post('webhook')
@@ -19,6 +32,14 @@ export class TelegramController {
   async webhook(@Body() update: Update): Promise<{ ok: boolean }> {
     // Awaited on purpose: on serverless the response must not be sent
     // before the reply and the Mongo write complete
+    // Telegram resends an update when a slow reply outlives its wait; a
+    // second copy must not produce (and bill) a second answer
+    if (
+      typeof update?.update_id === 'number' &&
+      !(await this.updates.claim(update.update_id))
+    ) {
+      return { ok: true };
+    }
     const message = update?.message;
     if (message) {
       const incoming = mapToIncoming(message);

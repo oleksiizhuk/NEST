@@ -30,6 +30,9 @@ export class TelegramMessageDocument extends Document {
   @Prop({ type: String, default: null })
   botResponse: string | null;
 
+  @Prop({ type: String, default: null })
+  mode: string | null;
+
   createdAt: Date;
 }
 

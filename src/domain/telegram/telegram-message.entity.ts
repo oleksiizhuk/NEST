@@ -11,5 +11,7 @@ export class TelegramMessage {
     public chatTitle: string | null,
     public text: string | null,
     public botResponse: string | null,
+    // 'pm' for project-manager exchanges; null for the regular persona
+    public mode: string | null = null,
   ) {}
 }

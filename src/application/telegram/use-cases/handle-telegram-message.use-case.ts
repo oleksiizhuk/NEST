@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import {
   ITelegramGateway,
   TELEGRAM_GATEWAY,
@@ -18,6 +18,13 @@ import {
   TELEGRAM_MESSAGE_REPOSITORY,
 } from '@domain/telegram/telegram-message.repository.interface';
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
+import { PmTurn } from '@application/project-manager/project-manager-ai.interface';
+import {
+  IPmConfig,
+  PM_CONFIG,
+} from '@application/project-manager/pm.config.interface';
+import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
+import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 
 // "Оксана @oksana" — whatever Telegram gave us, falling back to the numeric id
 const authorLabel = (from: {
@@ -32,6 +39,9 @@ const authorLabel = (from: {
 };
 
 const FALLBACK_MESSAGE = 'Что-то пошло не так 😢';
+const PM_MODE = 'pm';
+const STATUS_QUESTION =
+  'How are we doing? Give the release verdict, what each person should focus on today, and the top risks.';
 const ERROR_PREFIX = 'ERROR: ';
 // Exchanges (user + bot) replayed to the model as conversation context
 const HISTORY_LIMIT = 10;
@@ -46,7 +56,19 @@ export class HandleTelegramMessageUseCase {
     @Inject(TELEGRAM_MESSAGE_REPOSITORY)
     private readonly messageRepository: ITelegramMessageRepository,
     @Inject(TELEGRAM_CONFIG) private readonly config: ITelegramConfig,
+    // Project-manager mode is optional: without it every chat gets the persona
+    @Optional()
+    @Inject(PM_CONFIG)
+    private readonly pmConfig?: IPmConfig,
+    @Optional() private readonly pmAnswer?: AnswerProjectQuestionUseCase,
+    @Optional() private readonly pmRefresh?: RefreshProjectSnapshotUseCase,
   ) {}
+
+  // Project data only ever reaches chats the owner listed; any other group
+  // gets the persona, which has no access to it.
+  private isPmChat(chatId: number): boolean {
+    return Boolean(this.pmAnswer && this.pmConfig?.chatIds.includes(chatId));
+  }
 
   async execute(msg: IncomingTelegramMessage): Promise<void> {
     const { chatId, chatType, text } = msg;
@@ -73,6 +95,11 @@ export class HandleTelegramMessageUseCase {
       .replace(new RegExp(`@${botInfo.username}`, 'gi'), '')
       .trim();
 
+    if (this.isPmChat(chatId)) {
+      await this.handleAsProjectManager(msg, cleanText || text);
+      return;
+    }
+
     try {
       await this.telegram.sendTyping(chatId);
       const history = await this.loadHistory(chatId);
@@ -94,6 +121,90 @@ export class HandleTelegramMessageUseCase {
     }
   }
 
+  private async handleAsProjectManager(
+    msg: IncomingTelegramMessage,
+    text: string,
+  ): Promise<void> {
+    const { chatId } = msg;
+    const { pmAnswer, pmRefresh } = this;
+    if (!pmAnswer || !pmRefresh) return;
+    const command = text.trim().split(/\s+/)[0].toLowerCase().split('@')[0];
+    // Opus can think for a minute or two; keep the "typing…" indicator alive
+    const typing = setInterval(
+      () => void this.telegram.sendTyping(chatId).catch(() => undefined),
+      5000,
+    );
+    try {
+      await this.telegram.sendTyping(chatId);
+      let reply: string;
+      if (command === '/refresh') {
+        if (msg.from.id !== this.config.ownerId) return;
+        const snapshot = await pmRefresh.execute();
+        reply =
+          'Данные обновлены: ' +
+          snapshot.sections
+            .map((s) => `${s.source} ${s.ok ? 'ok' : `ошибка (${s.error})`}`)
+            .join(', ');
+      } else {
+        const question =
+          command === '/status' || command === '/start'
+            ? STATUS_QUESTION
+            : text;
+        const history = await this.loadPmHistory(chatId);
+        reply = await pmAnswer.execute(
+          `${authorLabel(msg.from)}: ${question}`,
+          history,
+        );
+      }
+      await this.telegram.sendMessage(chatId, reply);
+      await this.saveLog(msg, reply, PM_MODE);
+    } catch (error) {
+      this.logger.error(error);
+      await this.telegram
+        .sendMessage(chatId, FALLBACK_MESSAGE)
+        .catch(() => undefined);
+      await this.saveLog(
+        msg,
+        ERROR_PREFIX + (error as Error).message,
+        PM_MODE,
+      ).catch((logError) => this.logger.error(logError));
+    } finally {
+      clearInterval(typing);
+    }
+  }
+
+  private async loadPmHistory(chatId: number): Promise<PmTurn[]> {
+    try {
+      const logs = await this.messageRepository.findByChatId(
+        chatId,
+        HISTORY_LIMIT * 2,
+      );
+      return logs
+        .slice()
+        .reverse()
+        .filter(
+          (log) =>
+            log.mode === PM_MODE &&
+            log.text &&
+            log.botResponse &&
+            !log.botResponse.startsWith(ERROR_PREFIX),
+        )
+        .slice(-6)
+        .map((log) => ({
+          userText: `${authorLabel({
+            id: log.userId,
+            username: log.username,
+            firstName: log.firstName,
+            lastName: log.lastName,
+          })}: ${log.text}`,
+          botResponse: log.botResponse as string,
+        }));
+    } catch (error) {
+      this.logger.error(error);
+      return [];
+    }
+  }
+
   // Context is a nice-to-have: a repository failure degrades to a contextless
   // reply rather than killing the whole turn
   private async loadHistory(chatId: number): Promise<IConversationTurn[]> {
@@ -108,6 +219,7 @@ export class HandleTelegramMessageUseCase {
         .reverse() // repository returns newest first
         .filter(
           (log) =>
+            log.mode !== PM_MODE &&
             log.text &&
             log.botResponse &&
             !log.botResponse.startsWith(ERROR_PREFIX) &&
@@ -135,6 +247,7 @@ export class HandleTelegramMessageUseCase {
   private saveLog(
     msg: IncomingTelegramMessage,
     botResponse: string | null,
+    mode?: string,
   ): Promise<unknown> {
     return this.messageRepository.save({
       userId: msg.from.id,
@@ -146,6 +259,7 @@ export class HandleTelegramMessageUseCase {
       chatTitle: msg.chatTitle,
       text: msg.text,
       botResponse,
+      ...(mode ? { mode } : {}),
     });
   }
 }
