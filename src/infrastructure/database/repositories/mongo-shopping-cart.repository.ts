@@ -3,7 +3,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { IShoppingCartRepository } from '@domain/shopping-cart/shopping-cart.repository.interface';
 import { ShoppingCart } from '@domain/shopping-cart/shopping-cart.entity';
-import { Product } from '@domain/product/product.entity';
 import { ShoppingCartDocument } from '@infrastructure/database/schemas/shopping-cart.schema';
 import { ShoppingCartMapper } from '@infrastructure/database/mappers/shopping-cart.mapper';
 
@@ -13,10 +12,15 @@ export class MongoShoppingCartRepository implements IShoppingCartRepository {
     @InjectModel('ShoppingCart') private cartModel: Model<ShoppingCartDocument>,
   ) {}
 
+  // items.item is a Product reference; populate it so the domain sees
+  // real products (a deleted product comes back null and is dropped).
   async findById(cartId: string): Promise<ShoppingCart | null> {
-    const doc = await this.cartModel.findOne({ id: cartId }).lean();
+    const doc = await this.cartModel
+      .findOne({ id: cartId })
+      .populate('items.item')
+      .lean();
     return doc
-      ? ShoppingCartMapper.toDomain(doc as ShoppingCartDocument)
+      ? ShoppingCartMapper.toDomain(doc as unknown as ShoppingCartDocument)
       : null;
   }
 
@@ -29,30 +33,23 @@ export class MongoShoppingCartRepository implements IShoppingCartRepository {
     return ShoppingCartMapper.toDomain(doc);
   }
 
-  async addItem(
-    cartId: string,
-    item: Product,
-    count: number,
-  ): Promise<ShoppingCart> {
-    const doc = await this.cartModel.findOne({ id: cartId });
-    if (!doc) {
-      throw new Error('Shopping cart not found');
-    }
-
-    const existingIndex = doc.items.findIndex(
-      (ci) => (ci.item as any).id === item.id,
+  async save(cart: ShoppingCart): Promise<ShoppingCart> {
+    await this.cartModel.updateOne(
+      { id: cart.id },
+      {
+        $set: {
+          items: cart.items.map(({ count, item }) => ({
+            count,
+            item: item.id,
+          })),
+          price: cart.price,
+        },
+      },
     );
-    if (existingIndex >= 0) {
-      doc.items[existingIndex].count += count;
-    } else {
-      doc.items.push({ count, item: item as any });
-    }
+    return cart;
+  }
 
-    doc.price = ShoppingCart.calculatePrice(
-      doc.items.map((ci) => ({ count: ci.count, item: item })),
-    ) as any;
-
-    await doc.save();
-    return ShoppingCartMapper.toDomain(doc);
+  async delete(cartId: string): Promise<void> {
+    await this.cartModel.deleteOne({ id: cartId });
   }
 }

@@ -23,7 +23,7 @@ Imports use the path aliases `@domain/*`, `@application/*`, `@infrastructure/*`,
    - `repositories/mongo-<entity>.repository.ts` → `Mongo<Entity>Repository implements I<Entity>Repository`, maps every result through the mapper.
 4. **HTTP** — `src/infrastructure/http/<domain>/`
    - `dto/<entity>.dto.ts` with `class-validator` decorators and `@ApiProperty` for Swagger.
-   - Controller: parse the request, call one use case, return the result. No business logic. `@ApiTags`, `@ApiBearerAuth()` + `@UseGuards(AuthGuard('jwt'))` on protected routes, as in the user and cart controllers. The JWT user email is `req.user.email.email`.
+   - Controller: parse the request, call one use case, return the result. No business logic. `@ApiTags`, `@ApiBearerAuth()` + `@UseGuards(JwtAuthGuard)` on protected routes, as in the user and cart controllers. Get the caller with `@CurrentUserEmail()`; a route that changes a resource must check the caller owns it (see `assertAccountOwner`).
    - Module: `MongooseModule.forFeature`, `{ provide: <ENTITY>_REPOSITORY, useClass: Mongo<Entity>Repository }`, every use case in `providers`, and `exports` for what other modules need.
 5. **Wire** — import the module in `src/route/app/app.module.ts`.
 6. **Tests** — `__tests__/<name>.spec.ts` next to the code. Use cases get unit specs with a mocked repository object (no `Test.createTestingModule`, no Mongo); mappers and entity logic get plain specs. Patterns: `.claude/references/testing-guide.md`.
@@ -33,7 +33,6 @@ Imports use the path aliases `@domain/*`, `@application/*`, `@infrastructure/*`,
 
 - Secrets and URIs come from `ConfigService`/env, never literals.
 - Never return a user's `password`; use `toPublicProfile()`.
-- `src/route/` except `route/app` and `route/email` is legacy — do not extend it.
 - Comments only for what the code cannot say.
 
 ## Validate

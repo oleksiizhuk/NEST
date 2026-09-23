@@ -1,37 +1,27 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { ForbiddenException } from '@nestjs/common';
 import { DeleteUserUseCase } from '@application/user/use-cases/delete-user.use-case';
-import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
 import { User } from '@domain/user/user.entity';
 
-const mockUser = new User(
-  'id1',
-  'John',
-  'Doe',
-  30,
-  'john@test.com',
-  'pass',
-  null,
-);
-
 describe('DeleteUserUseCase', () => {
-  let useCase: DeleteUserUseCase;
-  const mockRepo = { delete: jest.fn() };
+  const repo = { findByEmail: jest.fn(), delete: jest.fn() };
+  const useCase = new DeleteUserUseCase(repo as any);
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        DeleteUserUseCase,
-        { provide: USER_REPOSITORY, useValue: mockRepo },
-      ],
-    }).compile();
-    useCase = module.get(DeleteUserUseCase);
+  beforeEach(() => {
     jest.clearAllMocks();
+    repo.findByEmail.mockResolvedValue(
+      new User('u1', 'John', 'Doe', 30, 'john@test.com', 'h', null),
+    );
   });
 
-  it('deletes and returns user', async () => {
-    mockRepo.delete.mockResolvedValue(mockUser);
-    const result = await useCase.execute('id1');
-    expect(result).toBe(mockUser);
-    expect(mockRepo.delete).toHaveBeenCalledWith('id1');
+  it('deletes the caller’s own account', async () => {
+    await useCase.execute('john@test.com', 'u1');
+    expect(repo.delete).toHaveBeenCalledWith('u1');
+  });
+
+  it('forbids deleting another user', async () => {
+    await expect(useCase.execute('john@test.com', 'u2')).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(repo.delete).not.toHaveBeenCalled();
   });
 });

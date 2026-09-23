@@ -1,4 +1,9 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   IShoppingCartRepository,
   SHOPPING_CART_REPOSITORY,
@@ -12,6 +17,7 @@ import {
   PRODUCT_REPOSITORY,
 } from '@domain/product/product.repository.interface';
 import { ShoppingCart } from '@domain/shopping-cart/shopping-cart.entity';
+import { findCartOwnerOrThrow } from '@application/shopping-cart/load-cart-owner';
 
 @Injectable()
 export class AddItemUseCase {
@@ -29,10 +35,7 @@ export class AddItemUseCase {
     itemId: string,
     count: number,
   ): Promise<ShoppingCart> {
-    const user = await this.userRepository.findByEmail(email);
-    if (!user.shoppingCartId) {
-      throw new BadRequestException('shoppingCart is null');
-    }
+    const user = await findCartOwnerOrThrow(this.userRepository, email);
 
     const item = await this.productRepository.findById(itemId);
     if (!item) {
@@ -41,6 +44,16 @@ export class AddItemUseCase {
       );
     }
 
-    return this.cartRepository.addItem(user.shoppingCartId, item, count);
+    const cart = await this.cartRepository.findById(user.shoppingCartId);
+    if (!cart) {
+      throw new NotFoundException('Shopping cart not found');
+    }
+
+    try {
+      cart.addItem(item, count);
+    } catch (e) {
+      throw new BadRequestException((e as Error).message);
+    }
+    return this.cartRepository.save(cart);
   }
 }

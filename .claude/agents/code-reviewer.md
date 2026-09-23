@@ -15,7 +15,7 @@ Use exactly the scope the caller named. Default: `git diff master...HEAD` plus `
 
 - Clean Architecture: `src/domain` imports nothing from NestJS or Mongoose; use cases depend on repository interfaces via DI tokens; controllers are thin; business rules live in entities; mappers are static.
 - Every provider a controller needs is in its module's `providers`; modules are imported in `src/route/app/app.module.ts`.
-- Protected routes use `@UseGuards(AuthGuard('jwt'))`; DTOs validate input with `class-validator`; secrets come from env; `password` never leaves the API (`toPublicProfile()`).
+- Protected routes use `@UseGuards(JwtAuthGuard)` and read the caller via `@CurrentUserEmail()`; DTOs validate input with `class-validator`; secrets come from env; `password` never leaves the API (`toPublicProfile()`).
 - Specs live in `__tests__/` next to the code; use-case specs mock the repository interface.
 
 ## Modes

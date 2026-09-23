@@ -9,7 +9,7 @@ Answer the single question you were given about this repository. Read-only: neve
 
 ## How
 
-1. Start from the layer map in `CLAUDE.md`: `src/domain` → `src/application` → `src/infrastructure` (database, http, anthropic, mcp, telegram, jira), root module `src/route/app/app.module.ts`. `src/route/*` other than `app` and `email` is legacy and unused.
+1. Start from the layer map in `CLAUDE.md`: `src/domain` → `src/application` → `src/infrastructure` (database, http, anthropic, mcp, telegram, jira), root module `src/route/app/app.module.ts`.
 2. Grep for the symbol, token or route, then read the enclosing code rather than trusting a single match.
 3. Follow DI tokens (`*_REPOSITORY`, `CODE_ASSISTANT_SERVICE`) from the interface to the `provide:` binding to the implementation.
 

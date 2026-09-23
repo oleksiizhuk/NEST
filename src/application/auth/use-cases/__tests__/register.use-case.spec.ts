@@ -1,74 +1,70 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { RegisterUseCase } from '@application/auth/use-cases/register.use-case';
-import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
-import { JWTGenerator } from '@infrastructure/http/auth/utils/jwt-generator';
 import { User } from '@domain/user/user.entity';
 
-const mockUser = new User(
-  'id1',
-  'John',
-  'Doe',
-  30,
-  'john@test.com',
-  'pass123',
-  null,
-);
-const mockTokens = { accessToken: 'access', refreshToken: 'refresh' };
 const dto = {
-  email: 'john@test.com',
-  password: 'pass123',
+  email: 'John@Test.com',
+  password: 'Secret1!',
   firstName: 'John',
   lastName: 'Doe',
   age: 30,
 };
+const tokens = { accessToken: 'access', refreshToken: 'refresh' };
 
 describe('RegisterUseCase', () => {
+  const repo = { findByEmail: jest.fn(), create: jest.fn() };
+  const hasher = { hash: jest.fn().mockResolvedValue('$2b$10$hash') };
+  const tokenService = { issue: jest.fn().mockReturnValue(tokens) };
   let useCase: RegisterUseCase;
-  const mockRepo = { findByEmail: jest.fn(), create: jest.fn() };
-  const mockJwt = { generateJWT: jest.fn().mockReturnValue(mockTokens) };
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        RegisterUseCase,
-        { provide: USER_REPOSITORY, useValue: mockRepo },
-        { provide: JWTGenerator, useValue: mockJwt },
-      ],
-    }).compile();
-    useCase = module.get(RegisterUseCase);
+  beforeEach(() => {
     jest.clearAllMocks();
-    mockJwt.generateJWT.mockReturnValue(mockTokens);
-  });
-
-  it('creates user and returns tokens when email is free', async () => {
-    mockRepo.findByEmail.mockResolvedValue(null);
-    mockRepo.create.mockResolvedValue(mockUser);
-    const result = await useCase.execute(dto);
-    expect(result.user).toBe(mockUser);
-    expect(result.accessToken).toBe('access');
-  });
-
-  it('saves email in lowercase', async () => {
-    mockRepo.findByEmail.mockResolvedValue(null);
-    mockRepo.create.mockResolvedValue(mockUser);
-    await useCase.execute({ ...dto, email: 'JOHN@TEST.COM' });
-    expect(mockRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ email: 'john@test.com' }),
+    hasher.hash.mockResolvedValue('$2b$10$hash');
+    tokenService.issue.mockReturnValue(tokens);
+    repo.create.mockImplementation(
+      async (d) =>
+        new User(
+          'id1',
+          d.firstName,
+          d.lastName,
+          d.age,
+          d.email,
+          d.password,
+          null,
+        ),
+    );
+    useCase = new RegisterUseCase(
+      repo as any,
+      hasher as any,
+      tokenService as any,
     );
   });
 
-  it('sets shoppingCartId to null on creation', async () => {
-    mockRepo.findByEmail.mockResolvedValue(null);
-    mockRepo.create.mockResolvedValue(mockUser);
+  it('stores a hash, never the plain password', async () => {
+    repo.findByEmail.mockResolvedValue(null);
     await useCase.execute(dto);
-    expect(mockRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ shoppingCartId: null }),
-    );
+    expect(repo.create).toHaveBeenCalledWith({
+      firstName: 'John',
+      lastName: 'Doe',
+      age: 30,
+      email: 'john@test.com',
+      password: '$2b$10$hash',
+      shoppingCartId: null,
+    });
   });
 
-  it('throws BadRequestException when email already exists', async () => {
-    mockRepo.findByEmail.mockResolvedValue(mockUser);
+  it('returns the public profile and tokens', async () => {
+    repo.findByEmail.mockResolvedValue(null);
+    const result = await useCase.execute(dto);
+    expect(result.user).not.toHaveProperty('password');
+    expect(result).toMatchObject(tokens);
+  });
+
+  it('rejects a taken email', async () => {
+    repo.findByEmail.mockResolvedValue(
+      new User('id0', 'A', 'B', 20, 'john@test.com', 'x', null),
+    );
     await expect(useCase.execute(dto)).rejects.toThrow(BadRequestException);
+    expect(repo.create).not.toHaveBeenCalled();
   });
 });

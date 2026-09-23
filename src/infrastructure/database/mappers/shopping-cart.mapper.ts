@@ -8,15 +8,13 @@ import { ProductDocument } from '@infrastructure/database/schemas/product.schema
 
 export class ShoppingCartMapper {
   static toDomain(doc: ShoppingCartDocument): ShoppingCart {
-    const items: CartItem[] = (doc.items || []).map(({ count, item }) => ({
-      count,
-      item: ProductMapper.toDomain(item as ProductDocument),
-    }));
+    const items: CartItem[] = (doc.items || [])
+      .filter(({ item }) => item && typeof item === 'object' && 'price' in item)
+      .map(({ count, item }) => ({
+        count,
+        item: ProductMapper.toDomain(item as ProductDocument),
+      }));
 
-    return new ShoppingCart(doc.id, items, {
-      price: doc.price?.price ?? 0,
-      discount: doc.price?.discount ?? 0,
-      finalPrice: doc.price?.finalPrice ?? 0,
-    });
+    return new ShoppingCart(doc.id, items, ShoppingCart.calculatePrice(items));
   }
 }

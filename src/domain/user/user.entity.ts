@@ -9,7 +9,7 @@ export class User {
     public shoppingCartId: string | null,
   ) {}
 
-  toPublicProfile(): Omit<User, 'password' | 'toPublicProfile'> {
+  toPublicProfile(): PublicUser {
     return {
       id: this.id,
       firstName: this.firstName,
@@ -20,3 +20,5 @@ export class User {
     };
   }
 }
+
+export type PublicUser = Omit<User, 'password' | 'toPublicProfile'>;

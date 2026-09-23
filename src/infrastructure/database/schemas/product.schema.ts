@@ -6,7 +6,8 @@ export class ProductDocument extends Document {
   @Prop({ required: true })
   age: number;
 
-  @Prop({ required: true })
+  // Legacy field kept for existing documents; new products mirror _id here.
+  @Prop()
   id: string;
 
   @Prop({ required: true })

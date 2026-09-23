@@ -12,7 +12,7 @@ export class UpdateUserShoppingCartUseCase {
     private readonly userRepository: IUserRepository,
   ) {}
 
-  async execute(userId: string, cartId: string | null): Promise<User> {
+  async execute(userId: string, cartId: string | null): Promise<User | null> {
     return this.userRepository.updateShoppingCart(userId, cartId);
   }
 }

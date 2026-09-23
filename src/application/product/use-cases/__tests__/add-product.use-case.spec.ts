@@ -50,4 +50,11 @@ describe('AddProductUseCase', () => {
     expect(result).toBe(created);
     expect(mockRepo.create).toHaveBeenCalledWith(dto);
   });
+
+  it('rejects a discount larger than the price', async () => {
+    await expect(
+      useCase.execute({ ...dto, price: 10, discount: 11 }),
+    ).rejects.toThrow('discount cannot exceed price');
+    expect(mockRepo.create).not.toHaveBeenCalled();
+  });
 });

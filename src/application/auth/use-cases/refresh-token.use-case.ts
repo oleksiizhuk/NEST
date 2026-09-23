@@ -1,18 +1,33 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  AuthTokens,
+  ITokenService,
+  TOKEN_SERVICE,
+} from '@application/auth/token-service.interface';
+import {
+  IUserRepository,
+  USER_REPOSITORY,
+} from '@domain/user/user.repository.interface';
 
 @Injectable()
 export class RefreshTokenUseCase {
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    @Inject(TOKEN_SERVICE)
+    private readonly tokenService: ITokenService,
+    @Inject(USER_REPOSITORY)
+    private readonly userRepository: IUserRepository,
+  ) {}
 
-  execute(token: string): unknown {
-    const result = this.jwtService.decode(token);
-    if (!result) {
-      throw new BadRequestException({
-        statusCode: 400,
-        message: 'Token is invalid',
-      });
+  async execute(refreshToken: string | undefined): Promise<AuthTokens> {
+    const subject = refreshToken
+      ? this.tokenService.verifyRefresh(refreshToken)
+      : null;
+    const user = subject
+      ? await this.userRepository.findByEmail(subject.email)
+      : null;
+    if (!user || user.id !== subject.userId) {
+      throw new UnauthorizedException('Token is invalid');
     }
-    return result;
+    return this.tokenService.issue({ userId: user.id, email: user.email });
   }
 }

@@ -17,6 +17,17 @@ const mockDoc = {
 
 describe('ProductMapper', () => {
   describe('toDomain', () => {
+    it('uses the Mongo _id as the product id when present', () => {
+      const withObjectId = {
+        ...mockDoc,
+        _id: { toString: () => '64b000000000000000000001' },
+        id: 'motorola-xoom',
+      } as unknown as ProductDocument;
+      expect(ProductMapper.toDomain(withObjectId).id).toBe(
+        '64b000000000000000000001',
+      );
+    });
+
     it('maps all fields correctly', () => {
       const product = ProductMapper.toDomain(mockDoc);
       expect(product.id).toBe('product-id');

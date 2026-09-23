@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNumber, Min, Max } from 'class-validator';
+import { IsString, IsNumber, Min } from 'class-validator';
 
 export class ProductDTO {
   @IsNumber()
@@ -29,8 +29,7 @@ export class ProductDTO {
 
   @IsNumber()
   @Min(0)
-  @Max(100)
-  @ApiProperty()
+  @ApiProperty({ description: 'Absolute amount off the price, not a percent' })
   discount: number;
 
   @IsString()

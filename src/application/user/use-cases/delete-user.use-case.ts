@@ -3,7 +3,7 @@ import {
   IUserRepository,
   USER_REPOSITORY,
 } from '@domain/user/user.repository.interface';
-import { User } from '@domain/user/user.entity';
+import { assertAccountOwner } from '@application/user/assert-account-owner';
 
 @Injectable()
 export class DeleteUserUseCase {
@@ -12,7 +12,8 @@ export class DeleteUserUseCase {
     private readonly userRepository: IUserRepository,
   ) {}
 
-  async execute(id: string): Promise<User> {
-    return this.userRepository.delete(id);
+  async execute(requesterEmail: string, id: string): Promise<void> {
+    await assertAccountOwner(this.userRepository, requesterEmail, id);
+    await this.userRepository.delete(id);
   }
 }

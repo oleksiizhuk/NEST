@@ -1,67 +1,81 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import { LoginUseCase } from '@application/auth/use-cases/login.use-case';
-import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
-import { JWTGenerator } from '@infrastructure/http/auth/utils/jwt-generator';
 import { User } from '@domain/user/user.entity';
 
-const mockUser = new User(
-  'id1',
-  'John',
-  'Doe',
-  30,
-  'john@test.com',
-  'pass123',
-  null,
-);
-const mockTokens = { accessToken: 'access', refreshToken: 'refresh' };
+const hashedUser = () =>
+  new User('id1', 'John', 'Doe', 30, 'john@test.com', '$2b$10$hash', null);
+const tokens = { accessToken: 'access', refreshToken: 'refresh' };
 
 describe('LoginUseCase', () => {
+  const repo = { findByEmail: jest.fn(), update: jest.fn() };
+  const hasher = {
+    hash: jest.fn().mockResolvedValue('$2b$10$new'),
+    verify: jest.fn(),
+    isLegacy: jest.fn((s: string) => !s.startsWith('$2')),
+  };
+  const tokenService = { issue: jest.fn().mockReturnValue(tokens) };
   let useCase: LoginUseCase;
-  const mockRepo = { findByEmail: jest.fn() };
-  const mockJwt = { generateJWT: jest.fn().mockReturnValue(mockTokens) };
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        LoginUseCase,
-        { provide: USER_REPOSITORY, useValue: mockRepo },
-        { provide: JWTGenerator, useValue: mockJwt },
-      ],
-    }).compile();
-    useCase = module.get(LoginUseCase);
+  beforeEach(() => {
     jest.clearAllMocks();
-    mockJwt.generateJWT.mockReturnValue(mockTokens);
+    tokenService.issue.mockReturnValue(tokens);
+    useCase = new LoginUseCase(repo as any, hasher as any, tokenService as any);
   });
 
-  it('returns user and tokens on valid credentials', async () => {
-    mockRepo.findByEmail.mockResolvedValue(mockUser);
+  it('returns the public profile and tokens on valid credentials', async () => {
+    repo.findByEmail.mockResolvedValue(hashedUser());
+    hasher.verify.mockResolvedValue(true);
+
     const result = await useCase.execute({
       email: 'john@test.com',
       password: 'pass123',
     });
-    expect(result.user).toBe(mockUser);
-    expect(result.accessToken).toBe('access');
-    expect(result.refreshToken).toBe('refresh');
+
+    expect(result.user).not.toHaveProperty('password');
+    expect(result.user.email).toBe('john@test.com');
+    expect(result).toMatchObject(tokens);
+    expect(hasher.verify).toHaveBeenCalledWith('pass123', '$2b$10$hash');
+    expect(tokenService.issue).toHaveBeenCalledWith({
+      userId: 'id1',
+      email: 'john@test.com',
+    });
+    expect(repo.update).not.toHaveBeenCalled();
   });
 
   it('lowercases email before lookup', async () => {
-    mockRepo.findByEmail.mockResolvedValue(mockUser);
+    repo.findByEmail.mockResolvedValue(hashedUser());
+    hasher.verify.mockResolvedValue(true);
     await useCase.execute({ email: 'JOHN@TEST.COM', password: 'pass123' });
-    expect(mockRepo.findByEmail).toHaveBeenCalledWith('john@test.com');
+    expect(repo.findByEmail).toHaveBeenCalledWith('john@test.com');
   });
 
-  it('throws BadRequestException when user not found', async () => {
-    mockRepo.findByEmail.mockResolvedValue(null);
+  it('rejects an unknown email', async () => {
+    repo.findByEmail.mockResolvedValue(null);
+    hasher.verify.mockResolvedValue(false);
     await expect(
       useCase.execute({ email: 'x@x.com', password: 'pass' }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(UnauthorizedException);
+    // Still hashes, so an unknown email answers as slowly as a wrong password.
+    expect(hasher.verify).toHaveBeenCalledWith('pass', '');
   });
 
-  it('throws BadRequestException on wrong password', async () => {
-    mockRepo.findByEmail.mockResolvedValue(mockUser);
+  it('rejects a wrong password', async () => {
+    repo.findByEmail.mockResolvedValue(hashedUser());
+    hasher.verify.mockResolvedValue(false);
     await expect(
       useCase.execute({ email: 'john@test.com', password: 'wrong' }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('rehashes a legacy plain-text password after a successful login', async () => {
+    repo.findByEmail.mockResolvedValue(
+      new User('id1', 'John', 'Doe', 30, 'john@test.com', 'pass123', null),
+    );
+    hasher.verify.mockResolvedValue(true);
+
+    await useCase.execute({ email: 'john@test.com', password: 'pass123' });
+
+    expect(hasher.hash).toHaveBeenCalledWith('pass123');
+    expect(repo.update).toHaveBeenCalledWith('id1', { password: '$2b$10$new' });
   });
 });

@@ -1,9 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   IUserRepository,
   USER_REPOSITORY,
 } from '@domain/user/user.repository.interface';
-import { User } from '@domain/user/user.entity';
+import { PublicUser } from '@domain/user/user.entity';
 
 @Injectable()
 export class GetUserByIdUseCase {
@@ -12,7 +12,11 @@ export class GetUserByIdUseCase {
     private readonly userRepository: IUserRepository,
   ) {}
 
-  async execute(id: string): Promise<User | null> {
-    return this.userRepository.findById(id);
+  async execute(id: string): Promise<PublicUser> {
+    const user = await this.userRepository.findById(id);
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+    return user.toPublicProfile();
   }
 }

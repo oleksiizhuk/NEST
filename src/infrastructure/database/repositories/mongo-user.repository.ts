@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { isValidObjectId, Model } from 'mongoose';
 import { IUserRepository } from '@domain/user/user.repository.interface';
 import { User } from '@domain/user/user.entity';
 import { UserDocument } from '@infrastructure/database/schemas/user.schema';
@@ -16,6 +16,7 @@ export class MongoUserRepository implements IUserRepository {
   }
 
   async findById(id: string): Promise<User | null> {
+    if (!isValidObjectId(id)) return null;
     const doc = await this.userModel.findById(id).lean();
     return doc ? UserMapper.toDomain(doc as UserDocument) : null;
   }
@@ -33,20 +34,25 @@ export class MongoUserRepository implements IUserRepository {
   async update(
     id: string,
     data: Partial<Omit<User, 'id' | 'toPublicProfile'>>,
-  ): Promise<User> {
-    const doc = await this.userModel.findByIdAndUpdate(id, data, { new: true });
-    return UserMapper.toDomain(doc);
+  ): Promise<User | null> {
+    if (!isValidObjectId(id)) return null;
+    const doc = await this.userModel
+      .findByIdAndUpdate(id, data, { new: true })
+      .lean();
+    return doc ? UserMapper.toDomain(doc as UserDocument) : null;
   }
 
-  async delete(id: string): Promise<User> {
-    const doc = await this.userModel.findByIdAndRemove(id);
-    return UserMapper.toDomain(doc);
+  async delete(id: string): Promise<User | null> {
+    if (!isValidObjectId(id)) return null;
+    const doc = await this.userModel.findByIdAndRemove(id).lean();
+    return doc ? UserMapper.toDomain(doc as UserDocument) : null;
   }
 
   async updateShoppingCart(
     userId: string,
     cartId: string | null,
-  ): Promise<User> {
+  ): Promise<User | null> {
+    if (!isValidObjectId(userId)) return null;
     const doc = await this.userModel
       .findByIdAndUpdate(
         userId,
@@ -54,6 +60,6 @@ export class MongoUserRepository implements IUserRepository {
         { new: true },
       )
       .lean();
-    return UserMapper.toDomain(doc as UserDocument);
+    return doc ? UserMapper.toDomain(doc as UserDocument) : null;
   }
 }

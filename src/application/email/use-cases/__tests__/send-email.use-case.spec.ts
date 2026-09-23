@@ -1,31 +1,26 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { ForbiddenException } from '@nestjs/common';
 import { SendEmailUseCase } from '@application/email/use-cases/send-email.use-case';
-import { EMAIL_SERVICE } from '@application/email/email.service.interface';
 
 describe('SendEmailUseCase', () => {
-  let useCase: SendEmailUseCase;
-  const mockEmailService = { sendMail: jest.fn() };
+  const emailService = { sendMail: jest.fn().mockResolvedValue({ ok: true }) };
+  const useCase = new SendEmailUseCase(emailService as any);
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        SendEmailUseCase,
-        { provide: EMAIL_SERVICE, useValue: mockEmailService },
-      ],
-    }).compile();
-    useCase = module.get(SendEmailUseCase);
-    jest.clearAllMocks();
-  });
+  beforeEach(() => jest.clearAllMocks());
 
-  it('sends email with email and message', async () => {
-    mockEmailService.sendMail.mockResolvedValue({
-      accepted: ['test@test.com'],
-    });
-    const result = await useCase.execute('test@test.com', 'Hello');
-    expect(result).toEqual({ accepted: ['test@test.com'] });
-    expect(mockEmailService.sendMail).toHaveBeenCalledWith(
-      'test@test.com',
+  it('sends to the caller’s own address', async () => {
+    await expect(
+      useCase.execute('test@test.com', 'Test@test.com', 'Hello'),
+    ).resolves.toEqual({ ok: true });
+    expect(emailService.sendMail).toHaveBeenCalledWith(
+      'Test@test.com',
       'Hello',
     );
+  });
+
+  it('refuses any other recipient', async () => {
+    await expect(
+      useCase.execute('test@test.com', 'victim@test.com', 'Hello'),
+    ).rejects.toThrow(ForbiddenException);
+    expect(emailService.sendMail).not.toHaveBeenCalled();
   });
 });

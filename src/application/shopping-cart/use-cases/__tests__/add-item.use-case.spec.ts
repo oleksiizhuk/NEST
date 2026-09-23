@@ -1,91 +1,91 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AddItemUseCase } from '@application/shopping-cart/use-cases/add-item.use-case';
-import { SHOPPING_CART_REPOSITORY } from '@domain/shopping-cart/shopping-cart.repository.interface';
-import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
-import { PRODUCT_REPOSITORY } from '@domain/product/product.repository.interface';
 import { User } from '@domain/user/user.entity';
 import { Product } from '@domain/product/product.entity';
 import { ShoppingCart } from '@domain/shopping-cart/shopping-cart.entity';
 
-const mockUser = new User(
-  'u1',
-  'John',
-  'Doe',
-  30,
-  'john@test.com',
-  'pass',
-  'cart-1',
-);
-const mockUserNoCart = new User(
-  'u1',
-  'John',
-  'Doe',
-  30,
-  'john@test.com',
-  'pass',
-  null,
-);
-const mockProduct = new Product(
-  'p1',
-  0,
-  'phone',
-  '',
-  'iPhone',
-  '',
-  999,
-  0,
-  '',
-  '',
-  '',
-);
-const mockCart = new ShoppingCart('cart-1', [], {
-  price: 0,
-  discount: 0,
-  finalPrice: 0,
-});
+const withCart = () =>
+  new User('u1', 'John', 'Doe', 30, 'john@test.com', 'h', 'cart-1');
+const noCart = () =>
+  new User('u1', 'John', 'Doe', 30, 'john@test.com', 'h', null);
+const product = (id: string, price: number, discount = 0) =>
+  new Product(id, 0, 'phone', '', id, '', price, discount, '', '', '');
+const emptyCart = () =>
+  new ShoppingCart('cart-1', [], { price: 0, discount: 0, finalPrice: 0 });
 
 describe('AddItemUseCase', () => {
+  const cartRepo = { findById: jest.fn(), save: jest.fn() };
+  const userRepo = { findByEmail: jest.fn() };
+  const productRepo = { findById: jest.fn() };
   let useCase: AddItemUseCase;
-  const mockCartRepo = { addItem: jest.fn() };
-  const mockUserRepo = { findByEmail: jest.fn() };
-  const mockProductRepo = { findById: jest.fn() };
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AddItemUseCase,
-        { provide: SHOPPING_CART_REPOSITORY, useValue: mockCartRepo },
-        { provide: USER_REPOSITORY, useValue: mockUserRepo },
-        { provide: PRODUCT_REPOSITORY, useValue: mockProductRepo },
-      ],
-    }).compile();
-    useCase = module.get(AddItemUseCase);
+  beforeEach(() => {
     jest.clearAllMocks();
+    cartRepo.save.mockImplementation(async (c) => c);
+    useCase = new AddItemUseCase(
+      cartRepo as any,
+      userRepo as any,
+      productRepo as any,
+    );
   });
 
-  it('adds item to cart', async () => {
-    mockUserRepo.findByEmail.mockResolvedValue(mockUser);
-    mockProductRepo.findById.mockResolvedValue(mockProduct);
-    mockCartRepo.addItem.mockResolvedValue(mockCart);
+  it('adds the product and saves the recomputed cart', async () => {
+    userRepo.findByEmail.mockResolvedValue(withCart());
+    productRepo.findById.mockResolvedValue(product('p1', 999, 100));
+    cartRepo.findById.mockResolvedValue(emptyCart());
 
-    const result = await useCase.execute('john@test.com', 'p1', 2);
-    expect(result).toBe(mockCart);
-    expect(mockCartRepo.addItem).toHaveBeenCalledWith('cart-1', mockProduct, 2);
+    const cart = await useCase.execute('john@test.com', 'p1', 2);
+
+    expect(cart.items).toHaveLength(1);
+    expect(cart.price).toEqual({
+      price: 1998,
+      discount: 200,
+      finalPrice: 1798,
+    });
+    expect(cartRepo.save).toHaveBeenCalledWith(cart);
+  });
+
+  it('prices each line by its own product', async () => {
+    userRepo.findByEmail.mockResolvedValue(withCart());
+    const cart = emptyCart();
+    cart.addItem(product('p1', 100), 1);
+    cartRepo.findById.mockResolvedValue(cart);
+    productRepo.findById.mockResolvedValue(product('p2', 10));
+
+    const result = await useCase.execute('john@test.com', 'p2', 3);
+
+    expect(result.price.price).toBe(130);
   });
 
   it('throws BadRequestException when user has no cart', async () => {
-    mockUserRepo.findByEmail.mockResolvedValue(mockUserNoCart);
+    userRepo.findByEmail.mockResolvedValue(noCart());
     await expect(useCase.execute('john@test.com', 'p1', 1)).rejects.toThrow(
       BadRequestException,
     );
   });
 
+  it('throws NotFoundException when the user no longer exists', async () => {
+    userRepo.findByEmail.mockResolvedValue(null);
+    await expect(useCase.execute('gone@test.com', 'p1', 1)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
   it('throws BadRequestException when product not found', async () => {
-    mockUserRepo.findByEmail.mockResolvedValue(mockUser);
-    mockProductRepo.findById.mockResolvedValue(null);
+    userRepo.findByEmail.mockResolvedValue(withCart());
+    productRepo.findById.mockResolvedValue(null);
     await expect(
       useCase.execute('john@test.com', 'unknown', 1),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a non-positive count', async () => {
+    userRepo.findByEmail.mockResolvedValue(withCart());
+    productRepo.findById.mockResolvedValue(product('p1', 10));
+    cartRepo.findById.mockResolvedValue(emptyCart());
+    await expect(useCase.execute('john@test.com', 'p1', -5)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(cartRepo.save).not.toHaveBeenCalled();
   });
 });
