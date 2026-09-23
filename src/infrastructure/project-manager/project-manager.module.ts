@@ -13,6 +13,7 @@ import { AnthropicProjectManagerService } from '@infrastructure/anthropic/anthro
 import { JiraIssueReader } from '@infrastructure/project-manager/jira-issue.reader';
 import { ConfluencePageReader } from '@infrastructure/project-manager/confluence-page.reader';
 import { GitHubActivityReader } from '@infrastructure/project-manager/github-activity.reader';
+import { FigmaActivityReader } from '@infrastructure/project-manager/figma-activity.reader';
 import { pmConfig } from '@infrastructure/project-manager/pm.config';
 import { PM_KNOWLEDGE } from '@application/project-manager/knowledge.interface';
 import { CODE_HOST } from '@application/project-manager/code-host.interface';
@@ -44,14 +45,21 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     JiraIssueReader,
     ConfluencePageReader,
     GitHubActivityReader,
+    FigmaActivityReader,
     {
       provide: PROJECT_SOURCES,
       useFactory: (
         issues: JiraIssueReader,
         docs: ConfluencePageReader,
         code: GitHubActivityReader,
-      ) => [issues, docs, code],
-      inject: [JiraIssueReader, ConfluencePageReader, GitHubActivityReader],
+        design: FigmaActivityReader,
+      ) => [issues, docs, code, design],
+      inject: [
+        JiraIssueReader,
+        ConfluencePageReader,
+        GitHubActivityReader,
+        FigmaActivityReader,
+      ],
     },
     {
       provide: PROJECT_SNAPSHOT_REPOSITORY,
