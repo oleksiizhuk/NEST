@@ -73,6 +73,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
   ],
   exports: [
     PM_CONFIG,
+    ADMIN_TARGETS,
     PM_KNOWLEDGE,
     ConfirmPendingActionUseCase,
     PM_CHAT_REGISTRY,
