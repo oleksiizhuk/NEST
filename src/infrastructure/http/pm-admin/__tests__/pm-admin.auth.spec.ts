@@ -1,4 +1,5 @@
 import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
 import { UnauthorizedException } from '@nestjs/common';
 import {
   PmAdminAuth,
@@ -18,17 +19,79 @@ describe('PmAdminAuth', () => {
     sessionEpoch: jest.fn(async () => epoch),
     bumpSessionEpoch: jest.fn(async () => ++epoch),
   };
+  let failures = 0;
+  const throttle = {
+    blocked: jest.fn(async () => failures >= 5),
+    fail: jest.fn(async () => {
+      failures += 1;
+    }),
+    reset: jest.fn(async () => {
+      failures = 0;
+    }),
+  };
+  const telegram = { sendMessage: jest.fn().mockResolvedValue(undefined) };
+  const hash = bcrypt.hashSync('correct horse', 4);
   const auth = new PmAdminAuth(
-    config({ JWT_SECRET: 's3cret', TELEGRAM_OWNER_ID: '42' }),
+    config({
+      JWT_SECRET: 's3cret',
+      TELEGRAM_OWNER_ID: '42',
+      PM_ADMIN_EMAIL: 'Owner@Example.com',
+      PM_ADMIN_PASSWORD_HASH: hash,
+    }),
     jwt,
     links,
     settings,
+    throttle as any,
+    telegram as any,
   );
   const sign = (payload: object, secret = 's3cret') =>
     jwt.sign(payload, { secret });
 
   beforeEach(() => {
     epoch = 0;
+    failures = 0;
+    telegram.sendMessage.mockClear();
+  });
+
+  it('logs in with email and password and tells the owner in Telegram', async () => {
+    const result = await auth.loginWithPassword(
+      ' owner@example.com ',
+      'correct horse',
+    );
+    expect('session' in result && (await auth.verify(result.session))).toBe(42);
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      42,
+      expect.stringContaining('Вход в админку по паролю'),
+    );
+  });
+
+  it('refuses wrong credentials and locks after five failures', async () => {
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        auth.loginWithPassword('owner@example.com', `guess ${i}`),
+      ).resolves.toEqual({ error: 'invalid' });
+    }
+    await expect(
+      auth.loginWithPassword('owner@example.com', 'correct horse'),
+    ).resolves.toEqual({ error: 'locked' });
+    await expect(
+      auth.loginWithPassword('someone@else.com', 'correct horse'),
+    ).resolves.toEqual({ error: 'locked' });
+    expect(telegram.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps password login off until email and hash are set', async () => {
+    const off = new PmAdminAuth(
+      config({ JWT_SECRET: 's3cret', TELEGRAM_OWNER_ID: '42' }),
+      jwt,
+      links,
+      settings,
+      throttle as any,
+      telegram as any,
+    );
+    await expect(off.loginWithPassword('a@b.c', 'x')).resolves.toEqual({
+      error: 'off',
+    });
   });
 
   it('turns a valid one-time link into a session only the owner holds', async () => {
@@ -69,6 +132,8 @@ describe('PmAdminAuth', () => {
       jwt,
       links,
       settings,
+      throttle as any,
+      telegram as any,
     );
     links.consume.mockResolvedValue(true);
     await expect(

@@ -133,6 +133,7 @@ PM_JIRA_PROJECTS=       # e.g. ABC,XYZ (uses JIRA_BASE_URL / JIRA_EMAIL / JIRA_A
 PM_RELEASE_VERSION=     # Jira fixVersion that is the release scope for the computed forecast; unset = all open issues
 PM_JIRA_SPRINT_FIELD=   # Sprint custom field id, default customfield_10020
 PM_JIRA_BOARD_ID=       # Jira board for the jira_sprint tool (active sprint); unset = off
+PM_ADMIN_EMAIL=         # Optional password login to /admin, with PM_ADMIN_PASSWORD_HASH (bcrypt hash, never the password); 5 failures in 15 min lock it
 PM_ADMIN_URL=           # Origin of the /admin page for login links; default: TELEGRAM_WEBHOOK_URL's origin
 PM_DAILY_QUESTION_LIMIT= # Questions to the model per person per UTC day (default 7, 0 = off); owner and PM_UNLIMITED_USERNAMES (usernames, no @) are exempt
 PM_ALERT_CHAT_IDS=      # Who gets proactive alerts and the weekly eval report; default "owner" (TELEGRAM_OWNER_ID's DM) only
@@ -175,7 +176,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 - `jira_sprint` (with `PM_JIRA_BOARD_ID`) and `release_checklist` (gates from the snapshot numbers plus `core:dod`).
 - Golden eval (`RunGoldenEvalUseCase`): cases from `PUT /cron/pm/golden` run weekly through the answer pipeline (chat 0), checked by mustContain / mustNotContain (`/regex/` allowed) / maxSeconds; the report goes to the alert chats once a week.
 - Access: only the owner may have code read or PRs reviewed in depth (`search_code`, `read_file`, `list_dir`, `get_pull_request` refuse for anyone else; the model is told to answer from the snapshot). Everyone else gets `PM_DAILY_QUESTION_LIMIT` questions a day (`pmquota`); commands and buttons do not count.
-- Admin page (`admin/`, React + Vite, built on deploy into `public/admin`, served at `/admin/`): the owner sends `/admin` to the bot in private and gets a one-time link (10 min, `pmadminlogins`, only its hash stored); `POST /pm-admin/login` turns it into a 7-day session JWT (`typ: pm-admin`, `sub` = TELEGRAM_OWNER_ID). The page changes the daily limit, unlimited people, DM access, who may confirm, alert recipients and chat effort. Overrides live in `pmsettings` and win over env (`PmRuntimeConfig`, 30 s cache); an empty field resets to env. It also shows today's questions per person and 👍/👎 stats.
+- Admin page (`admin/`, React + Vite, built on deploy into `public/admin`, served at `/admin/`): the owner sends `/admin` to the bot in private and gets a one-time link (10 min, `pmadminlogins`, only its hash stored); `POST /pm-admin/login` turns it into a 7-day session JWT (`typ: pm-admin`, `sub` = TELEGRAM_OWNER_ID). Alternatively `POST /pm-admin/password-login` with `PM_ADMIN_EMAIL` + a password checked against `PM_ADMIN_PASSWORD_HASH` (5 failures / 15 min lock it for everyone; each success is reported to the owner in Telegram). "Выйти везде" (`POST /pm-admin/logout-all`) raises a session epoch and ends every session. The page changes the daily limit, unlimited people, DM access, who may confirm, alert recipients and chat effort. Overrides live in `pmsettings` and win over env (`PmRuntimeConfig`, 30 s cache); an empty field resets to env. It also shows today's questions per person and 👍/👎 stats.
 - Plain answers carry 👍/👎 buttons; the vote and the answer's tokens, time and tools are stored on the message log (`GET /cron/pm/feedback`).
 
 ---

@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  HttpException,
+  HttpStatus,
   Get,
   HttpCode,
   Post,
@@ -25,6 +27,16 @@ export class AdminLoginBody {
   token: string;
 }
 
+export class AdminPasswordBody {
+  @IsString()
+  @MaxLength(200)
+  email: string;
+
+  @IsString()
+  @MaxLength(200)
+  password: string;
+}
+
 export class AdminSettingsBody {
   @IsObject()
   settings: Record<string, unknown>;
@@ -45,6 +57,21 @@ export class PmAdminController {
     const session = await this.auth.login(body.token);
     if (!session) throw new UnauthorizedException('link expired or used');
     return { session };
+  }
+
+  @Post('password-login')
+  @HttpCode(200)
+  async passwordLogin(@Body() body: AdminPasswordBody) {
+    const result = await this.auth.loginWithPassword(body.email, body.password);
+    if ('session' in result) return result;
+    if (result.error === 'locked')
+      throw new HttpException(
+        'Слишком много попыток. Вход по паролю закрыт на 15 минут; ссылка из бота работает.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    if (result.error === 'off')
+      throw new UnauthorizedException('Вход по паролю не настроен.');
+    throw new UnauthorizedException('Неверный email или пароль.');
   }
 
   @Get('settings')
