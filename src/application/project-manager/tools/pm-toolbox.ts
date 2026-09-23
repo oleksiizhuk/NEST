@@ -3,6 +3,8 @@ import {
   IAdminTargets,
   IStagingAdmin,
   NamedRef,
+  PropertyType,
+  StoreChanges,
 } from '@application/project-manager/staging-admin.interface';
 import {
   IPendingActions,
@@ -205,6 +207,82 @@ export class PmToolbox {
           additionalProperties: false,
         },
       },
+      {
+        name: 'propose_update_store',
+        description:
+          'PROPOSE changing one store of a brand on a test environment: store name, floor, wing, nearest gate (max 3 chars each), daily opening hours (HH:MM, applied to all days) or category. Pass only the fields to change; use null to clear floor/wing/gate. The brand keeps its other stores untouched. Nothing happens until an authorised person confirms with /confirm. Only when the human asks.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            tier,
+            brand: {
+              type: 'string',
+              maxLength: 100,
+              description: 'Brand name or id',
+            },
+            store: {
+              type: 'string',
+              maxLength: 100,
+              description:
+                'Store id or mall name; omit when the brand has one store',
+            },
+            name_en: { type: 'string', maxLength: 80 },
+            name_ar: { type: 'string', maxLength: 80 },
+            floor: { type: ['string', 'null'], maxLength: 3 },
+            wing: { type: ['string', 'null'], maxLength: 3 },
+            nearest_gate: { type: ['string', 'null'], maxLength: 3 },
+            open: { type: 'string', description: 'HH:MM' },
+            close: { type: 'string', description: 'HH:MM' },
+            category: { type: 'string', description: 'Business category name' },
+          },
+          required: ['brand'],
+          additionalProperties: false,
+        },
+      },
+      {
+        name: 'propose_create_property',
+        description:
+          'PROPOSE creating a mall, outlet or plaza on a test environment. It is created as a draft; publish it separately with propose_property_action. Names must be unique per type, city and district. Give the Arabic name yourself if the user did not. Nothing happens until /confirm. Only when the human asks.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            tier,
+            type: { type: 'string', enum: ['mall', 'outlet', 'plaza'] },
+            name_en: { type: 'string', maxLength: 64 },
+            name_ar: { type: 'string', maxLength: 64 },
+            city: {
+              type: 'string',
+              maxLength: 64,
+              description: 'City name as the app uses it, e.g. Riyadh',
+            },
+            district: { type: 'string', maxLength: 64 },
+            street: { type: 'string', maxLength: 128 },
+            latitude: { type: 'number' },
+            longitude: { type: 'number' },
+          },
+          required: ['type', 'name_en', 'name_ar', 'city'],
+          additionalProperties: false,
+        },
+      },
+      {
+        name: 'propose_property_action',
+        description:
+          'PROPOSE publishing or unpublishing a mall/outlet/plaza on a test environment. Nothing happens until /confirm. Only when the human asks.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            tier,
+            property: {
+              type: 'string',
+              maxLength: 100,
+              description: 'Mall/outlet/plaza name or id',
+            },
+            action: { type: 'string', enum: ['publish', 'unpublish'] },
+          },
+          required: ['property', 'action'],
+          additionalProperties: false,
+        },
+      },
     ];
   }
 
@@ -300,6 +378,12 @@ export class PmToolbox {
       }
       case 'propose_brand_action':
         return this.proposeBrandAction(input, ctx);
+      case 'propose_update_store':
+        return this.proposeStoreUpdate(input, ctx);
+      case 'propose_create_property':
+        return this.proposeProperty(input, ctx);
+      case 'propose_property_action':
+        return this.proposePropertyAction(input, ctx);
       default:
         throw new Error(`Unknown tool ${name}`);
     }
@@ -321,6 +405,229 @@ export class PmToolbox {
       );
     }
     return { name, admin: this.targets.target(name) };
+  }
+
+  private store(
+    action: Omit<
+      PendingAction,
+      'id' | 'status' | 'result' | 'chatId' | 'requesterId' | 'expiresAt'
+    >,
+    ctx: ToolContext,
+  ): Promise<PendingAction> {
+    return this.actions.create({
+      ...action,
+      chatId: ctx.chatId,
+      requesterId: ctx.requesterId,
+      expiresAt: new Date(Date.now() + ACTION_TTL_MS),
+    });
+  }
+
+  private receipt(action: PendingAction): string {
+    return (
+      `Proposal ${action.id} stored, NOT executed. It awaits confirmation by an authorised person ` +
+      '(the confirmation line is appended to your reply automatically). ' +
+      'Tell the user briefly what will happen; do not repeat the command.'
+    );
+  }
+
+  private async proposeStoreUpdate(
+    input: Record<string, unknown>,
+    ctx: ToolContext,
+  ): Promise<string> {
+    const { name: tierName, admin } = this.admin(input.tier);
+    if (ctx.proposal)
+      throw new Error(
+        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
+      );
+    const brand = await this.resolveBrand(admin, str(input.brand, 100));
+    if (typeof brand === 'string') return `NOT PROPOSED — ${brand}`;
+    const details = await admin.getBrand(brand.id);
+    const wanted = str(input.store, 100).toLowerCase();
+    const matches = wanted
+      ? details.stores.filter(
+          (st) =>
+            st.id === wanted ||
+            (st.property ?? '').toLowerCase().includes(wanted),
+        )
+      : details.stores;
+    if (matches.length !== 1) {
+      return `NOT PROPOSED — pick one store of "${details.name}":\n${
+        details.stores
+          .map(
+            (st) =>
+              `- ${st.id}: ${st.status}${
+                st.property ? ` in ${st.property}` : ''
+              }`,
+          )
+          .join('\n') || '(no stores)'
+      }`;
+    }
+    const target = matches[0];
+    const changes: StoreChanges = {};
+    const short = (v: unknown) => (v === null ? null : str(v, 3) || null);
+    if (input.name_en !== undefined) changes.nameEn = str(input.name_en, 80);
+    if (input.name_ar !== undefined) changes.nameAr = str(input.name_ar, 80);
+    if (input.floor !== undefined) changes.floor = short(input.floor);
+    if (input.wing !== undefined) changes.wing = short(input.wing);
+    if (input.nearest_gate !== undefined)
+      changes.nearestGate = short(input.nearest_gate);
+    for (const key of ['open', 'close'] as const) {
+      if (input[key] !== undefined) {
+        const value = str(input[key], 5);
+        if (!TIME.test(value)) throw new Error(`${key} must be HH:MM`);
+        changes[key] = value;
+      }
+    }
+    let categoryName = '';
+    if (input.category !== undefined) {
+      const category = pickOne(
+        str(input.category, 100),
+        await admin.findCategories(str(input.category, 100)),
+      );
+      if (!category.match)
+        return `NOT PROPOSED — category did not resolve to one item:\n${list(
+          category.candidates,
+        )}`;
+      changes.categoryId = category.match.id;
+      categoryName = category.match.name;
+    }
+    if (!Object.keys(changes).length) throw new Error('nothing to change');
+    const describe = [
+      changes.nameEn !== undefined ? `название EN "${changes.nameEn}"` : '',
+      changes.nameAr !== undefined ? `название AR "${changes.nameAr}"` : '',
+      changes.floor !== undefined
+        ? `этаж ${changes.floor ?? '— очистить'}`
+        : '',
+      changes.wing !== undefined ? `крыло ${changes.wing ?? '— очистить'}` : '',
+      changes.nearestGate !== undefined
+        ? `вход ${changes.nearestGate ?? '— очистить'}`
+        : '',
+      changes.open || changes.close
+        ? `часы ${changes.open ?? 'как было'}–${
+            changes.close ?? 'как было'
+          } ежедневно`
+        : '',
+      categoryName ? `категория "${categoryName}"` : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    const storeLabel = `${target.id}${
+      target.property ? ` в "${target.property}"` : ''
+    }`;
+    const action = await this.store(
+      {
+        kind: 'update_store',
+        payload: {
+          tier: tierName,
+          brandId: details.id,
+          brandName: details.name,
+          storeId: target.id,
+          storeLabel,
+          changes,
+        },
+        summary: `Изменить на ${tierName.toUpperCase()} (${admin.describeTarget()}) магазин ${storeLabel} бренда "${
+          details.name
+        }": ${describe}. Остальные магазины бренда не меняются.`,
+      },
+      ctx,
+    );
+    ctx.proposal = action;
+    return this.receipt(action);
+  }
+
+  private async proposeProperty(
+    input: Record<string, unknown>,
+    ctx: ToolContext,
+  ): Promise<string> {
+    const { name: tierName, admin } = this.admin(input.tier);
+    if (ctx.proposal)
+      throw new Error(
+        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
+      );
+    const type = str(input.type, 10) as PropertyType;
+    if (!['mall', 'outlet', 'plaza'].includes(type))
+      throw new Error('type must be mall, outlet or plaza');
+    const nameEn = str(input.name_en, 64);
+    const nameAr = str(input.name_ar, 64);
+    const city = str(input.city, 64);
+    if (!nameEn || !nameAr || !city)
+      throw new Error('name_en, name_ar and city are required');
+    const lat = typeof input.latitude === 'number' ? input.latitude : null;
+    const lng = typeof input.longitude === 'number' ? input.longitude : null;
+    if ((lat === null) !== (lng === null))
+      throw new Error('give both latitude and longitude, or neither');
+    const existing = (await admin.findMalls(nameEn)).find((p) =>
+      p.name.toLowerCase().startsWith(nameEn.toLowerCase()),
+    );
+    if (existing) {
+      return `NOT PROPOSED — "${existing.name}" (id ${existing.id}) already exists on ${tierName}. Ask whether a different name is wanted.`;
+    }
+    const payload = {
+      tier: tierName,
+      type,
+      nameEn,
+      nameAr,
+      city,
+      district: str(input.district, 64) || null,
+      street: str(input.street, 128) || null,
+      latitude: lat,
+      longitude: lng,
+    };
+    const where = [payload.city, payload.district, payload.street]
+      .filter(Boolean)
+      .join(', ');
+    const action = await this.store(
+      {
+        kind: 'create_property',
+        payload,
+        summary: `Создать на ${tierName.toUpperCase()} (${admin.describeTarget()}) ${type} "${nameEn}" / "${nameAr}", адрес: ${where}${
+          lat !== null ? `, координаты ${lat}, ${lng}` : ', без координат'
+        }. Будет черновиком.`,
+      },
+      ctx,
+    );
+    ctx.proposal = action;
+    return this.receipt(action);
+  }
+
+  private async proposePropertyAction(
+    input: Record<string, unknown>,
+    ctx: ToolContext,
+  ): Promise<string> {
+    const { name: tierName, admin } = this.admin(input.tier);
+    if (ctx.proposal)
+      throw new Error(
+        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
+      );
+    const action = str(input.action, 20);
+    if (!['publish', 'unpublish'].includes(action))
+      throw new Error('action must be publish or unpublish');
+    const query = str(input.property, 100);
+    const found = this.isUuid(query)
+      ? { match: { id: query, name: query }, candidates: [] }
+      : pickOne(query, await admin.findMalls(query));
+    if (!found.match)
+      return `NOT PROPOSED — no single property matches "${query}":\n${list(
+        found.candidates,
+      )}`;
+    const stored = await this.store(
+      {
+        kind: action === 'publish' ? 'publish_property' : 'unpublish_property',
+        payload: {
+          tier: tierName,
+          propertyId: found.match.id,
+          propertyName: found.match.name,
+        },
+        summary: `${
+          action === 'publish' ? 'Опубликовать' : 'Снять с публикации'
+        } "${found.match.name}" (id ${
+          found.match.id
+        }) на ${tierName.toUpperCase()} (${admin.describeTarget()}).`,
+      },
+      ctx,
+    );
+    ctx.proposal = stored;
+    return this.receipt(stored);
   }
 
   private isUuid(value: string): boolean {

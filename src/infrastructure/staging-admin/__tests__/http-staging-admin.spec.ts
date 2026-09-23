@@ -236,3 +236,96 @@ describe('HttpStagingAdmin concurrency', () => {
     expect(maxInFlight).toBe(1);
   });
 });
+
+describe('HttpStagingAdmin.updateStore', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('sends back every store, changing only the chosen one', async () => {
+    const sent: any[] = [];
+    global.fetch = jest.fn(async (url: URL, init: RequestInit) => {
+      const path = url.pathname;
+      let data: unknown = {};
+      if (path === '/auth/login') data = { accessToken: 'jwt' };
+      else if (path === '/businesses/brands/b1' && init.method === 'GET') {
+        data = {
+          id: 'b1',
+          name: { en: 'Test Brand' },
+          stores: [
+            {
+              id: 's1',
+              propertyId: 'm1',
+              name: { en: 'A', ar: 'ا' },
+              floor: 'L1',
+              wing: 'A',
+              nearestGate: 'G1',
+              workSchedule: {
+                regular: [{ days: ['monday'], open: '10:00', close: '22:00' }],
+              },
+              status: 'draft',
+              ageGroup: 'x',
+            },
+            {
+              id: 's2',
+              propertyId: 'm2',
+              name: { en: 'B', ar: 'ب' },
+              floor: 'L3',
+              workSchedule: { regular: [] },
+              status: 'active',
+            },
+          ],
+        };
+      } else if (init.method === 'PUT')
+        sent.push(JSON.parse(String(init.body)));
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify(data),
+      };
+    }) as any;
+
+    await new HttpStagingAdmin(env(staging)).updateStore('b1', 's1', {
+      floor: null,
+      open: '09:00',
+      nameEn: 'A2',
+    });
+
+    expect(sent).toHaveLength(1);
+    const [s1, s2] = sent[0].stores;
+    expect(s1).toMatchObject({
+      id: 's1',
+      floor: null,
+      wing: 'A',
+      nearestGate: 'G1',
+      name: { en: 'A2', ar: 'ا' },
+    });
+    expect(s1.workSchedule.regular[0]).toMatchObject({
+      open: '09:00',
+      close: '22:00',
+    });
+    expect(s1.workSchedule.regular[0].days).toHaveLength(7);
+    expect(s1).not.toHaveProperty('status');
+    expect(s1).not.toHaveProperty('ageGroup');
+    expect(s2).toMatchObject({ id: 's2', propertyId: 'm2', floor: 'L3' });
+  });
+
+  it('refuses a store that is not in the brand', async () => {
+    global.fetch = jest.fn(async (url: URL) => ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () =>
+        JSON.stringify(
+          url.pathname === '/auth/login'
+            ? { accessToken: 'jwt' }
+            : { id: 'b1', stores: [{ id: 's1' }] },
+        ),
+    })) as any;
+    await expect(
+      new HttpStagingAdmin(env(staging)).updateStore('b1', 'zzz', {
+        floor: 'L2',
+      }),
+    ).rejects.toThrow(/not in brand/);
+  });
+});

@@ -7,6 +7,9 @@ import {
 import {
   ADMIN_TARGETS,
   BrandTarget,
+  NewProperty,
+  PropertyTarget,
+  StoreEdit,
   IAdminTargets,
   IStagingAdmin,
   NewBrand,
@@ -78,15 +81,7 @@ export class ConfirmPendingActionUseCase {
     const tier = action.payload.tier || 'staging';
     try {
       const admin = this.targets.target(tier);
-      const text =
-        action.kind === 'create_brand'
-          ? await this.createBrand(admin, tier, action.payload as NewBrand)
-          : await this.changeBrand(
-              admin,
-              tier,
-              action.kind,
-              action.payload as BrandTarget,
-            );
+      const text = await this.run(admin, tier, action);
       await this.actions.finish(action.id, 'done', text);
       return text;
     } catch (error) {
@@ -110,6 +105,79 @@ export class ConfirmPendingActionUseCase {
       );
       return text;
     }
+  }
+
+  private run(
+    admin: IStagingAdmin,
+    tier: string,
+    action: PendingAction,
+  ): Promise<string> {
+    switch (action.kind) {
+      case 'create_brand':
+        return this.createBrand(admin, tier, action.payload as NewBrand);
+      case 'update_store':
+        return this.updateStore(admin, tier, action.payload as StoreEdit);
+      case 'create_property':
+        return this.createProperty(admin, tier, action.payload as NewProperty);
+      case 'publish_property':
+      case 'unpublish_property':
+        return this.changeProperty(
+          admin,
+          tier,
+          action.kind,
+          action.payload as PropertyTarget,
+        );
+      default:
+        return this.changeBrand(
+          admin,
+          tier,
+          action.kind,
+          action.payload as BrandTarget,
+        );
+    }
+  }
+
+  private async updateStore(
+    admin: IStagingAdmin,
+    tier: string,
+    edit: StoreEdit,
+  ): Promise<string> {
+    await admin.updateStore(edit.brandId, edit.storeId, edit.changes);
+    return `Готово на ${tier}: магазин ${edit.storeLabel} бренда "${edit.brandName}" обновлён.`;
+  }
+
+  private async createProperty(
+    admin: IStagingAdmin,
+    tier: string,
+    property: NewProperty,
+  ): Promise<string> {
+    const created = await admin.createProperty(property);
+    return `Готово: на ${tier} создан ${property.type} "${created.name}" (id ${
+      created.id
+    })${created.note ? ` — ${created.note}` : ''}.`;
+  }
+
+  private async changeProperty(
+    admin: IStagingAdmin,
+    tier: string,
+    kind: string,
+    target: PropertyTarget,
+  ): Promise<string> {
+    const publish = kind === 'publish_property';
+    const result = publish
+      ? await admin.publishProperties([target.propertyId])
+      : await admin.unpublishProperties([target.propertyId]);
+    if (result.failed.length) {
+      const missing = result.failed[0].missingFields;
+      return `Не получилось ${
+        publish ? 'опубликовать' : 'снять с публикации'
+      } "${target.propertyName}" на ${tier}${
+        missing.length ? `: не хватает ${missing.join(', ')}` : ''
+      }.`;
+    }
+    return `Готово на ${tier}: "${target.propertyName}" ${
+      publish ? 'опубликован' : 'снят с публикации'
+    }.`;
   }
 
   private async createBrand(

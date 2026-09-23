@@ -2,6 +2,8 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   BrandDetails,
+  NewProperty,
+  StoreChanges,
   CreatedBrand,
   PublishResult,
   IAdminTargets,
@@ -232,11 +234,133 @@ export class HttpStagingAdmin implements IStagingAdmin {
     await this.call('DELETE', `/businesses/brands/${encodeURIComponent(id)}`);
   }
 
-  private async storeStatus(
+  async updateStore(
+    brandId: string,
+    storeId: string,
+    changes: StoreChanges,
+  ): Promise<void> {
+    const raw = await this.call(
+      'GET',
+      `/businesses/brands/${encodeURIComponent(brandId)}`,
+    );
+    const brand = raw?.body ?? raw;
+    const stores: Json[] = Array.isArray(brand?.stores) ? brand.stores : [];
+    if (!stores.some((st) => String(st.id) === storeId)) {
+      throw new StagingHttpError(
+        404,
+        `store ${storeId} is not in brand ${brandId}`,
+      );
+    }
+    // Only the fields the update DTO accepts, taken from what the API returned
+    const body = {
+      stores: stores.map((st) => {
+        const store: Json = {
+          id: st.id,
+          propertyId: st.propertyId ?? st.property?.id,
+          name: st.name,
+          categoryIds: st.categoryIds ?? [],
+          coordinates: st.coordinates ?? null,
+          wing: st.wing ?? null,
+          nearestGate: st.nearestGate ?? null,
+          floor: st.floor ?? null,
+          workSchedule: st.workSchedule ?? { regular: [] },
+          image: st.image ?? null,
+          gender: st.gender ?? null,
+          type: st.type ?? null,
+          brandsMode: st.brandsMode ?? null,
+          ...(st.brandsMode === 'multiple'
+            ? { representedBrands: st.representedBrands ?? [] }
+            : {}),
+        };
+        if (String(st.id) !== storeId) return store;
+        const name = { ...(store.name ?? {}) };
+        if (changes.nameEn !== undefined) name.en = changes.nameEn;
+        if (changes.nameAr !== undefined) name.ar = changes.nameAr;
+        store.name = name;
+        if (changes.floor !== undefined) store.floor = changes.floor;
+        if (changes.wing !== undefined) store.wing = changes.wing;
+        if (changes.nearestGate !== undefined)
+          store.nearestGate = changes.nearestGate;
+        if (changes.categoryId !== undefined)
+          store.categoryIds = [changes.categoryId];
+        if (changes.open !== undefined || changes.close !== undefined) {
+          const first = store.workSchedule?.regular?.[0] ?? {};
+          store.workSchedule = {
+            ...(store.workSchedule ?? {}),
+            regular: [
+              {
+                days: WEEK,
+                open: changes.open ?? first.open ?? '10:00',
+                close: changes.close ?? first.close ?? '22:00',
+              },
+            ],
+          };
+        }
+        return store;
+      }),
+    };
+    await this.call(
+      'PUT',
+      `/businesses/brands/${encodeURIComponent(brandId)}`,
+      body,
+    );
+  }
+
+  async createProperty(property: NewProperty): Promise<CreatedBrand> {
+    const cid = await this.companyId();
+    const hasPoint = property.latitude !== null && property.longitude !== null;
+    const address = {
+      city: { en: property.city, ar: property.city },
+      ...(property.district
+        ? { district: { en: property.district, ar: property.district } }
+        : {}),
+      ...(property.street
+        ? { street: { en: property.street, ar: property.street } }
+        : {}),
+      ...(hasPoint
+        ? {
+            geoLocation: {
+              latitude: property.latitude,
+              longitude: property.longitude,
+            },
+          }
+        : {}),
+    };
+    const created = await this.call('POST', `/companies/${cid}/properties`, {
+      type: property.type,
+      name: { en: property.nameEn, ar: property.nameAr },
+      address,
+    });
+    const id = created?.id ?? created?.body?.id;
+    if (!id) throw new StagingHttpError(502, 'staging returned no property id');
+    return {
+      id: String(id),
+      name: property.nameEn,
+      note: 'создан черновиком — опубликовать можно отдельным действием или в дашборде',
+    };
+  }
+
+  publishProperties(ids: string[]): Promise<PublishResult> {
+    return this.statusChange('/properties', 'publish', ids);
+  }
+
+  unpublishProperties(ids: string[]): Promise<PublishResult> {
+    return this.statusChange('/properties', 'unpublish', ids);
+  }
+
+  private storeStatus(
     verb: 'publish' | 'unpublish',
     ids: string[],
   ): Promise<PublishResult> {
-    const data = await this.call('POST', `/businesses/stores/${verb}`, { ids });
+    return this.statusChange('/businesses/stores', verb, ids);
+  }
+
+  private async statusChange(
+    base: string,
+    verb: 'publish' | 'unpublish',
+    ids: string[],
+  ): Promise<PublishResult> {
+    const data = await this.call('POST', `${base}/${verb}`, { ids });
     const done: unknown[] = data?.published ?? data?.unpublished ?? [];
     const failed: Json[] = data?.failed ?? [];
     return {
