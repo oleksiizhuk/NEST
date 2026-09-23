@@ -130,6 +130,8 @@ PM_RELEASE_DATE=        # YYYY-MM-DD the team is aiming at
 PM_PROJECT_BRIEF=       # Team, process, risks — project-specific, never committed
 PM_AI_MODEL=            # default claude-opus-5-5; PM_AI_EFFORT / PM_DIGEST_EFFORT default high
 PM_JIRA_PROJECTS=       # e.g. ABC,XYZ (uses JIRA_BASE_URL / JIRA_EMAIL / JIRA_API_TOKEN, read-only)
+PM_RELEASE_VERSION=     # Jira fixVersion that is the release scope for the computed forecast; unset = all open issues
+PM_JIRA_SPRINT_FIELD=   # Sprint custom field id, default customfield_10020
 PM_CONFLUENCE_PAGE_IDS= # Comma-separated page ids re-read on every refresh
 PM_GITHUB_TOKEN=        # Fine-grained, read-only; with PM_GITHUB_ORG, PM_GITHUB_REPOS, PM_GITHUB_COMPARES (repo:base...head)
 PM_FIGMA_TOKEN=         # Figma personal token (read: file content, comments, versions) with PM_FIGMA_FILE_KEYS
@@ -154,7 +156,7 @@ PORT=3000
 
 In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager on `claude-opus-5-5`. Every other chat keeps the persona and never sees project data.
 - `RefreshProjectSnapshotUseCase` reads Jira, Confluence, GitHub and Figma (pages/frames, recent versions, open comments) through read-only `IProjectSource`s (`src/infrastructure/project-manager/`) into a `ProjectSnapshot` in Mongo. A failed source keeps its previous text, marked stale.
-- `AnswerProjectQuestionUseCase` answers from the latest snapshot plus `PM_PROJECT_BRIEF`, rebuilding it first when it is older than `PM_SNAPSHOT_MAX_AGE_HOURS` (30). Instructions are generic and live in the repo; everything project-specific comes from env and the snapshot, because the repo is public.
+- `AnswerProjectQuestionUseCase` answers from the latest snapshot plus `PM_PROJECT_BRIEF`; crons keep the snapshot fresh, and it is built inline only when none exists (its age is shown to the model). The Jira and GitHub sections start with a "Computed metrics" block counted in code (`application/project-manager/metrics.ts`): scope, 14-day pace, forecast with a verdict hint, unassigned/stale/overdue items, bugs, load per person, PRs waiting for review, red pipelines. Instructions are generic and live in the repo; everything project-specific comes from env and the snapshot, because the repo is public.
 - Commands: `/status` (verdict, focus per person, risks), `/refresh` (owner only). In a group the owner sends `/pm_on` to switch that chat to PM mode and add it to the digest (stored in Mongo `pmchats`), `/pm_off` to switch it back; nobody else can.
 - `PostDailyDigestUseCase` runs from Vercel Cron on weekdays and posts to `PM_DIGEST_CHAT_ID`.
 - The webhook claims each `update_id` in Mongo first, so Telegram's retry of a slow answer is ignored.

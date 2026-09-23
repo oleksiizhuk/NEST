@@ -1,4 +1,7 @@
-import { AnthropicProjectManagerService } from '@infrastructure/anthropic/anthropic-project-manager.service';
+import {
+  AnthropicProjectManagerService,
+  markCacheTail,
+} from '@infrastructure/anthropic/anthropic-project-manager.service';
 
 const env = { get: () => undefined } as any;
 const message = (content: unknown[], stop_reason: string) => ({
@@ -151,5 +154,42 @@ describe('AnthropicProjectManagerService in Nest DI', () => {
     expect(moduleRef.get(AnthropicProjectManagerService)).toBeInstanceOf(
       AnthropicProjectManagerService,
     );
+  });
+});
+
+describe('markCacheTail', () => {
+  it('keeps exactly one breakpoint, on the newest block', () => {
+    const messages: any[] = [
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'a' }] },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'a',
+            content: 'x',
+            cache_control: { type: 'ephemeral' },
+          },
+        ],
+      },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'b' }] },
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'b', content: 'y' },
+          { type: 'text', text: 'wrap up' },
+        ],
+      },
+    ];
+    markCacheTail(messages);
+    const marked = messages.flatMap((m) =>
+      Array.isArray(m.content)
+        ? m.content.filter((b: any) => b.cache_control)
+        : [],
+    );
+    expect(marked).toEqual([
+      { type: 'text', text: 'wrap up', cache_control: { type: 'ephemeral' } },
+    ]);
   });
 });

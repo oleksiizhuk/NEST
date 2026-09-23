@@ -58,7 +58,7 @@ Vercel Cron calls `GET /cron/pm/daily` weekdays at 05:00 UTC (`0 5 * * 1-5`). It
 Everything is env (names in `CLAUDE.md` → Environment Variables):
 - Scope and people: `TELEGRAM_PM_CHAT_IDS`, `PM_DIGEST_CHAT_ID`, `PM_ACTION_USER_IDS`, `TELEGRAM_OWNER_ID`.
 - Project context: `PM_PROJECT_BRIEF` (single line; write `\n` for newlines), `PM_RELEASE_DATE` (`YYYY-MM-DD`), `PM_SNAPSHOT_MAX_AGE_HOURS` (default 30).
-- Jira / Confluence: `PM_JIRA_PROJECTS`, `PM_CONFLUENCE_PAGE_IDS`, `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`.
+- Jira / Confluence: `PM_JIRA_PROJECTS`, `PM_RELEASE_VERSION` (fixVersion = release scope for the computed forecast), `PM_JIRA_SPRINT_FIELD` (default `customfield_10020`), `PM_CONFLUENCE_PAGE_IDS`, `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`.
 - GitHub: `PM_GITHUB_TOKEN`, `PM_GITHUB_ORG`, `PM_GITHUB_REPOS`, `PM_GITHUB_COMPARES` (`repo:base...head`), `PM_CODE_REPOS`.
 - Figma: `PM_FIGMA_TOKEN`, `PM_FIGMA_FILE_KEYS`.
 - Model: `PM_AI_MODEL` (default `claude-opus-5-5`), `PM_AI_EFFORT`, `PM_DIGEST_EFFORT` (default high).

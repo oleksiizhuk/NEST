@@ -17,6 +17,18 @@ const ENTITIES: Record<string, string> = {
   '&hellip;': '…',
 };
 
+const MAX_URL = 160;
+
+// Jira browse links shrink to the key; other http(s) links stay, shortened.
+// Anything else (mailto:, anchors, javascript:) is dropped.
+const linkText = (raw: string): string => {
+  const url = raw.replace(/&amp;/g, '&');
+  const jira = url.match(/\/browse\/([A-Z][A-Z0-9_]+-\d+)/);
+  if (jira) return ` ${jira[1]} `;
+  if (!/^https?:\/\//i.test(url)) return '';
+  return ` (${url.length > MAX_URL ? `${url.slice(0, MAX_URL)}…` : url}) `;
+};
+
 export function storageToText(storage: string, maxChars: number): string {
   let s = storage;
   // Task list items: <ac:task><ac:task-status>complete</ac:task-status><ac:task-body>…
@@ -26,6 +38,33 @@ export function storageToText(storage: string, maxChars: number): string {
   );
   // Date macro: <time datetime="2026-09-23" />
   s = s.replace(/<time[^>]*datetime="([^"]+)"[^>]*\/?>/g, ' $1 ');
+  // Links carry the connections between docs, tickets and design; keep them
+  // before the markup is stripped. Jira macro → its issue key.
+  s = s.replace(
+    /<ac:parameter ac:name="key">\s*([A-Z][A-Z0-9_]+-\d+)\s*<\/ac:parameter>/g,
+    ' $1 ',
+  );
+  // Link to another Confluence page → its title
+  s = s.replace(
+    /<ri:page[^>]*ri:content-title="([^"]+)"[^>]*\/?>/g,
+    ' [page: $1] ',
+  );
+  // Embedded URLs (Figma, widgets, smart links)
+  s = s.replace(/<ri:url[^>]*ri:value="([^"]+)"[^>]*\/?>/g, (_, url) =>
+    linkText(url),
+  );
+  // A mention has only an account id in storage; say that someone is named
+  s = s.replace(/<ri:user[^>]*\/?>/g, ' @someone ');
+  // <a href="…">text</a> → text (url) when the URL adds information
+  s = s.replace(
+    /<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g,
+    (_, url: string, inner: string) => {
+      const text = inner.replace(/<[^>]+>/g, '').trim();
+      const link = linkText(url).trim();
+      if (!link) return ` ${text} `;
+      return text && !link.includes(text) ? ` ${text} ${link} ` : ` ${link} `;
+    },
+  );
   // Status lozenges keep their title
   s = s.replace(
     /<ac:parameter ac:name="title">([^<]*)<\/ac:parameter>/g,

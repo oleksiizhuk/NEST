@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IProjectSource } from '@application/project-manager/project-source.interface';
 import {
+  codeMetrics,
+  PullFact,
+  RunFact,
+} from '@application/project-manager/metrics';
+import {
   getJson,
   oneLine,
   shortDate,
@@ -42,6 +47,38 @@ interface Compare {
   spec: string; // repo:base...head
 }
 
+interface RepoActivity {
+  text: string;
+  pulls: PullFact[];
+  runs: RunFact[];
+}
+
+// Review state is not in the REST pull list; one GraphQL call per repo
+// gets it for every open PR
+const REVIEWS_QUERY = `query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(states: OPEN, first: 50, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes {
+        number
+        reviewDecision
+        reviews(states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) { totalCount }
+      }
+    }
+  }
+}`;
+
+interface ReviewNode {
+  number: number;
+  reviewDecision: string | null;
+  reviews: { totalCount: number };
+}
+
+const reviewLabel = (review?: ReviewNode): string => {
+  if (!review) return '';
+  if (review.reviewDecision) return `${review.reviewDecision} | `;
+  return review.reviews.totalCount ? 'reviewed | ' : 'no review yet | ';
+};
+
 const daysSince = (iso: string, now: Date): number =>
   Math.floor((now.getTime() - new Date(iso).getTime()) / 86_400_000);
 
@@ -73,13 +110,25 @@ export class GitHubActivityReader implements IProjectSource {
   }
 
   async fetch(now = new Date()): Promise<string> {
-    const repoParts = await Promise.all(
+    const activity = await Promise.all(
       this.repos.map((repo) =>
         this.repo(repo, now).catch(
-          (error) => `## ${repo}: could not read (${(error as Error).message})`,
+          (error): RepoActivity => ({
+            text: `## ${repo}: could not read (${(error as Error).message})`,
+            pulls: [],
+            runs: [],
+          }),
         ),
       ),
     );
+    const repoParts = [
+      `## Computed metrics (exact)\n${codeMetrics(
+        activity.flatMap((a) => a.pulls),
+        activity.flatMap((a) => a.runs),
+        now,
+      )}`,
+      ...activity.map((a) => a.text),
+    ];
     const drift = await Promise.all(
       this.compares.map((c) =>
         this.compare(c.spec).catch(
@@ -105,12 +154,31 @@ export class GitHubActivityReader implements IProjectSource {
     };
   }
 
-  private async repo(repo: string, now: Date): Promise<string> {
+  // Unknown (undefined) on any failure: the metrics then say so instead of
+  // reporting "no reviews"
+  private async reviews(repo: string): Promise<Map<number, ReviewNode>> {
+    const { data } = await getJson<{
+      data?: {
+        repository?: { pullRequests?: { nodes?: ReviewNode[] } } | null;
+      } | null;
+    }>(`${API}/graphql`, this.headers, {
+      method: 'POST',
+      body: {
+        query: REVIEWS_QUERY,
+        variables: { owner: this.org, name: repo },
+      },
+    });
+    const nodes = data.data?.repository?.pullRequests?.nodes;
+    if (!nodes) throw new Error('no review data');
+    return new Map(nodes.map((n) => [n.number, n]));
+  }
+
+  private async repo(repo: string, now: Date): Promise<RepoActivity> {
     const base = `${API}/repos/${this.org}/${repo}`;
     const since = new Date(now.getTime() - 14 * 86_400_000)
       .toISOString()
       .slice(0, 10);
-    const [open, closed, runs] = await Promise.all([
+    const [open, closed, runs, reviews] = await Promise.all([
       getJson<Pull[]>(`${base}/pulls?state=open&per_page=50`, this.headers),
       getJson<Pull[]>(
         `${base}/pulls?state=closed&sort=updated&direction=desc&per_page=100`,
@@ -120,7 +188,33 @@ export class GitHubActivityReader implements IProjectSource {
         `${base}/actions/runs?per_page=40&exclude_pull_requests=true`,
         this.headers,
       ),
+      this.reviews(repo).catch(() => null),
     ]);
+
+    const pulls: PullFact[] = open.data.map((pr) => {
+      const review = reviews?.get(pr.number);
+      return {
+        repo,
+        number: pr.number,
+        author: pr.user?.login ?? '?',
+        draft: Boolean(pr.draft),
+        createdAt: pr.created_at,
+        updatedAt: pr.updated_at,
+        ...(review
+          ? {
+              reviewDecision: review.reviewDecision,
+              reviews: review.reviews.totalCount,
+            }
+          : {}),
+      };
+    });
+    const runFacts: RunFact[] = (runs.data.workflow_runs ?? []).map((run) => ({
+      repo,
+      workflow: run.name ?? '?',
+      branch: run.head_branch ?? '?',
+      conclusion: run.conclusion ?? null,
+      createdAt: run.created_at,
+    }));
 
     const openLines = open.data.map(
       (pr) =>
@@ -131,6 +225,7 @@ export class GitHubActivityReader implements IProjectSource {
           pr.created_at,
           now,
         )}d | ` +
+        reviewLabel(reviews?.get(pr.number)) +
         oneLine(pr.title, 120),
     );
     const merged = closed.data.filter(
@@ -157,7 +252,7 @@ export class GitHubActivityReader implements IProjectSource {
         )})`,
     );
 
-    return [
+    const text = [
       `## ${repo}`,
       `Open PRs (${open.data.length}):`,
       ...(openLines.length ? openLines : ['none']),
@@ -185,6 +280,7 @@ export class GitHubActivityReader implements IProjectSource {
       'Latest CI/CD runs (non-PR):',
       ...(runLines.length ? runLines : ['none']),
     ].join('\n');
+    return { text, pulls, runs: runFacts };
   }
 
   private async compare(spec: string): Promise<string> {
