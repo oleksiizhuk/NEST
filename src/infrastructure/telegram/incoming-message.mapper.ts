@@ -1,9 +1,7 @@
-import TelegramBot = require('node-telegram-bot-api');
+import type { Message } from 'grammy/types';
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
 
-export const mapToIncoming = (
-  msg: TelegramBot.Message,
-): IncomingTelegramMessage | null => {
+export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
   if (!msg.from) return null;
 
   return {
