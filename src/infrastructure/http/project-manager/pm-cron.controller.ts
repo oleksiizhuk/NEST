@@ -79,36 +79,41 @@ export class PmCronController {
       .flatMap((tier) =>
         this.targets.roles(tier).map((role) => ({ tier, role })),
       );
-    return Promise.all(
-      pairs.map(async ({ tier, role }) => {
-        const admin = this.targets.target(tier, role);
-        try {
-          const tokenRole = await admin.whoAmI();
-          const [malls, categories] = await Promise.all([
-            admin.findMalls(''),
-            admin.findCategories(''),
-          ]);
-          return {
-            tier,
-            role,
-            tokenRole,
-            host: admin.describeTarget(),
-            ok: true,
-            malls: malls.length,
-            categories: categories.length,
-            sampleMalls: malls.slice(0, 5).map((m) => m.name),
-          };
-        } catch (error) {
-          return {
-            tier,
-            role,
-            host: admin.describeTarget(),
-            ok: false,
-            error: String((error as Error).message).slice(0, 200),
-          };
-        }
-      }),
-    );
+    // One after another: accounts may be shared between roles
+    const results: unknown[] = [];
+    for (const { tier, role } of pairs) {
+      results.push(
+        await (async () => {
+          const admin = this.targets.target(tier, role);
+          try {
+            const tokenRole = await admin.whoAmI();
+            const [malls, categories] = await Promise.all([
+              admin.findMalls(''),
+              admin.findCategories(''),
+            ]);
+            return {
+              tier,
+              role,
+              tokenRole,
+              host: admin.describeTarget(),
+              ok: true,
+              malls: malls.length,
+              categories: categories.length,
+              sampleMalls: malls.slice(0, 5).map((m) => m.name),
+            };
+          } catch (error) {
+            return {
+              tier,
+              role,
+              host: admin.describeTarget(),
+              ok: false,
+              error: String((error as Error).message).slice(0, 200),
+            };
+          }
+        })(),
+      );
+    }
+    return results;
   }
 
   @Get('refresh')

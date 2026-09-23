@@ -31,6 +31,18 @@ const FALLBACK_POINT = { latitude: 24.7136, longitude: 46.6753 };
 
 type Json = Record<string, any>;
 
+interface Session {
+  token: { value: string; until: number } | null;
+  loggingIn: Promise<string> | null;
+  queue: Promise<unknown>;
+}
+
+// Per process: one session per account and host
+const SESSIONS = new Map<string, Session>();
+
+// Tests only: forget cached logins between cases
+export const resetStagingSessions = (): void => SESSIONS.clear();
+
 const listOf = (d: any): any[] =>
   Array.isArray(d) ? d : d?.data ?? d?.items ?? d?.body ?? [];
 
@@ -70,12 +82,20 @@ export class HttpStagingAdmin implements IStagingAdmin {
   private readonly role: string;
   private readonly email: string;
   private readonly password: string;
-  private token: { value: string; until: number } | null = null;
-  private loggingIn: Promise<string> | null = null;
   // The admin API updates the session on every request, and concurrent
   // requests on one session deadlock there; it also allows ~10 req/min.
-  // So requests to one environment run strictly one after another.
-  private queue: Promise<unknown> = Promise.resolve();
+  // Requests for one account on one host therefore run strictly one after
+  // another and share one login — even when two roles are configured with
+  // the same account.
+  private get session(): Session {
+    const key = `${this.base?.host ?? ''}|${this.email.toLowerCase()}`;
+    let session = SESSIONS.get(key);
+    if (!session) {
+      session = { token: null, loggingIn: null, queue: Promise.resolve() };
+      SESSIONS.set(key, session);
+    }
+    return session;
+  }
   private company: string | null = null;
 
   constructor(
@@ -477,11 +497,11 @@ export class HttpStagingAdmin implements IStagingAdmin {
 
   // One login shared by every concurrent caller
   private login(): Promise<string> {
-    if (this.token && this.token.until > Date.now()) {
-      return Promise.resolve(this.token.value);
+    if (this.session.token && this.session.token.until > Date.now()) {
+      return Promise.resolve(this.session.token.value);
     }
-    if (!this.loggingIn) {
-      this.loggingIn = this.raw('POST', '/auth/login', {
+    if (!this.session.loggingIn) {
+      this.session.loggingIn = this.raw('POST', '/auth/login', {
         email: this.email,
         password: this.password,
       })
@@ -490,19 +510,19 @@ export class HttpStagingAdmin implements IStagingAdmin {
           if (!value) {
             throw new StagingHttpError(401, 'login returned no token');
           }
-          this.token = { value, until: Date.now() + TOKEN_TTL_MS };
+          this.session.token = { value, until: Date.now() + TOKEN_TTL_MS };
           return value as string;
         })
         .finally(() => {
-          this.loggingIn = null;
+          this.session.loggingIn = null;
         });
     }
-    return this.loggingIn;
+    return this.session.loggingIn;
   }
 
   private serial<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(task, task);
-    this.queue = run.catch(() => undefined);
+    const run = this.session.queue.then(task, task);
+    this.session.queue = run.catch(() => undefined);
     return run;
   }
 
@@ -520,7 +540,7 @@ export class HttpStagingAdmin implements IStagingAdmin {
       return await this.raw(method, path, body, token);
     } catch (error) {
       if (error instanceof StagingHttpError && error.status === 401) {
-        this.token = null;
+        this.session.token = null;
         return this.raw(method, path, body, await this.login());
       }
       throw error;

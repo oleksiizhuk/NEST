@@ -2,8 +2,11 @@ import {
   AdminTargets,
   checkStagingBase,
   HttpStagingAdmin,
+  resetStagingSessions,
 } from '@infrastructure/staging-admin/http-staging-admin';
 import { placeholderPng } from '@infrastructure/staging-admin/placeholder-png';
+
+beforeEach(() => resetStagingSessions());
 
 const env = (values: Record<string, string>) =>
   ({ get: (k: string) => values[k] } as any);
@@ -394,5 +397,44 @@ describe('AdminTargets roles', () => {
     await expect(admin.whoAmI()).resolves.toBe('owner');
     await targets.target('dev', 'client').findMalls('');
     expect(logins).toEqual(['admin@x', 'client@x']);
+  });
+});
+
+describe('HttpStagingAdmin shared sessions', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('two roles with the same account share one login and one queue', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let logins = 0;
+    global.fetch = jest.fn(async (url: URL) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      if (url.pathname === '/auth/login') logins += 1;
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      const data =
+        url.pathname === '/auth/login' ? { accessToken: 'jwt' } : { data: [] };
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify(data),
+      };
+    }) as any;
+    const targets = new AdminTargets(
+      env({
+        ...staging,
+        STAGING_PLATFORM_ADMIN_EMAIL: 'bot@example.com',
+        STAGING_PLATFORM_ADMIN_PASSWORD: 'pw',
+      }),
+    );
+    await Promise.all([
+      targets.target('staging', 'client').findMalls(''),
+      targets.target('staging', 'admin').findMalls(''),
+    ]);
+    expect(logins).toBe(1);
+    expect(maxInFlight).toBe(1);
   });
 });
