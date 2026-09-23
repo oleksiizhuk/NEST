@@ -12,6 +12,10 @@ Where it lives:
 - Infrastructure: `src/infrastructure/project-manager/` (sources, `pm.config.ts`), `src/infrastructure/staging-admin/http-staging-admin.ts`, HTTP in `src/infrastructure/http/project-manager/` (`pm-cron.controller.ts`, `pm-knowledge.controller.ts`, `cron-secret.guard.ts`).
 - Schedule: `vercel.json` → `crons`. Mongo collections: `pmchats`, `pmactions`, `pmknowledges`, the snapshot.
 
+## Admin page
+
+The owner opens it by sending `/admin` to the bot in a private chat: the bot replies with a one-time link (10 minutes) to `https://<host>/admin/`. Limits, access lists, alert recipients and chat effort changed there apply within 30 s without a redeploy and override the Vercel env; an emptied field goes back to the env value. Nobody else can log in: links are issued only to `TELEGRAM_OWNER_ID`, and sessions are checked against it.
+
 ## Health checks
 
 All `/cron/pm/*` routes need `Authorization: Bearer $CRON_SECRET` (the guard compares in constant time; unset secret = always 401). The secret is only in Vercel env — read it into a shell variable without echoing, never print it, never paste it into chat:

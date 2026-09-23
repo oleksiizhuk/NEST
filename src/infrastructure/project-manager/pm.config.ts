@@ -38,6 +38,10 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       .split(',')
       .map((u) => u.trim().replace(/^@/, '').toLowerCase())
       .filter((u) => /^[a-z0-9_]{4,32}$/.test(u)),
+    // What the model service uses unless the admin page overrides it
+    aiEffort: (['low', 'medium', 'high', 'xhigh', 'max'] as const).find(
+      (e) => e === config.get<string>('PM_AI_EFFORT'),
+    ),
     dailyQuestionLimit: (() => {
       const raw = config.get<string>('PM_DAILY_QUESTION_LIMIT');
       const n = Number(raw);

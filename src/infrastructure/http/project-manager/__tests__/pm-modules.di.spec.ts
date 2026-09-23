@@ -2,6 +2,8 @@ import { Test } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
 import { ConfigModule } from '@nestjs/config';
 import { PmCronHttpModule } from '@infrastructure/http/project-manager/pm-cron.module';
+import { PmAdminHttpModule } from '@infrastructure/http/pm-admin/pm-admin.module';
+import { PmAdminController } from '@infrastructure/http/pm-admin/pm-admin.controller';
 import { TelegramHttpModule } from '@infrastructure/http/telegram/telegram.module';
 import { PmCronController } from '@infrastructure/http/project-manager/pm-cron.controller';
 import { PmKnowledgeController } from '@infrastructure/http/project-manager/pm-knowledge.controller';
@@ -26,6 +28,8 @@ const MODELS = [
   'PmAlert',
   'PmGolden',
   'PmQuota',
+  'PmSettings',
+  'PmAdminLogin',
 ];
 
 describe('project-manager module wiring', () => {
@@ -35,6 +39,7 @@ describe('project-manager module wiring', () => {
         ConfigModule.forRoot({ ignoreEnvFile: true }),
         PmCronHttpModule,
         TelegramHttpModule,
+        PmAdminHttpModule,
       ],
     });
     for (const name of MODELS) {
@@ -44,6 +49,7 @@ describe('project-manager module wiring', () => {
     expect(moduleRef.get(PmCronController)).toBeDefined();
     expect(moduleRef.get(PmKnowledgeController)).toBeDefined();
     expect(moduleRef.get(TelegramController)).toBeDefined();
+    expect(moduleRef.get(PmAdminController)).toBeDefined();
     // Optional dependencies resolve to undefined when a module forgets to
     // export them; the features behind them would then be silently off
     const optional = (instance: object, field: string) =>
@@ -58,14 +64,19 @@ describe('project-manager module wiring', () => {
       optional(moduleRef.get(AnswerProjectQuestionUseCase), 'memory'),
     ).toBeDefined();
     expect(
+      optional(moduleRef.get(AnswerProjectQuestionUseCase), 'runtime'),
+    ).toBeDefined();
+    expect(
       optional(moduleRef.get(ConfirmPendingActionUseCase), 'memory'),
     ).toBeDefined();
     const watcher = moduleRef.get(WatchProjectUseCase);
-    for (const field of ['memory', 'issues', 'docs', 'design']) {
+    for (const field of ['memory', 'issues', 'docs', 'design', 'runtime']) {
       expect(optional(watcher, field)).toBeDefined();
     }
     const handler = moduleRef.get(HandleTelegramMessageUseCase);
     for (const field of [
+      'pmRuntime',
+      'adminLinks',
       'pmQuota',
       'pmMemory',
       'pmConfig',

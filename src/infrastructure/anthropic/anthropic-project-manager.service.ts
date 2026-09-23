@@ -181,7 +181,8 @@ export class AnthropicProjectManagerService
 
   private async loop(request: PmRequest, usage: PmUsage): Promise<string> {
     const deadline = request.deadline ?? Date.now() + DEFAULT_BUDGET_MS;
-    const params = this.buildParams(request, this.chatEffort, CHAT_MAX_TOKENS);
+    const effort = request.effort ?? this.chatEffort;
+    const params = this.buildParams(request, effort, CHAT_MAX_TOKENS);
     const messages = params.messages;
     let toolCalls = 0;
     let toolChars = 0;
@@ -209,7 +210,7 @@ export class AnthropicProjectManagerService
             : {}),
           // Less thinking when the clock is short
           output_config: {
-            effort: left < 90_000 ? 'medium' : this.chatEffort,
+            effort: left < 90_000 ? 'medium' : effort,
           },
         },
         deadline,

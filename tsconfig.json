@@ -11,11 +11,21 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "paths": {
-      "@domain/*": ["src/domain/*"],
-      "@application/*": ["src/application/*"],
-      "@infrastructure/*": ["src/infrastructure/*"],
-      "@config/*": ["src/config/*"],
-      "@assets/*": ["src/assets/*"]
+      "@domain/*": [
+        "src/domain/*"
+      ],
+      "@application/*": [
+        "src/application/*"
+      ],
+      "@infrastructure/*": [
+        "src/infrastructure/*"
+      ],
+      "@config/*": [
+        "src/config/*"
+      ],
+      "@assets/*": [
+        "src/assets/*"
+      ]
     },
     "incremental": true,
     "skipLibCheck": true,
@@ -24,5 +34,11 @@
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
     "noFallthroughCasesInSwitch": false
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "admin",
+    "public"
+  ]
 }

@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   GoldenCase,
   GoldenResult,
@@ -80,6 +81,7 @@ export class RunGoldenEvalUseCase {
     @Inject(TELEGRAM_GATEWAY) private readonly telegram: ITelegramGateway,
     @Inject(PM_CONFIG) private readonly config: IPmConfig,
     @Inject(PM_ALERT_LOG) private readonly alerts: IAlertLog,
+    @Optional() private readonly runtime?: PmRuntimeConfig,
   ) {}
 
   async execute(
@@ -158,7 +160,9 @@ export class RunGoldenEvalUseCase {
     ].join('\n');
     let sent = false;
     const key = `eval:${weekOf(now)}`;
-    for (const chatId of this.config.alertChatIds ?? []) {
+    const live =
+      (await this.runtime?.current().catch(() => undefined)) ?? this.config;
+    for (const chatId of live.alertChatIds ?? []) {
       if (!(await this.alerts.claim(chatId, key, now))) continue;
       try {
         await this.telegram.sendMessage(chatId, text);

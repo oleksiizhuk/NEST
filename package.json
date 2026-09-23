@@ -24,7 +24,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "full:run": "nvm use && npm i && npm run start:dev",
     "prepare": "husky",
-    "dry-run": "npm run build && node scripts/dry-run-task.js"
+    "dry-run": "npm run build && node scripts/dry-run-task.js",
+    "build:admin": "npm --prefix admin ci && npm --prefix admin run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
