@@ -137,3 +137,19 @@ describe('AnthropicProjectManagerService tool loop', () => {
     ]);
   });
 });
+
+describe('AnthropicProjectManagerService in Nest DI', () => {
+  it('resolves with only ConfigService available, as in production', async () => {
+    const { Test } = await import('@nestjs/testing');
+    const { ConfigService } = await import('@nestjs/config');
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        AnthropicProjectManagerService,
+        { provide: ConfigService, useValue: { get: () => undefined } },
+      ],
+    }).compile();
+    expect(moduleRef.get(AnthropicProjectManagerService)).toBeInstanceOf(
+      AnthropicProjectManagerService,
+    );
+  });
+});

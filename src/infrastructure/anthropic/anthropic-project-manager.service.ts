@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import {
@@ -54,7 +54,8 @@ export class AnthropicProjectManagerService
   private readonly chatEffort: Effort;
   private readonly digestEffort: Effort;
 
-  constructor(config: ConfigService, client?: Anthropic) {
+  // The client parameter exists for tests only; Nest leaves it undefined
+  constructor(config: ConfigService, @Optional() client?: Anthropic) {
     this.client =
       client ??
       new Anthropic({
