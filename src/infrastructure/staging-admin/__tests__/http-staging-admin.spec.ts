@@ -196,3 +196,43 @@ describe('AdminTargets', () => {
     expect(targets.tiers()).toEqual([]);
   });
 });
+
+describe('HttpStagingAdmin concurrency', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('logs in once and never runs two requests at the same time', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const paths: string[] = [];
+    global.fetch = jest.fn(async (url: URL) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      paths.push(url.pathname);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      const data =
+        url.pathname === '/auth/login'
+          ? { accessToken: 'jwt' }
+          : url.pathname === '/companies/own'
+          ? { company: { id: 'co1' } }
+          : { data: [{ id: '1', name: { en: 'X' } }] };
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify(data),
+      };
+    }) as any;
+
+    const admin = new HttpStagingAdmin(env(staging));
+    await Promise.all([
+      admin.findMalls(''),
+      admin.findCategories(''),
+      admin.findBrands('x'),
+    ]);
+
+    expect(paths.filter((p) => p === '/auth/login')).toHaveLength(1);
+    expect(maxInFlight).toBe(1);
+  });
+});
