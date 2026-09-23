@@ -55,6 +55,9 @@ import {
 } from '@application/project-manager/memory.interface';
 import { readinessChecklist } from '@application/project-manager/readiness';
 
+const NO_CODE_NOTE =
+  'The person asking cannot have code read or PRs reviewed in depth: answer about code and PRs from the snapshot only (PR list, review state, CI), and say the owner can ask for a deep look.';
+
 // Leaves room for sending the reply within the 300 s function limit
 const ANSWER_BUDGET_MS = 240_000;
 
@@ -93,7 +96,13 @@ export class AnswerProjectQuestionUseCase {
   async execute(
     question: string,
     history: PmTurn[],
-    chat: { chatId: number; requesterId: number; requesterName?: string } = {
+    chat: {
+      chatId: number;
+      requesterId: number;
+      requesterName?: string;
+      // Owner-run diagnostics and the eval default to true
+      canReadCode?: boolean;
+    } = {
       chatId: 0,
       requesterId: 0,
     },
@@ -123,7 +132,8 @@ export class AnswerProjectQuestionUseCase {
       readiness: () => readinessChecklist(snapshot, knowledge.doc('core:dod')),
       team: this.config.team,
     });
-    const ctx: ToolContext = { ...chat, proposal: null };
+    const canReadCode = chat.canReadCode ?? true;
+    const ctx: ToolContext = { ...chat, canReadCode, proposal: null };
     let usage: PmUsage | undefined;
     const text = await this.ai.answer({
       // Memory rides with the brief: it changes rarely, and this block is
@@ -134,7 +144,10 @@ export class AnswerProjectQuestionUseCase {
       knowledge: knowledge.text,
       snapshot: snapshot.render(),
       history,
-      question: `${todayLine(now, this.config.releaseDate)}\n\n${question}`,
+      // After the cached prefix, so the note does not split the cache
+      question: `${todayLine(now, this.config.releaseDate)}${
+        canReadCode ? '' : `\n${NO_CODE_NOTE}`
+      }\n\n${question}`,
       tools: {
         specs: toolbox.specs(),
         run: (name, input) => toolbox.run(name, input, ctx),

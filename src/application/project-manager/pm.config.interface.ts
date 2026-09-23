@@ -26,4 +26,8 @@ export interface IPmConfig {
   // Who gets proactive alerts and the weekly eval report; default: only
   // the owner's private chat
   alertChatIds?: number[];
+  // Questions to the model per person per UTC day; 0 = no limit. The owner
+  // and unlimitedUsernames are never limited.
+  dailyQuestionLimit?: number;
+  unlimitedUsernames?: string[];
 }

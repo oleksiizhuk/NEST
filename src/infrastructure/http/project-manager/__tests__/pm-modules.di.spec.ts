@@ -25,6 +25,7 @@ const MODELS = [
   'PmMemory',
   'PmAlert',
   'PmGolden',
+  'PmQuota',
 ];
 
 describe('project-manager module wiring', () => {
@@ -65,6 +66,7 @@ describe('project-manager module wiring', () => {
     }
     const handler = moduleRef.get(HandleTelegramMessageUseCase);
     for (const field of [
+      'pmQuota',
       'pmMemory',
       'pmConfig',
       'pmAnswer',
