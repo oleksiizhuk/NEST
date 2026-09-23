@@ -30,6 +30,26 @@ describe('PmAdminAuth', () => {
     }),
   };
   const telegram = { sendMessage: jest.fn().mockResolvedValue(undefined) };
+  const states = new Map<string, string>();
+  let denied = false;
+  const approvals = {
+    create: jest.fn(async () => {
+      const id = `${states.size}`.padStart(32, 'a');
+      states.set(id, 'pending');
+      return id;
+    }),
+    decide: jest.fn(async (id: string, ok: boolean) => {
+      states.set(id, ok ? 'approved' : 'denied');
+      if (!ok) denied = true;
+      return states.get(id);
+    }),
+    take: jest.fn(async (id: string) => {
+      const st = states.get(id) ?? 'unknown';
+      if (st === 'approved') states.set(id, 'spent');
+      return st === 'spent' ? 'unknown' : st;
+    }),
+    deniedSince: jest.fn(async () => denied),
+  };
   const hash = bcrypt.hashSync('correct horse', 4);
   const auth = new PmAdminAuth(
     config({
@@ -43,6 +63,7 @@ describe('PmAdminAuth', () => {
     settings,
     throttle as any,
     telegram as any,
+    approvals as any,
   );
   const sign = (payload: object, secret = 's3cret') =>
     jwt.sign(payload, { secret });
@@ -50,19 +71,56 @@ describe('PmAdminAuth', () => {
   beforeEach(() => {
     epoch = 0;
     failures = 0;
+    denied = false;
+    states.clear();
     telegram.sendMessage.mockClear();
   });
 
-  it('logs in with email and password and tells the owner in Telegram', async () => {
-    const result = await auth.loginWithPassword(
+  it('asks the owner in Telegram and issues the session once after "yes"', async () => {
+    const started = await auth.loginWithPassword(
       ' owner@example.com ',
       'correct horse',
     );
-    expect('session' in result && (await auth.verify(result.session))).toBe(42);
-    expect(telegram.sendMessage).toHaveBeenCalledWith(
-      42,
-      expect.stringContaining('Вход в админку по паролю'),
+    if (!('pending' in started)) throw new Error('expected pending');
+    const [chat, text, buttons] = telegram.sendMessage.mock.calls[0];
+    expect(chat).toBe(42);
+    expect(text).toContain('Это вы?');
+    expect(buttons[0].map((b: { data: string }) => b.data)).toEqual([
+      `a:+:${started.pending}`,
+      `a:-:${started.pending}`,
+    ]);
+    await expect(auth.approval(started.pending)).resolves.toEqual({
+      pending: true,
+    });
+    await approvals.decide(started.pending, true);
+    const done = await auth.approval(started.pending);
+    expect('session' in done && (await auth.verify(done.session))).toBe(42);
+    // Spent: a second poll gets nothing
+    await expect(auth.approval(started.pending)).resolves.toEqual({
+      error: 'unknown',
+    });
+  });
+
+  it('a "no" in Telegram refuses this login and locks the next ones', async () => {
+    const started = await auth.loginWithPassword(
+      'owner@example.com',
+      'correct horse',
     );
+    if (!('pending' in started)) throw new Error('expected pending');
+    await approvals.decide(started.pending, false);
+    await expect(auth.approval(started.pending)).resolves.toEqual({
+      error: 'denied',
+    });
+    await expect(
+      auth.loginWithPassword('owner@example.com', 'correct horse'),
+    ).resolves.toEqual({ error: 'locked' });
+  });
+
+  it('fails closed when the Telegram prompt cannot be sent', async () => {
+    telegram.sendMessage.mockRejectedValueOnce(new Error('403'));
+    await expect(
+      auth.loginWithPassword('owner@example.com', 'correct horse'),
+    ).resolves.toEqual({ error: 'busy' });
   });
 
   it('refuses wrong credentials and locks after five failures', async () => {
@@ -88,6 +146,7 @@ describe('PmAdminAuth', () => {
       settings,
       throttle as any,
       telegram as any,
+      approvals as any,
     );
     await expect(off.loginWithPassword('a@b.c', 'x')).resolves.toEqual({
       error: 'off',
@@ -134,6 +193,7 @@ describe('PmAdminAuth', () => {
       settings,
       throttle as any,
       telegram as any,
+      approvals as any,
     );
     links.consume.mockResolvedValue(true);
     await expect(

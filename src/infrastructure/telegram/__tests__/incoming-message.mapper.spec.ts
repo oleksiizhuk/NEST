@@ -51,6 +51,14 @@ describe('mapCallbackToIncoming', () => {
     expect(mapCallbackToIncoming(query('f:+:bad token'))).toBeNull();
   });
 
+  it('reads an admin login approval', () => {
+    const id = 'a'.repeat(32);
+    expect(mapCallbackToIncoming(query(`a:-:${id}`))).toMatchObject({
+      callback: { kind: 'approve', approve: false, token: id },
+    });
+    expect(mapCallbackToIncoming(query('a:+:short'))).toBeNull();
+  });
+
   it('drops unknown data, bad ids and options it cannot read', () => {
     expect(mapCallbackToIncoming(query('z:1'))).toBeNull();
     expect(mapCallbackToIncoming(query('c:K7 Q2A; rm'))).toBeNull();

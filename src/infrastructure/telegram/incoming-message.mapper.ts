@@ -24,6 +24,7 @@ export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
 // back from the message itself, so nothing has to be stored for it.
 const ACTION_ID = /^[A-Z0-9]{1,16}$/i;
 const FEEDBACK = /^f:([+-]):([a-z0-9]{6,16})$/i;
+const APPROVE = /^a:([+-]):([a-f0-9]{32})$/;
 
 export const mapCallbackToIncoming = (
   query: CallbackQuery,
@@ -34,10 +35,16 @@ export const mapCallbackToIncoming = (
   const [prefix, value = ''] = data.split(':', 2);
 
   let text: string;
-  let kind: 'confirm' | 'cancel' | 'option' | 'feedback';
+  let kind: 'confirm' | 'cancel' | 'option' | 'feedback' | 'approve';
+  let approval: { approve: boolean; token: string } | null = null;
+  const approveMatch = data.match(APPROVE);
   let feedback: { vote: 1 | -1; token: string } | null = null;
   const vote = data.match(FEEDBACK);
-  if (vote) {
+  if (approveMatch) {
+    kind = 'approve';
+    approval = { approve: approveMatch[1] === '+', token: approveMatch[2] };
+    text = approveMatch[1] === '+' ? '✅' : '❌';
+  } else if (vote) {
     kind = 'feedback';
     feedback = { vote: vote[1] === '+' ? 1 : -1, token: vote[2] };
     text = vote[1] === '+' ? '👍' : '👎';
@@ -76,6 +83,7 @@ export const mapCallbackToIncoming = (
       messageId: message.message_id,
       kind,
       ...(feedback ?? {}),
+      ...(approval ?? {}),
     },
   };
 };

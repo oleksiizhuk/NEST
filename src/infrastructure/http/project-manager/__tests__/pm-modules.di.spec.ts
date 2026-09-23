@@ -31,6 +31,7 @@ const MODELS = [
   'PmSettings',
   'PmAdminLogin',
   'PmAdminAttempt',
+  'PmAdminApproval',
 ];
 
 describe('project-manager module wiring', () => {
@@ -78,6 +79,7 @@ describe('project-manager module wiring', () => {
     for (const field of [
       'pmRuntime',
       'adminLinks',
+      'adminApprovals',
       'pmQuota',
       'pmMemory',
       'pmConfig',

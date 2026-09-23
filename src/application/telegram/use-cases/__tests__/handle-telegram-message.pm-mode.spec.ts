@@ -467,6 +467,44 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     expect(pmAnswer.execute).toHaveBeenCalled();
   });
 
+  it('lets only the owner answer an admin login prompt', async () => {
+    const approvals = {
+      create: jest.fn(),
+      decide: jest.fn().mockResolvedValue('approved'),
+      take: jest.fn(),
+      deniedSince: jest.fn(),
+    };
+    (useCase as any).adminApprovals = approvals;
+    const tap = (fromId: number) => ({
+      ...group(fromId, '✅', fromId),
+      chatType: 'private',
+      callback: {
+        id: 'cb9',
+        messageId: 5,
+        kind: 'approve' as const,
+        approve: true,
+        token: 'b'.repeat(32),
+      },
+    });
+    await useCase.execute({
+      ...tap(555),
+      chatType: 'supergroup',
+      chatId: PM_GROUP,
+    });
+    expect(approvals.decide).not.toHaveBeenCalled();
+    await useCase.execute(tap(OWNER));
+    expect(approvals.decide).toHaveBeenCalledWith(
+      'b'.repeat(32),
+      true,
+      expect.any(Date),
+    );
+    expect(telegram.sendMessage).toHaveBeenLastCalledWith(
+      OWNER,
+      'Вход в админку подтверждён.',
+    );
+    expect(pmAnswer.execute).not.toHaveBeenCalled();
+  });
+
   it('ignores button presses in a chat without PM mode', async () => {
     registry.isEnabled.mockResolvedValue(false);
     await useCase.execute(

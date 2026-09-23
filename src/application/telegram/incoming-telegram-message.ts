@@ -15,9 +15,11 @@ export interface IncomingTelegramMessage {
   callback?: {
     id: string;
     messageId: number;
-    kind: 'confirm' | 'cancel' | 'option' | 'feedback';
+    kind: 'confirm' | 'cancel' | 'option' | 'feedback' | 'approve';
     // For feedback: 👍 = 1, 👎 = -1, and the answer's token
     vote?: 1 | -1;
     token?: string;
+    // For approve: the owner's answer to an admin login
+    approve?: boolean;
   };
 }

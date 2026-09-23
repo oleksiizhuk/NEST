@@ -43,6 +43,10 @@ import {
   IAdminLinks,
   PM_ADMIN_LINKS,
 } from '@application/project-manager/admin-links.interface';
+import {
+  IAdminApprovals,
+  PM_ADMIN_APPROVALS,
+} from '@application/project-manager/admin-approvals.interface';
 
 // "Оксана @oksana" — whatever Telegram gave us, falling back to the numeric id
 const authorLabel = (from: {
@@ -139,6 +143,9 @@ export class HandleTelegramMessageUseCase {
     @Optional()
     @Inject(PM_ADMIN_LINKS)
     private readonly adminLinks?: IAdminLinks,
+    @Optional()
+    @Inject(PM_ADMIN_APPROVALS)
+    private readonly adminApprovals?: IAdminApprovals,
   ) {}
 
   // The config with the owner's admin-page overrides, loaded at the start
@@ -305,6 +312,10 @@ export class HandleTelegramMessageUseCase {
   ): Promise<void> {
     const callback = msg.callback;
     if (!callback) return;
+    if (callback.kind === 'approve') {
+      await this.answerLoginApproval(msg);
+      return;
+    }
     if (!(await this.isPmChat(msg.chatId, msg))) {
       await this.telegram.answerCallback(callback.id).catch(() => undefined);
       return;
@@ -356,6 +367,39 @@ export class HandleTelegramMessageUseCase {
     await this.telegram
       .clearButtons(msg.chatId, callback.messageId)
       .catch(() => undefined);
+  }
+
+  // The owner's tap on "Это вы?" for a password login to the admin page.
+  // Anyone else pressing it gets a toast and changes nothing.
+  private async answerLoginApproval(
+    msg: IncomingTelegramMessage,
+  ): Promise<void> {
+    const callback = msg.callback;
+    if (!callback?.token || callback.approve === undefined) return;
+    if (msg.from.id !== this.config.ownerId || !this.adminApprovals) {
+      await this.telegram
+        .answerCallback(callback.id, 'Нет прав')
+        .catch(() => undefined);
+      return;
+    }
+    const state = await this.adminApprovals
+      .decide(callback.token, callback.approve, new Date())
+      .catch(() => 'unknown' as const);
+    const text =
+      state === 'approved'
+        ? 'Вход в админку подтверждён.'
+        : state === 'denied'
+        ? 'Вход отклонён. Вход по паролю закрыт на 15 минут. Если это были не вы — смените пароль и нажмите «Выйти везде» в админке.'
+        : 'Запрос устарел: подтверждать уже нечего.';
+    await this.telegram.answerCallback(callback.id).catch(() => undefined);
+    await this.telegram
+      .clearButtons(msg.chatId, callback.messageId)
+      .catch(() => undefined);
+    try {
+      await this.telegram.sendMessage(msg.chatId, text);
+    } catch {
+      // the decision is recorded; the confirmation text is a courtesy
+    }
   }
 
   // A one-time login link to the admin page, only to the owner and only in

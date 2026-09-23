@@ -37,6 +37,12 @@ export class AdminPasswordBody {
   password: string;
 }
 
+export class AdminApprovalBody {
+  @IsString()
+  @MaxLength(64)
+  id: string;
+}
+
 export class AdminSettingsBody {
   @IsObject()
   settings: Record<string, unknown>;
@@ -59,19 +65,38 @@ export class PmAdminController {
     return { session };
   }
 
+  // Step 1: email + password; on success the owner gets a Telegram prompt
   @Post('password-login')
   @HttpCode(200)
   async passwordLogin(@Body() body: AdminPasswordBody) {
     const result = await this.auth.loginWithPassword(body.email, body.password);
-    if ('session' in result) return result;
+    if ('pending' in result) return { pending: result.pending, seconds: 120 };
     if (result.error === 'locked')
       throw new HttpException(
-        'Слишком много попыток. Вход по паролю закрыт на 15 минут; ссылка из бота работает.',
+        'Вход по паролю закрыт на 15 минут: было много неверных попыток или вход отклонили в Telegram.',
         HttpStatus.TOO_MANY_REQUESTS,
+      );
+    if (result.error === 'busy')
+      throw new HttpException(
+        'Не получилось отправить подтверждение в Telegram. Попробуйте через минуту.',
+        HttpStatus.SERVICE_UNAVAILABLE,
       );
     if (result.error === 'off')
       throw new UnauthorizedException('Вход по паролю не настроен.');
     throw new UnauthorizedException('Неверный email или пароль.');
+  }
+
+  // Step 2: the page polls until the owner taps a button (or 2 minutes pass)
+  @Post('password-login/status')
+  @HttpCode(200)
+  async passwordLoginStatus(@Body() body: AdminApprovalBody) {
+    const result = await this.auth.approval(body.id);
+    if ('session' in result || 'pending' in result) return result;
+    throw new UnauthorizedException(
+      result.error === 'denied'
+        ? 'Вход отклонён в Telegram.'
+        : 'Время на подтверждение вышло. Войдите ещё раз.',
+    );
   }
 
   @Get('settings')

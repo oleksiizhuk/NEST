@@ -52,6 +52,9 @@ import { PM_ADMIN_LINKS } from '@application/project-manager/admin-links.interfa
 import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
 import { MongoPmSettings } from '@infrastructure/database/repositories/mongo-pm-settings';
 import { MongoAdminLinks } from '@infrastructure/project-manager/admin-links';
+import { PM_ADMIN_APPROVALS } from '@application/project-manager/admin-approvals.interface';
+import { MongoAdminApprovals } from '@infrastructure/project-manager/admin-approvals';
+import { PmAdminApprovalSchema } from '@infrastructure/database/schemas/pm-admin-approval.schema';
 import { PmSettingsSchema } from '@infrastructure/database/schemas/pm-settings.schema';
 import { PmAdminLoginSchema } from '@infrastructure/database/schemas/pm-admin-login.schema';
 import { FigmaDesignHost } from '@infrastructure/project-manager/figma-design.host';
@@ -73,6 +76,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
       { name: 'PmQuota', schema: PmQuotaSchema },
       { name: 'PmSettings', schema: PmSettingsSchema },
       { name: 'PmAdminLogin', schema: PmAdminLoginSchema },
+      { name: 'PmAdminApproval', schema: PmAdminApprovalSchema },
     ]),
   ],
   providers: [
@@ -120,6 +124,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     { provide: PM_QUOTA, useClass: MongoQuota },
     { provide: PM_SETTINGS, useClass: MongoPmSettings },
     { provide: PM_ADMIN_LINKS, useClass: MongoAdminLinks },
+    { provide: PM_ADMIN_APPROVALS, useClass: MongoAdminApprovals },
     PmRuntimeConfig,
     ConfirmPendingActionUseCase,
     RefreshProjectSnapshotUseCase,
@@ -134,6 +139,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     PM_QUOTA,
     PM_SETTINGS,
     PM_ADMIN_LINKS,
+    PM_ADMIN_APPROVALS,
     PmRuntimeConfig,
     ISSUE_DETAILS,
     DOC_COMMENTS,

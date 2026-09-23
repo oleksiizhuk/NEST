@@ -43,7 +43,8 @@ async function call<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   // A wrong password is a 401 too, but the page should show why
-  if (res.status === 401 && path !== 'password-login') throw new Unauthorized();
+  if (res.status === 401 && !path.startsWith('password-login'))
+    throw new Unauthorized();
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = Array.isArray(data.message)
@@ -91,7 +92,16 @@ export const api = {
   login: (token: string) =>
     call<{ session: string }>('POST', 'login', { token }),
   passwordLogin: (email: string, password: string) =>
-    call<{ session: string }>('POST', 'password-login', { email, password }),
+    call<{ pending: string; seconds: number }>('POST', 'password-login', {
+      email,
+      password,
+    }),
+  passwordLoginStatus: (id: string) =>
+    call<{ session?: string; pending?: boolean }>(
+      'POST',
+      'password-login/status',
+      { id },
+    ),
   settings: () => call<SettingsView>('GET', 'settings'),
   save: (settings: Settings) =>
     call<SettingsView>('PUT', 'settings', { settings }),
