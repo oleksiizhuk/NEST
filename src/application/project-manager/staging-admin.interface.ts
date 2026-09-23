@@ -21,6 +21,30 @@ export interface NewBrand {
   close: string;
 }
 
+export interface BrandTarget {
+  tier: string;
+  brandId: string;
+  brandName: string;
+}
+
+export interface BrandStore {
+  id: string;
+  name: string;
+  status: string;
+  property: string | null;
+}
+
+export interface BrandDetails {
+  id: string;
+  name: string;
+  stores: BrandStore[];
+}
+
+export interface PublishResult {
+  done: string[];
+  failed: Array<{ id: string; missingFields: string[] }>;
+}
+
 export interface CreatedBrand {
   id: string;
   name: string;
@@ -37,6 +61,11 @@ export interface IStagingAdmin {
   findCategories(query: string): Promise<NamedRef[]>;
   findBrands(query: string): Promise<NamedRef[]>;
   createBrand(brand: NewBrand): Promise<CreatedBrand>;
+  getBrand(id: string): Promise<BrandDetails>;
+  publishStores(ids: string[]): Promise<PublishResult>;
+  unpublishStores(ids: string[]): Promise<PublishResult>;
+  // Soft delete on the server; there is no restore through the API
+  deleteBrand(id: string): Promise<void>;
 }
 
 // The test environments the bot may act on, keyed by tier name (dev,

@@ -1,4 +1,7 @@
-import { NewBrand } from '@application/project-manager/staging-admin.interface';
+import {
+  BrandTarget,
+  NewBrand,
+} from '@application/project-manager/staging-admin.interface';
 
 export const PENDING_ACTIONS = 'PENDING_ACTIONS';
 
@@ -10,10 +13,17 @@ export type ActionStatus =
   | 'unknown'
   | 'cancelled';
 
+export type ActionKind =
+  | 'create_brand'
+  | 'publish_brand'
+  | 'unpublish_brand'
+  | 'delete_brand';
+
 export interface PendingAction {
   id: string;
-  kind: 'create_brand';
-  payload: NewBrand;
+  kind: ActionKind;
+  // NewBrand for create_brand, BrandTarget for the others
+  payload: NewBrand | BrandTarget;
   summary: string;
   chatId: number;
   requesterId: number;

@@ -6,7 +6,11 @@ import {
 } from '@application/project-manager/pending-action.interface';
 import {
   ADMIN_TARGETS,
+  BrandTarget,
   IAdminTargets,
+  IStagingAdmin,
+  NewBrand,
+  PublishResult,
 } from '@application/project-manager/staging-admin.interface';
 
 export class StagingHttpError extends Error {
@@ -53,6 +57,11 @@ export class ConfirmPendingActionUseCase {
     return this.execute(action);
   }
 
+  // Lets a bare "да" go to the model when there is nothing to confirm
+  async hasPending(chatId: number, now = new Date()): Promise<boolean> {
+    return Boolean(await this.actions.latestPending(chatId, now));
+  }
+
   async cancel(
     id: string,
     chatId: number,
@@ -69,22 +78,15 @@ export class ConfirmPendingActionUseCase {
     const tier = action.payload.tier || 'staging';
     try {
       const admin = this.targets.target(tier);
-      // Re-check right before writing: someone may have created it meanwhile
-      const existing = (await admin.findBrands(action.payload.nameEn)).find(
-        (b) =>
-          b.name.trim().toLowerCase() === action.payload.nameEn.toLowerCase(),
-      );
-      if (existing) {
-        const text = `Бренд "${existing.name}" уже есть на ${tier} (id ${existing.id}) — новый не создавал.`;
-        await this.actions.finish(action.id, 'done', text);
-        return text;
-      }
-      const brand = await admin.createBrand(action.payload);
-      const text = `Готово: на ${tier} создан бренд "${brand.name}" (id ${
-        brand.id
-      }) с магазином в "${action.payload.mallName}"${
-        brand.note ? ` — ${brand.note}` : ''
-      }.`;
+      const text =
+        action.kind === 'create_brand'
+          ? await this.createBrand(admin, tier, action.payload as NewBrand)
+          : await this.changeBrand(
+              admin,
+              tier,
+              action.kind,
+              action.payload as BrandTarget,
+            );
       await this.actions.finish(action.id, 'done', text);
       return text;
     } catch (error) {
@@ -108,5 +110,59 @@ export class ConfirmPendingActionUseCase {
       );
       return text;
     }
+  }
+
+  private async createBrand(
+    admin: IStagingAdmin,
+    tier: string,
+    payload: NewBrand,
+  ): Promise<string> {
+    // Re-check right before writing: someone may have created it meanwhile
+    const existing = (await admin.findBrands(payload.nameEn)).find(
+      (b) => b.name.trim().toLowerCase() === payload.nameEn.toLowerCase(),
+    );
+    if (existing) {
+      return `Бренд "${existing.name}" уже есть на ${tier} (id ${existing.id}) — новый не создавал.`;
+    }
+    const brand = await admin.createBrand(payload);
+    return `Готово: на ${tier} создан бренд "${brand.name}" (id ${
+      brand.id
+    }) с магазином в "${payload.mallName}"${
+      brand.note ? ` — ${brand.note}` : ''
+    }.`;
+  }
+
+  private async changeBrand(
+    admin: IStagingAdmin,
+    tier: string,
+    kind: string,
+    target: BrandTarget,
+  ): Promise<string> {
+    if (kind === 'delete_brand') {
+      await admin.deleteBrand(target.brandId);
+      return `Готово: бренд "${target.brandName}" удалён на ${tier}.`;
+    }
+    const brand = await admin.getBrand(target.brandId);
+    const ids = brand.stores.map((s) => s.id);
+    if (!ids.length)
+      return `У бренда "${brand.name}" на ${tier} нет магазинов — нечего менять.`;
+    const publish = kind === 'publish_brand';
+    const result: PublishResult = publish
+      ? await admin.publishStores(ids)
+      : await admin.unpublishStores(ids);
+    const verb = publish ? 'опубликовано' : 'снято с публикации';
+    const failed = result.failed.length
+      ? ` Не получилось для ${result.failed.length}: ${result.failed
+          .map(
+            (f) =>
+              `${f.id}${
+                f.missingFields.length
+                  ? ` (не хватает: ${f.missingFields.join(', ')})`
+                  : ''
+              }`,
+          )
+          .join('; ')}.`
+      : '';
+    return `Готово на ${tier}: у бренда "${brand.name}" ${verb} магазинов: ${result.done.length} из ${ids.length}.${failed}`;
   }
 }
