@@ -1,4 +1,8 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, UseGuards } from '@nestjs/common';
+import {
+  ADMIN_TARGETS,
+  IAdminTargets,
+} from '@application/project-manager/staging-admin.interface';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { CronSecretGuard } from '@infrastructure/http/project-manager/cron-secret.guard';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
@@ -11,7 +15,40 @@ export class PmCronController {
   constructor(
     private readonly refresh: RefreshProjectSnapshotUseCase,
     private readonly digest: PostDailyDigestUseCase,
+    @Inject(ADMIN_TARGETS) private readonly targets: IAdminTargets,
   ) {}
+
+  // Read-only health of each test environment: can the bot sign in and see
+  // malls and categories. Creates nothing.
+  @Get('targets')
+  async checkTargets() {
+    return Promise.all(
+      this.targets.tiers().map(async (tier) => {
+        const admin = this.targets.target(tier);
+        try {
+          const [malls, categories] = await Promise.all([
+            admin.findMalls(''),
+            admin.findCategories(''),
+          ]);
+          return {
+            tier,
+            host: admin.describeTarget(),
+            ok: true,
+            malls: malls.length,
+            categories: categories.length,
+            sampleMalls: malls.slice(0, 5).map((m) => m.name),
+          };
+        } catch (error) {
+          return {
+            tier,
+            host: admin.describeTarget(),
+            ok: false,
+            error: String((error as Error).message).slice(0, 200),
+          };
+        }
+      }),
+    );
+  }
 
   @Get('refresh')
   async refreshSnapshot() {
