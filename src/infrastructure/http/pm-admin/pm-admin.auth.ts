@@ -20,11 +20,23 @@ import {
   TELEGRAM_GATEWAY,
 } from '@application/telegram/telegram.gateway.interface';
 import * as bcrypt from 'bcryptjs';
-import { PasswordThrottle } from '@infrastructure/http/pm-admin/password-throttle';
+import {
+  PasswordThrottle,
+  WINDOW_MS,
+} from '@infrastructure/http/pm-admin/password-throttle';
+import {
+  IAdminApprovals,
+  PM_ADMIN_APPROVALS,
+} from '@application/project-manager/admin-approvals.interface';
 
 export type PasswordLogin =
+  | { pending: string }
+  | { error: 'invalid' | 'locked' | 'off' | 'busy' };
+
+export type ApprovalResult =
   | { session: string }
-  | { error: 'invalid' | 'locked' | 'off' };
+  | { pending: true }
+  | { error: 'denied' | 'expired' | 'unknown' };
 
 const SESSION_TTL = '7d';
 const TYP = 'pm-admin';
@@ -46,6 +58,7 @@ export class PmAdminAuth {
     @Inject(PM_SETTINGS) private readonly settings: IPmSettingsStore,
     private readonly throttle: PasswordThrottle,
     @Inject(TELEGRAM_GATEWAY) private readonly telegram: ITelegramGateway,
+    @Inject(PM_ADMIN_APPROVALS) private readonly approvals: IAdminApprovals,
   ) {
     this.email = (config.get<string>('PM_ADMIN_EMAIL') ?? '')
       .trim()
@@ -61,9 +74,9 @@ export class PmAdminAuth {
     return this.session();
   }
 
-  // Email + password (bcrypt hash in PM_ADMIN_PASSWORD_HASH). Off unless
-  // both are set; 5 failures in 15 minutes lock it; every success is
-  // reported to the owner in Telegram.
+  // Email + password (bcrypt hash in PM_ADMIN_PASSWORD_HASH), then a tap
+  // on "Подтвердить" in the owner's Telegram. Off unless both are set;
+  // 5 failures in 15 minutes, or a denied login, lock it for 15 minutes.
   async loginWithPassword(
     email: string,
     password: string,
@@ -71,7 +84,11 @@ export class PmAdminAuth {
   ): Promise<PasswordLogin> {
     if (!this.secret || !this.ownerId || !this.email || !this.passwordHash)
       return { error: 'off' };
-    if (await this.throttle.blocked(now)) return { error: 'locked' };
+    if (
+      (await this.throttle.blocked(now)) ||
+      (await this.approvals.deniedSince(new Date(now.getTime() - WINDOW_MS)))
+    )
+      return { error: 'locked' };
     const emailOk = email.trim().toLowerCase() === this.email;
     // Compare even for a wrong email, so timing does not reveal which part failed
     const passwordOk = await bcrypt.compare(password, this.passwordHash);
@@ -80,19 +97,43 @@ export class PmAdminAuth {
       return { error: 'invalid' };
     }
     await this.throttle.reset();
-    await this.telegram
-      .sendMessage(
+    const id = await this.approvals.create(now);
+    if (!id) return { error: 'busy' };
+    try {
+      await this.telegram.sendMessage(
         this.ownerId,
-        `Вход в админку по паролю: ${now
+        `Вход в админку по паролю, ${now
           .toISOString()
           .slice(0, 16)
-          .replace(
-            'T',
-            ' ',
-          )} UTC. Если это не вы — нажмите «Выйти везде» в админке и смените пароль.`,
-      )
-      .catch(() => undefined);
-    return { session: await this.session() };
+          .replace('T', ' ')} UTC. Это вы?\nКнопка действует 2 минуты.`,
+        [
+          [
+            { text: '✅ Да, это я', data: `a:+:${id}` },
+            { text: '❌ Нет, отклонить', data: `a:-:${id}` },
+          ],
+        ],
+      );
+    } catch {
+      // Without the message nobody can approve; fail closed
+      await this.approvals.decide(id, false, now).catch(() => undefined);
+      return { error: 'busy' };
+    }
+    return { pending: id };
+  }
+
+  // Polled by the page while it waits for the tap
+  async approval(id: string, now = new Date()): Promise<ApprovalResult> {
+    const state = await this.approvals.take(id, now);
+    if (state === 'approved') return { session: await this.session() };
+    if (state === 'pending') return { pending: true };
+    return {
+      error:
+        state === 'denied'
+          ? 'denied'
+          : state === 'expired'
+          ? 'expired'
+          : 'unknown',
+    };
   }
 
   private async session(): Promise<string> {

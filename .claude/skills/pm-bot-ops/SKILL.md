@@ -16,7 +16,7 @@ Where it lives:
 
 The owner opens it by sending `/admin` to the bot in a private chat: the bot replies with a one-time link (10 minutes) to `https://<host>/admin/`. Limits, access lists, alert recipients and chat effort changed there apply within 30 s without a redeploy and override the Vercel env; an emptied field goes back to the env value. Nobody else can log in: links are issued only to `TELEGRAM_OWNER_ID`, and sessions are checked against it.
 
-Password login (optional): `PM_ADMIN_EMAIL` + `PM_ADMIN_PASSWORD_HASH` (bcrypt). To change the password, take it from a hidden dialog, hash it and replace the variable, then redeploy — the password is never printed or stored:
+Password login (optional): `PM_ADMIN_EMAIL` + `PM_ADMIN_PASSWORD_HASH` (bcrypt), then the bot asks the owner "Это вы?" in Telegram; the page opens only after "Да, это я" (2 minutes). A "Нет" locks password login for 15 minutes. To change the password, take it from a hidden dialog, hash it and replace the variable, then redeploy — the password is never printed or stored:
 
 ```bash
 PMPW="$(osascript -e 'text returned of (display dialog "New admin password" default answer "" with hidden answer)')" \
