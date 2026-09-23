@@ -20,7 +20,7 @@ export class TelegramPollingBootstrap implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     if (this.config.mode !== 'polling') return;
 
-    this.botService.bot.on('message', (msg) => {
+    this.botService.onMessage((msg) => {
       const incoming = mapToIncoming(msg);
       if (!incoming) return;
       this.handleTelegramMessage
@@ -28,7 +28,7 @@ export class TelegramPollingBootstrap implements OnModuleInit {
         .catch((error) => this.logger.error(error));
     });
 
-    await this.botService.startPolling();
+    this.botService.startPolling();
     this.logger.log('Telegram bot polling started');
   }
 }

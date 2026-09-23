@@ -1,6 +1,6 @@
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
-import TelegramBot = require('node-telegram-bot-api');
+import type { Update } from 'grammy/types';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
 import { mapToIncoming } from '@infrastructure/telegram/incoming-message.mapper';
 import { TelegramWebhookGuard } from '@infrastructure/http/telegram/guards/telegram-webhook.guard';
@@ -16,7 +16,7 @@ export class TelegramController {
   @UseGuards(TelegramWebhookGuard)
   @HttpCode(200)
   @ApiExcludeEndpoint()
-  async webhook(@Body() update: TelegramBot.Update): Promise<{ ok: boolean }> {
+  async webhook(@Body() update: Update): Promise<{ ok: boolean }> {
     // Awaited on purpose: on serverless the response must not be sent
     // before the reply and the Mongo write complete
     const message = update?.message;

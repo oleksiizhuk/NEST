@@ -1,4 +1,7 @@
-import { splitForTelegram } from '@infrastructure/telegram/telegram-bot.service';
+import {
+  splitForTelegram,
+  TelegramBotService,
+} from '@infrastructure/telegram/telegram-bot.service';
 
 // Telegram's hard limit is 4096; the splitter targets 4000
 const LIMIT = 4000;
@@ -46,5 +49,64 @@ describe('splitForTelegram', () => {
     const joined = splitForTelegram(text).join('\n');
 
     expect(joined.replace(/\s+/g, '')).toBe(text.replace(/\s+/g, ''));
+  });
+});
+
+const mockApi = {
+  getMe: jest.fn(),
+  sendMessage: jest.fn().mockResolvedValue(undefined),
+  sendChatAction: jest.fn().mockResolvedValue(undefined),
+};
+const mockBotCtor = jest.fn();
+jest.mock('grammy', () => ({
+  Bot: jest.fn().mockImplementation((token: string) => {
+    mockBotCtor(token);
+    if (!token) throw new Error('Empty token!');
+    return {
+      api: mockApi,
+      on: jest.fn(),
+      start: jest.fn().mockResolvedValue(undefined),
+      stop: jest.fn(),
+      isRunning: () => false,
+    };
+  }),
+}));
+
+const serviceWith = (token?: string) =>
+  new TelegramBotService({ get: () => token } as any);
+
+describe('TelegramBotService', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('boots without TELEGRAM_TOKEN and creates no client until used', async () => {
+    const service = serviceWith(undefined);
+    expect(mockBotCtor).not.toHaveBeenCalled();
+    await expect(service.onModuleDestroy()).resolves.toBeUndefined();
+  });
+
+  it('sends a long reply as several messages through the Bot API', async () => {
+    await serviceWith('1:abc').sendMessage(42, 'а'.repeat(LIMIT + 10));
+    expect(mockApi.sendMessage).toHaveBeenCalledTimes(2);
+    expect(mockApi.sendMessage.mock.calls[0][0]).toBe(42);
+  });
+
+  it('shows the typing indicator', async () => {
+    await serviceWith('1:abc').sendTyping(42);
+    expect(mockApi.sendChatAction).toHaveBeenCalledWith(42, 'typing');
+  });
+
+  it('caches getMe and retries after a failure', async () => {
+    const service = serviceWith('1:abc');
+    mockApi.getMe
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValue({ id: 7, username: 'nest_bot' });
+
+    await expect(service.getBotInfo()).rejects.toThrow('network');
+    await expect(service.getBotInfo()).resolves.toEqual({
+      id: 7,
+      username: 'nest_bot',
+    });
+    await service.getBotInfo();
+    expect(mockApi.getMe).toHaveBeenCalledTimes(2);
   });
 });

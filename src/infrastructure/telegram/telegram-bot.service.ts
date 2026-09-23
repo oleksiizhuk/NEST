@@ -1,6 +1,7 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import TelegramBot = require('node-telegram-bot-api');
+import { Bot } from 'grammy';
+import type { Message } from 'grammy/types';
 import {
   IBotInfo,
   ITelegramGateway,
@@ -34,21 +35,26 @@ export const splitForTelegram = (text: string): string[] => {
 
 @Injectable()
 export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
-  readonly bot: TelegramBot;
+  private readonly logger = new Logger(TelegramBotService.name);
+  private readonly token: string;
+  private client: Bot | null = null;
   private botInfo: Promise<IBotInfo> | null = null;
-  private pollingStarted = false;
 
   constructor(configService: ConfigService) {
-    // polling: false — no I/O in the constructor, safe for serverless cold starts
-    this.bot = new TelegramBot(
-      configService.get<string>('TELEGRAM_TOKEN') ?? '',
-      { polling: false },
-    );
+    this.token = configService.get<string>('TELEGRAM_TOKEN') ?? '';
+  }
+
+  // Created on first use: grammY throws on an empty token, and the app must
+  // still boot where TELEGRAM_TOKEN is not set. No I/O happens here either,
+  // which keeps serverless cold starts cheap.
+  private get bot(): Bot {
+    if (!this.client) this.client = new Bot(this.token);
+    return this.client;
   }
 
   getBotInfo(): Promise<IBotInfo> {
     if (!this.botInfo) {
-      this.botInfo = this.bot
+      this.botInfo = this.bot.api
         .getMe()
         .then((me) => ({ id: me.id, username: me.username ?? '' }))
         .catch((error) => {
@@ -64,22 +70,32 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
   // underscores cannot break formatting mid-chunk.
   async sendMessage(chatId: number, text: string): Promise<void> {
     for (const chunk of splitForTelegram(text)) {
-      await this.bot.sendMessage(chatId, chunk);
+      await this.bot.api.sendMessage(chatId, chunk);
     }
   }
 
   async sendTyping(chatId: number): Promise<void> {
-    await this.bot.sendChatAction(chatId, 'typing');
+    await this.bot.api.sendChatAction(chatId, 'typing');
   }
 
-  async startPolling(): Promise<void> {
-    this.pollingStarted = true;
-    await this.bot.startPolling();
+  // Local long polling only; production receives updates on the webhook.
+  onMessage(handler: (message: Message) => void): void {
+    this.bot.on('message', (ctx) => handler(ctx.message));
+  }
+
+  // bot.start() resolves only when polling stops, so it runs in the
+  // background and its failures are logged instead of killing the app.
+  startPolling(): void {
+    this.bot
+      .start({ drop_pending_updates: false })
+      .catch((error) =>
+        this.logger.error(`Telegram polling stopped: ${error}`),
+      );
   }
 
   async onModuleDestroy(): Promise<void> {
-    if (this.pollingStarted) {
-      await this.bot.stopPolling();
+    if (this.client?.isRunning()) {
+      await this.client.stop();
     }
   }
 }
