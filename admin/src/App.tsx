@@ -79,6 +79,21 @@ export function App() {
             <button className="ghost" onClick={logout}>
               Выйти
             </button>
+            <button
+              className="ghost"
+              title="Закрыть все сессии админки на всех устройствах"
+              onClick={() => {
+                api
+
+                  .logoutAll()
+
+                  .catch(() => undefined)
+
+                  .finally(logout);
+              }}
+            >
+              Выйти везде
+            </button>
           </div>
         )}
       </header>

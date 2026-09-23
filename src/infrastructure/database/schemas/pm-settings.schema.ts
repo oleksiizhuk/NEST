@@ -13,6 +13,9 @@ export class PmSettingsDocument extends Document {
   @Prop({ type: Number, default: null })
   updatedBy: number | null;
 
+  @Prop({ type: Number, default: 0 })
+  sessionEpoch: number;
+
   updatedAt: Date;
 }
 

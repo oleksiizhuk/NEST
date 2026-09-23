@@ -12,6 +12,7 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import { IsObject, IsString, MaxLength } from 'class-validator';
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
+import { SettingsError } from '@application/project-manager/settings.interface';
 import {
   PmAdminAuth,
   PmAdminGuard,
@@ -61,8 +62,20 @@ export class PmAdminController {
     try {
       return await this.admin.update(body.settings, req.pmAdmin);
     } catch (error) {
-      throw new BadRequestException((error as Error).message);
+      // Only a bad value is the caller's fault; storage errors stay 5xx
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
     }
+  }
+
+  // Ends every admin session, this one included
+  @Post('logout-all')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async logoutAll() {
+    await this.auth.revokeAll();
+    return { ok: true };
   }
 
   @Get('usage')

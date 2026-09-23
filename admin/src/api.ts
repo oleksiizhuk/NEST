@@ -93,4 +93,5 @@ export const api = {
   save: (settings: Settings) =>
     call<SettingsView>('PUT', 'settings', { settings }),
   usage: () => call<Usage>('GET', 'usage'),
+  logoutAll: () => call<{ ok: boolean }>('POST', 'logout-all'),
 };

@@ -28,12 +28,19 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
 export interface IPmSettingsStore {
   get(): Promise<{ values: PmSettings; updatedAt: Date | null }>;
   save(values: PmSettings, by: number): Promise<void>;
+  // Admin sessions carry this number; raising it logs every session out
+  sessionEpoch(): Promise<number>;
+  bumpSessionEpoch(): Promise<number>;
 }
+
+// A bad value from the admin page (a 400, unlike a storage failure)
+export class SettingsError extends Error {}
 
 const USERNAME = /^[a-z0-9_]{4,32}$/;
 
 const usernames = (value: unknown, field: string): string[] => {
-  if (!Array.isArray(value)) throw new Error(`${field}: a list of usernames`);
+  if (!Array.isArray(value))
+    throw new SettingsError(`${field}: a list of usernames`);
   const cleaned = value.map((v) =>
     String(v ?? '')
       .trim()
@@ -51,7 +58,7 @@ const telegramIds = (value: unknown, field: string): number[] => {
     throw new Error(`${field}: a list of Telegram ids`);
   const ids = value.map((v) => Number(v));
   if (ids.some((n) => !Number.isSafeInteger(n) || n === 0))
-    throw new Error(`${field}: ids are non-zero integers`);
+    throw new SettingsError(`${field}: ids are non-zero integers`);
   return [...new Set(ids)].slice(0, 50);
 };
 
@@ -60,7 +67,7 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
   const out: PmSettings = {};
   for (const key of Object.keys(input)) {
     if (!SETTING_KEYS.includes(key as keyof PmSettings))
-      throw new Error(`unknown setting ${key}`);
+      throw new SettingsError(`unknown setting ${key}`);
   }
   const has = (k: keyof PmSettings) =>
     Object.prototype.hasOwnProperty.call(input, k);
@@ -70,7 +77,7 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
     else {
       const n = Number(input.dailyQuestionLimit);
       if (!Number.isInteger(n) || n < 0 || n > 1000)
-        throw new Error('dailyQuestionLimit: 0-1000 (0 = no limit)');
+        throw new SettingsError('dailyQuestionLimit: 0-1000 (0 = no limit)');
       out.dailyQuestionLimit = n;
     }
   }
@@ -83,7 +90,7 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
   if (has('aiEffort')) {
     if (nil('aiEffort')) out.aiEffort = null;
     else if (!AI_EFFORTS.includes(input.aiEffort as AiEffort))
-      throw new Error(`aiEffort: one of ${AI_EFFORTS.join(', ')}`);
+      throw new SettingsError(`aiEffort: one of ${AI_EFFORTS.join(', ')}`);
     else out.aiEffort = input.aiEffort as AiEffort;
   }
   return out;

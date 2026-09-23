@@ -30,4 +30,22 @@ export class MongoPmSettings implements IPmSettingsStore {
     for (const [k, v] of Object.entries(values)) set[`values.${k}`] = v;
     await this.model.updateOne({ key: KEY }, { $set: set }, { upsert: true });
   }
+
+  async sessionEpoch(): Promise<number> {
+    const doc = await this.model
+      .findOne({ key: KEY }, { sessionEpoch: 1 })
+      .lean();
+    return doc?.sessionEpoch ?? 0;
+  }
+
+  async bumpSessionEpoch(): Promise<number> {
+    const doc = await this.model
+      .findOneAndUpdate(
+        { key: KEY },
+        { $inc: { sessionEpoch: 1 } },
+        { upsert: true, new: true },
+      )
+      .lean();
+    return doc?.sessionEpoch ?? 1;
+  }
 }

@@ -44,3 +44,4 @@ lerna-debug.log*
 # Admin page: built on deploy
 /public/admin
 /admin/node_modules
+/admin/*.tsbuildinfo

@@ -65,6 +65,8 @@ describe('PmRuntimeConfig', () => {
         updatedAt: null,
       }),
       save: jest.fn(),
+      sessionEpoch: jest.fn().mockResolvedValue(0),
+      bumpSessionEpoch: jest.fn(),
     };
     const runtime = new PmRuntimeConfig(base, store);
     expect((await runtime.current(1_000)).dailyQuestionLimit).toBe(3);
@@ -84,6 +86,8 @@ describe('PmAdminUseCase', () => {
         updatedAt: null,
       }),
       save: jest.fn(),
+      sessionEpoch: jest.fn().mockResolvedValue(0),
+      bumpSessionEpoch: jest.fn(),
     };
     const runtime = new PmRuntimeConfig(base, store);
     const quota = {
