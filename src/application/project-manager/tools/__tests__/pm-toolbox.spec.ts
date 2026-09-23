@@ -62,6 +62,7 @@ const ctx = (): ToolContext => ({
   chatId: -100,
   requesterId: 7,
   proposal: null,
+  canReadCode: true,
 });
 const brandInput = {
   name_en: 'Test Brand',
@@ -114,6 +115,26 @@ describe('PmToolbox', () => {
     expect(out).toMatch(/^<tool_data source="github:api\/src\/a.ts">/);
     expect(out).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123456789');
     expect(out).toContain('[redacted]');
+  });
+
+  it('keeps code and PR deep-dives for the owner only', async () => {
+    const guest = { ...ctx(), canReadCode: false };
+    for (const tool of [
+      'search_code',
+      'read_file',
+      'list_dir',
+      'get_pull_request',
+    ]) {
+      await expect(
+        toolbox.run(
+          tool,
+          { repo: 'api', path: 'a.ts', query: 'x', number: 1 },
+          guest,
+        ),
+      ).rejects.toThrow('reserved for the owner');
+    }
+    expect(code.readFile).not.toHaveBeenCalled();
+    expect(code.searchCode).not.toHaveBeenCalled();
   });
 
   it('refuses to read env files, keys and parent paths', async () => {

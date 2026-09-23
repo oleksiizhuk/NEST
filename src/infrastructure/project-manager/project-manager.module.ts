@@ -44,6 +44,9 @@ import { MongoGoldenStore } from '@infrastructure/database/repositories/mongo-go
 import { PmMemorySchema } from '@infrastructure/database/schemas/pm-memory.schema';
 import { PmAlertSchema } from '@infrastructure/database/schemas/pm-alert.schema';
 import { PmGoldenSchema } from '@infrastructure/database/schemas/pm-golden.schema';
+import { PM_QUOTA } from '@application/project-manager/quota.interface';
+import { MongoQuota } from '@infrastructure/database/repositories/mongo-quota';
+import { PmQuotaSchema } from '@infrastructure/database/schemas/pm-quota.schema';
 import { FigmaDesignHost } from '@infrastructure/project-manager/figma-design.host';
 import { PM_CHAT_REGISTRY } from '@application/project-manager/pm-chat-registry.interface';
 import { PmChatSchema } from '@infrastructure/database/schemas/pm-chat.schema';
@@ -60,6 +63,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
       { name: 'PmMemory', schema: PmMemorySchema },
       { name: 'PmAlert', schema: PmAlertSchema },
       { name: 'PmGolden', schema: PmGoldenSchema },
+      { name: 'PmQuota', schema: PmQuotaSchema },
     ]),
   ],
   providers: [
@@ -104,6 +108,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     { provide: PM_MEMORY, useClass: MongoPmMemory },
     { provide: PM_ALERT_LOG, useClass: MongoAlertLog },
     { provide: PM_GOLDEN, useClass: MongoGoldenStore },
+    { provide: PM_QUOTA, useClass: MongoQuota },
     ConfirmPendingActionUseCase,
     RefreshProjectSnapshotUseCase,
     AnswerProjectQuestionUseCase,
@@ -114,6 +119,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     PM_MEMORY,
     PM_ALERT_LOG,
     PM_GOLDEN,
+    PM_QUOTA,
     ISSUE_DETAILS,
     DOC_COMMENTS,
     DESIGN_HOST,

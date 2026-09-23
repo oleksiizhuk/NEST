@@ -160,6 +160,36 @@ describe('AnswerProjectQuestionUseCase', () => {
   const refresh = { execute: jest.fn() };
   beforeEach(() => jest.clearAllMocks());
 
+  it('tells the model when the asker may not have code read', async () => {
+    const snapshots = repo();
+    snapshots.findLatest.mockResolvedValue(
+      new ProjectSnapshot('s', new Date('2026-09-23T05:00:00Z'), []),
+    );
+    ai.answer.mockClear();
+    const useCase = new AnswerProjectQuestionUseCase(
+      snapshots as any,
+      refresh as any,
+      ai as any,
+      config,
+      knowledge as any,
+      code as any,
+      staging as any,
+      actions as any,
+      collab as any,
+      collab as any,
+      collab as any,
+    );
+    await useCase.execute(
+      'B: review PR 12',
+      [],
+      { chatId: 1, requesterId: 2, canReadCode: false },
+      now,
+    );
+    expect(ai.answer.mock.calls[0][0].question).toContain(
+      'cannot have code read or PRs reviewed in depth',
+    );
+  });
+
   it('answers from a fresh snapshot with the date line in front of the question', async () => {
     const snapshots = repo();
     snapshots.findLatest.mockResolvedValue(

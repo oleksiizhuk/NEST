@@ -40,6 +40,8 @@ export interface ToolContext {
   requesterId: number;
   // Display name of the person asking, for memory records
   requesterName?: string;
+  // Code and PR deep-dive tools; only the owner (and owner-run diagnostics)
+  canReadCode?: boolean;
   // Filled when this turn stored a proposal; one per turn
   proposal: PendingAction | null;
   // Taken synchronously by the first propose_* call of the turn, so tool
@@ -59,6 +61,13 @@ const MAX_CHOICES = 6;
 const CHOICE_LABEL_MAX = 60;
 
 const ACTION_TTL_MS = 10 * 60_000;
+// Tools that read code or a PR's contents
+const CODE_TOOLS = new Set([
+  'search_code',
+  'read_file',
+  'list_dir',
+  'get_pull_request',
+]);
 // Under the model loop's per-tool limit (15 s)
 const SOURCE_BUDGET_MS = 12_000;
 
@@ -579,6 +588,11 @@ export class PmToolbox {
     input: Record<string, unknown>,
     ctx: ToolContext,
   ): Promise<string> {
+    if (CODE_TOOLS.has(name) && !ctx.canReadCode) {
+      throw new Error(
+        'Reading code and reviewing PRs in depth is reserved for the owner. Answer from the snapshot (PR list, review state, CI) and say the owner can ask for a deep look.',
+      );
+    }
     switch (name) {
       case 'propose_remember':
         return this.proposing(ctx, () => this.proposeRemember(input, ctx));

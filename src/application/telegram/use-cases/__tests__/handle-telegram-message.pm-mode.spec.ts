@@ -99,6 +99,7 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       chatId: PM_GROUP,
       requesterId: 7,
       requesterName: 'Dev @dev',
+      canReadCode: false,
     });
     expect(persona.generateReply).not.toHaveBeenCalled();
     const [chat, text, buttons] = telegram.sendMessage.mock.calls[0];
@@ -291,7 +292,12 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     expect(pmAnswer.execute).toHaveBeenCalledWith(
       'Dev @dev: Выбираю вариант: Galleria',
       [],
-      { chatId: PM_GROUP, requesterId: 7, requesterName: 'Dev @dev' },
+      {
+        chatId: PM_GROUP,
+        requesterId: 7,
+        requesterName: 'Dev @dev',
+        canReadCode: false,
+      },
     );
   });
 
@@ -382,6 +388,39 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       PM_GROUP,
       'Забыл M7K2Q.',
     );
+  });
+
+  it('limits questions per day for everyone but the owner and listed people', async () => {
+    const quota = { hit: jest.fn().mockResolvedValue(8) };
+    (useCase as any).pmQuota = quota;
+    (useCase as any).pmConfig = {
+      ...(useCase as any).pmConfig,
+      dailyQuestionLimit: 7,
+      unlimitedUsernames: ['anna_z'],
+    };
+    await useCase.execute(group(PM_GROUP, '@nest_bot как дела?', 7));
+    expect(pmAnswer.execute).not.toHaveBeenCalled();
+    expect(telegram.sendMessage.mock.calls[0][1]).toContain(
+      'Лимит 7 вопросов в день исчерпан',
+    );
+
+    await useCase.execute(group(PM_GROUP, '@nest_bot как дела?', OWNER));
+    await useCase.execute({
+      ...group(PM_GROUP, '@nest_bot как дела?', 9),
+      from: { id: 9, username: 'Anna_Z', firstName: 'Anna', lastName: null },
+    });
+    expect(quota.hit).toHaveBeenCalledTimes(1);
+    expect(pmAnswer.execute).toHaveBeenCalledTimes(2);
+    expect(pmAnswer.execute.mock.calls[0][2]).toMatchObject({
+      canReadCode: true,
+    });
+    expect(pmAnswer.execute.mock.calls[1][2]).toMatchObject({
+      canReadCode: false,
+    });
+
+    // Commands never count
+    await useCase.execute(group(PM_GROUP, '/confirm K7Q2A', 7));
+    expect(quota.hit).toHaveBeenCalledTimes(1);
   });
 
   it('ignores button presses in a chat without PM mode', async () => {

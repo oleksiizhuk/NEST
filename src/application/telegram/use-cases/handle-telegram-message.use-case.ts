@@ -37,6 +37,7 @@ import {
   IPmMemory,
   PM_MEMORY,
 } from '@application/project-manager/memory.interface';
+import { IQuota, PM_QUOTA } from '@application/project-manager/quota.interface';
 
 // "Оксана @oksana" — whatever Telegram gave us, falling back to the numeric id
 const authorLabel = (from: {
@@ -126,7 +127,37 @@ export class HandleTelegramMessageUseCase {
     @Optional()
     @Inject(PM_MEMORY)
     private readonly pmMemory?: IPmMemory,
+    @Optional()
+    @Inject(PM_QUOTA)
+    private readonly pmQuota?: IQuota,
   ) {}
+
+  // The owner and the listed usernames ask without a daily limit
+  private isUnlimited(from: IncomingTelegramMessage['from']): boolean {
+    return (
+      from.id === this.config.ownerId ||
+      Boolean(
+        from.username &&
+          this.pmConfig?.unlimitedUsernames?.includes(
+            from.username.toLowerCase(),
+          ),
+      )
+    );
+  }
+
+  // True when this person is over today's limit; a counter failure lets
+  // the question through rather than silencing the bot
+  private async overLimit(msg: IncomingTelegramMessage): Promise<boolean> {
+    const limit = this.pmConfig?.dailyQuestionLimit ?? 0;
+    if (!limit || !this.pmQuota || this.isUnlimited(msg.from)) return false;
+    const day = new Date().toISOString().slice(0, 10);
+    try {
+      return (await this.pmQuota.hit(msg.from.id, day)) > limit;
+    } catch (error) {
+      this.logger.error(error);
+      return false;
+    }
+  }
 
   private canRunActions(userId: number): boolean {
     return (
@@ -400,6 +431,8 @@ export class HandleTelegramMessageUseCase {
         reply = arg
           ? await this.pmConfirm.cancel(arg, chatId, authorised)
           : 'Укажите id: /cancel ABCDE';
+      } else if (await this.overLimit(msg)) {
+        reply = `Лимит ${this.pmConfig?.dailyQuestionLimit} вопросов в день исчерпан, завтра снова можно. Команды /memory, /confirm и кнопки работают.`;
       } else {
         const question =
           command === '/status' || command === '/start'
@@ -413,6 +446,7 @@ export class HandleTelegramMessageUseCase {
             chatId,
             requesterId: msg.from.id,
             requesterName: authorLabel(msg.from),
+            canReadCode: msg.from.id === this.config.ownerId,
           },
         );
         if (answer.usage) usage = { ...answer.usage };

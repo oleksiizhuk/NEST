@@ -38,6 +38,17 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       .split(',')
       .map((u) => u.trim().replace(/^@/, '').toLowerCase())
       .filter((u) => /^[a-z0-9_]{4,32}$/.test(u)),
+    dailyQuestionLimit: (() => {
+      const raw = config.get<string>('PM_DAILY_QUESTION_LIMIT');
+      const n = Number(raw);
+      return raw !== undefined && raw !== '' && Number.isInteger(n) && n >= 0
+        ? n
+        : 7;
+    })(),
+    unlimitedUsernames: (config.get<string>('PM_UNLIMITED_USERNAMES') ?? '')
+      .split(',')
+      .map((u) => u.trim().replace(/^@/, '').toLowerCase())
+      .filter((u) => /^[a-z0-9_]{4,32}$/.test(u)),
     alertChatIds: ids(
       config.get<string>('PM_ALERT_CHAT_IDS') || 'owner',
       Number(config.get<string>('TELEGRAM_OWNER_ID')),
