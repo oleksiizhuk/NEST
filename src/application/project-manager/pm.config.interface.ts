@@ -30,4 +30,6 @@ export interface IPmConfig {
   // and unlimitedUsernames are never limited.
   dailyQuestionLimit?: number;
   unlimitedUsernames?: string[];
+  // Model effort for chat answers, when overridden from the admin page
+  aiEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }

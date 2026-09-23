@@ -40,3 +40,8 @@ lerna-debug.log*
 .vercel
 .env.local
 .claude/settings.local.json
+
+# Admin page: built on deploy
+/public/admin
+/admin/node_modules
+/admin/*.tsbuildinfo

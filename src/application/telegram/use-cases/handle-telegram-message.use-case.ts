@@ -38,6 +38,11 @@ import {
   PM_MEMORY,
 } from '@application/project-manager/memory.interface';
 import { IQuota, PM_QUOTA } from '@application/project-manager/quota.interface';
+import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
+import {
+  IAdminLinks,
+  PM_ADMIN_LINKS,
+} from '@application/project-manager/admin-links.interface';
 
 // "Оксана @oksana" — whatever Telegram gave us, falling back to the numeric id
 const authorLabel = (from: {
@@ -130,7 +135,19 @@ export class HandleTelegramMessageUseCase {
     @Optional()
     @Inject(PM_QUOTA)
     private readonly pmQuota?: IQuota,
+    @Optional() private readonly pmRuntime?: PmRuntimeConfig,
+    @Optional()
+    @Inject(PM_ADMIN_LINKS)
+    private readonly adminLinks?: IAdminLinks,
   ) {}
+
+  // The config with the owner's admin-page overrides, loaded at the start
+  // of each message (cached for 30 s by PmRuntimeConfig)
+  private live?: IPmConfig;
+
+  private get pm(): IPmConfig | undefined {
+    return this.live ?? this.pmConfig;
+  }
 
   // The owner and the listed usernames ask without a daily limit
   private isUnlimited(from: IncomingTelegramMessage['from']): boolean {
@@ -138,9 +155,7 @@ export class HandleTelegramMessageUseCase {
       from.id === this.config.ownerId ||
       Boolean(
         from.username &&
-          this.pmConfig?.unlimitedUsernames?.includes(
-            from.username.toLowerCase(),
-          ),
+          this.pm?.unlimitedUsernames?.includes(from.username.toLowerCase()),
       )
     );
   }
@@ -148,11 +163,13 @@ export class HandleTelegramMessageUseCase {
   // True when this person is over today's limit; a counter failure lets
   // the question through rather than silencing the bot
   private async overLimit(msg: IncomingTelegramMessage): Promise<boolean> {
-    const limit = this.pmConfig?.dailyQuestionLimit ?? 0;
+    const limit = this.pm?.dailyQuestionLimit ?? 0;
     if (!limit || !this.pmQuota || this.isUnlimited(msg.from)) return false;
     const day = new Date().toISOString().slice(0, 10);
     try {
-      return (await this.pmQuota.hit(msg.from.id, day)) > limit;
+      return (
+        (await this.pmQuota.hit(msg.from.id, day, msg.from.username)) > limit
+      );
     } catch (error) {
       this.logger.error(error);
       return false;
@@ -162,7 +179,7 @@ export class HandleTelegramMessageUseCase {
   private canRunActions(userId: number): boolean {
     return (
       userId === this.config.ownerId ||
-      Boolean(this.pmConfig?.actionUserIds.includes(userId))
+      Boolean(this.pm?.actionUserIds.includes(userId))
     );
   }
 
@@ -174,7 +191,7 @@ export class HandleTelegramMessageUseCase {
       this.pmAnswer &&
         msg.chatType === 'private' &&
         username &&
-        this.pmConfig?.dmUsernames.includes(username),
+        this.pm?.dmUsernames.includes(username),
     );
   }
 
@@ -184,7 +201,7 @@ export class HandleTelegramMessageUseCase {
   ): Promise<boolean> {
     if (!this.pmAnswer) return false;
     if (msg && this.isTeamDm(msg)) return true;
-    if (this.pmConfig?.chatIds.includes(chatId)) return true;
+    if (this.pm?.chatIds.includes(chatId)) return true;
     return this.pmChats
       ? this.pmChats.isEnabled(chatId).catch(() => false)
       : false;
@@ -193,6 +210,10 @@ export class HandleTelegramMessageUseCase {
   async execute(msg: IncomingTelegramMessage): Promise<void> {
     const { chatId, chatType, text } = msg;
     if (!text) return;
+
+    if (this.pmRuntime) {
+      this.live = await this.pmRuntime.current().catch(() => this.pmConfig);
+    }
 
     const isPrivate = chatType === 'private';
     const isGroup = chatType === 'group' || chatType === 'supergroup';
@@ -233,6 +254,11 @@ export class HandleTelegramMessageUseCase {
           (BOT_COMMANDS.includes(command) &&
             (await this.isPmChat(chatId, msg))));
       if (!isMentioned && !isReply && !isOurCommand) return;
+    }
+
+    if (command === '/admin') {
+      await this.sendAdminLink(msg, isPrivate);
+      return;
     }
 
     if (command === '/pm_on' || command === '/pm_off') {
@@ -330,6 +356,34 @@ export class HandleTelegramMessageUseCase {
     await this.telegram
       .clearButtons(msg.chatId, callback.messageId)
       .catch(() => undefined);
+  }
+
+  // A one-time login link to the admin page, only to the owner and only in
+  // the private chat; anyone else gets no reply
+  private async sendAdminLink(
+    msg: IncomingTelegramMessage,
+    isPrivate: boolean,
+  ): Promise<void> {
+    if (msg.from.id !== this.config.ownerId || !this.adminLinks) return;
+    if (!isPrivate) {
+      await this.telegram.sendMessage(
+        msg.chatId,
+        'Ссылку на админку пришлю только в личку: напишите /admin мне в личные сообщения.',
+      );
+      return;
+    }
+    try {
+      const link = await this.adminLinks.issue(new Date());
+      await this.telegram.sendMessage(
+        msg.chatId,
+        `Вход в админку (одноразовая ссылка, 10 минут):\n${link}`,
+      );
+    } catch (error) {
+      this.logger.error(error);
+      await this.telegram
+        .sendMessage(msg.chatId, 'Не получилось сделать ссылку на админку.')
+        .catch(() => undefined);
+    }
   }
 
   // Only the owner can open project data to a chat. Anyone else asking gets
@@ -432,7 +486,7 @@ export class HandleTelegramMessageUseCase {
           ? await this.pmConfirm.cancel(arg, chatId, authorised)
           : 'Укажите id: /cancel ABCDE';
       } else if (await this.overLimit(msg)) {
-        reply = `Лимит ${this.pmConfig?.dailyQuestionLimit} вопросов в день исчерпан, завтра снова можно. Команды /memory, /confirm и кнопки работают.`;
+        reply = `Лимит ${this.pm?.dailyQuestionLimit} вопросов в день исчерпан, завтра снова можно. Команды /memory, /confirm и кнопки работают.`;
       } else {
         const question =
           command === '/status' || command === '/start'

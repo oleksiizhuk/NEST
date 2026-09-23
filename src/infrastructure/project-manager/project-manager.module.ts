@@ -47,6 +47,13 @@ import { PmGoldenSchema } from '@infrastructure/database/schemas/pm-golden.schem
 import { PM_QUOTA } from '@application/project-manager/quota.interface';
 import { MongoQuota } from '@infrastructure/database/repositories/mongo-quota';
 import { PmQuotaSchema } from '@infrastructure/database/schemas/pm-quota.schema';
+import { PM_SETTINGS } from '@application/project-manager/settings.interface';
+import { PM_ADMIN_LINKS } from '@application/project-manager/admin-links.interface';
+import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
+import { MongoPmSettings } from '@infrastructure/database/repositories/mongo-pm-settings';
+import { MongoAdminLinks } from '@infrastructure/project-manager/admin-links';
+import { PmSettingsSchema } from '@infrastructure/database/schemas/pm-settings.schema';
+import { PmAdminLoginSchema } from '@infrastructure/database/schemas/pm-admin-login.schema';
 import { FigmaDesignHost } from '@infrastructure/project-manager/figma-design.host';
 import { PM_CHAT_REGISTRY } from '@application/project-manager/pm-chat-registry.interface';
 import { PmChatSchema } from '@infrastructure/database/schemas/pm-chat.schema';
@@ -64,6 +71,8 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
       { name: 'PmAlert', schema: PmAlertSchema },
       { name: 'PmGolden', schema: PmGoldenSchema },
       { name: 'PmQuota', schema: PmQuotaSchema },
+      { name: 'PmSettings', schema: PmSettingsSchema },
+      { name: 'PmAdminLogin', schema: PmAdminLoginSchema },
     ]),
   ],
   providers: [
@@ -109,6 +118,9 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     { provide: PM_ALERT_LOG, useClass: MongoAlertLog },
     { provide: PM_GOLDEN, useClass: MongoGoldenStore },
     { provide: PM_QUOTA, useClass: MongoQuota },
+    { provide: PM_SETTINGS, useClass: MongoPmSettings },
+    { provide: PM_ADMIN_LINKS, useClass: MongoAdminLinks },
+    PmRuntimeConfig,
     ConfirmPendingActionUseCase,
     RefreshProjectSnapshotUseCase,
     AnswerProjectQuestionUseCase,
@@ -120,6 +132,9 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     PM_ALERT_LOG,
     PM_GOLDEN,
     PM_QUOTA,
+    PM_SETTINGS,
+    PM_ADMIN_LINKS,
+    PmRuntimeConfig,
     ISSUE_DETAILS,
     DOC_COMMENTS,
     DESIGN_HOST,

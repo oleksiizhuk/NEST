@@ -1,4 +1,5 @@
 import { PmCronHttpModule } from '@infrastructure/http/project-manager/pm-cron.module';
+import { PmAdminHttpModule } from '@infrastructure/http/pm-admin/pm-admin.module';
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -23,6 +24,7 @@ import { McpHttpModule } from '@infrastructure/http/mcp/mcp.module';
     TelegramHttpModule,
     McpHttpModule,
     PmCronHttpModule,
+    PmAdminHttpModule,
     ConfigModule.forRoot(),
     MongooseModule.forRootAsync({
       useFactory: () => {

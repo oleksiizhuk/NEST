@@ -54,6 +54,7 @@ import {
   renderMemory,
 } from '@application/project-manager/memory.interface';
 import { readinessChecklist } from '@application/project-manager/readiness';
+import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
 
 const NO_CODE_NOTE =
   'The person asking cannot have code read or PRs reviewed in depth: answer about code and PRs from the snapshot only (PR list, review state, CI), and say the owner can ask for a deep look.';
@@ -91,6 +92,7 @@ export class AnswerProjectQuestionUseCase {
     @Optional()
     @Inject(PM_MEMORY)
     private readonly memory?: IPmMemory,
+    @Optional() private readonly runtime?: PmRuntimeConfig,
   ) {}
 
   async execute(
@@ -112,6 +114,7 @@ export class AnswerProjectQuestionUseCase {
     // The whole webhook has to finish inside Vercel's limit, so the model's
     // budget counts from here, not from after the snapshot is loaded
     const until = deadline ?? Date.now() + ANSWER_BUDGET_MS;
+    const live = await this.runtime?.current().catch(() => undefined);
     const [snapshot, knowledge, memories] = await Promise.all([
       this.currentSnapshot(now),
       loadKnowledge(this.knowledge, this.config.knowledgeInlineChars),
@@ -156,6 +159,7 @@ export class AnswerProjectQuestionUseCase {
         },
       },
       deadline: until,
+      ...(live?.aiEffort ? { effort: live.aiEffort } : {}),
       onUsage: (u) => {
         usage = u;
       },

@@ -13,6 +13,9 @@ export class PmQuotaDocument extends Document {
   @Prop({ required: true, default: 0 })
   count: number;
 
+  @Prop({ type: String, default: null })
+  username: string | null;
+
   createdAt: Date;
 }
 

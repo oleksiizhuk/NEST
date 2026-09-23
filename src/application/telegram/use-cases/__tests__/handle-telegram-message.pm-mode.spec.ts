@@ -423,6 +423,50 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     expect(quota.hit).toHaveBeenCalledTimes(1);
   });
 
+  it('sends the admin link only to the owner, only in private', async () => {
+    const links = {
+      issue: jest.fn().mockResolvedValue('https://host/admin/#login=abc'),
+      consume: jest.fn(),
+    };
+    (useCase as any).adminLinks = links;
+    await useCase.execute({
+      ...group(OWNER, '/admin', OWNER),
+      chatType: 'private',
+    });
+    expect(telegram.sendMessage).toHaveBeenLastCalledWith(
+      OWNER,
+      expect.stringContaining('https://host/admin/#login=abc'),
+    );
+    await useCase.execute(group(PM_GROUP, '/admin@nest_bot', OWNER));
+    expect(telegram.sendMessage).toHaveBeenLastCalledWith(
+      PM_GROUP,
+      expect.stringContaining('только в личку'),
+    );
+    telegram.sendMessage.mockClear();
+    await useCase.execute({
+      ...group(555, '/admin', 555),
+      chatType: 'private',
+      from: { id: 555, username: 'dmytro_aa', firstName: 'D', lastName: null },
+    });
+    expect(telegram.sendMessage).not.toHaveBeenCalled();
+    expect(links.issue).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the owner overrides from the admin page', async () => {
+    (useCase as any).pmRuntime = {
+      current: jest.fn().mockResolvedValue({
+        ...(useCase as any).pmConfig,
+        dmUsernames: ['ira92kr'],
+      }),
+    };
+    await useCase.execute({
+      ...group(777, 'привет', 777),
+      chatType: 'private',
+      from: { id: 777, username: 'ira92kr', firstName: 'Ira', lastName: null },
+    });
+    expect(pmAnswer.execute).toHaveBeenCalled();
+  });
+
   it('ignores button presses in a chat without PM mode', async () => {
     registry.isEnabled.mockResolvedValue(false);
     await useCase.execute(

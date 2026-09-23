@@ -1,3 +1,4 @@
+import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   IProjectSnapshotRepository,
@@ -102,6 +103,7 @@ export class WatchProjectUseCase {
     @Optional() @Inject(ISSUE_DETAILS) private readonly issues?: IIssueDetails,
     @Optional() @Inject(DOC_COMMENTS) private readonly docs?: IDocComments,
     @Optional() @Inject(DESIGN_HOST) private readonly design?: IDesignHost,
+    @Optional() private readonly runtime?: PmRuntimeConfig,
   ) {}
 
   // dry: read the latest snapshot, send and record nothing
@@ -125,7 +127,9 @@ export class WatchProjectUseCase {
     if (dry) return { signals, sent };
 
     const codeFresh = Boolean(snapshot.section('code')?.ok);
-    for (const chatId of this.config.alertChatIds ?? []) {
+    const live =
+      (await this.runtime?.current().catch(() => undefined)) ?? this.config;
+    for (const chatId of live.alertChatIds ?? []) {
       // A pipeline that is green again may alert again when it next breaks
       if (codeFresh) {
         await this.alerts

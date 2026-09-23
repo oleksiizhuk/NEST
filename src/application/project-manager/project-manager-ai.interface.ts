@@ -32,6 +32,8 @@ export interface PmRequest {
   tools?: PmTools;
   // Epoch ms by which the final answer must exist
   deadline?: number;
+  // Overrides the configured effort for this answer (admin page)
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   // Called once per answer with what it cost, success or not
   onUsage?: (usage: PmUsage) => void;
 }
