@@ -146,7 +146,7 @@ PORT=3000
 In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager on `claude-opus-5-5`. Every other chat keeps the persona and never sees project data.
 - `RefreshProjectSnapshotUseCase` reads Jira, Confluence and GitHub through read-only `IProjectSource`s (`src/infrastructure/project-manager/`) into a `ProjectSnapshot` in Mongo. A failed source keeps its previous text, marked stale.
 - `AnswerProjectQuestionUseCase` answers from the latest snapshot plus `PM_PROJECT_BRIEF`, rebuilding it first when it is older than `PM_SNAPSHOT_MAX_AGE_HOURS` (30). Instructions are generic and live in the repo; everything project-specific comes from env and the snapshot, because the repo is public.
-- Commands: `/status` (verdict, focus per person, risks), `/refresh` (owner only).
+- Commands: `/status` (verdict, focus per person, risks), `/refresh` (owner only). In a group the owner sends `/pm_on` to switch that chat to PM mode and add it to the digest (stored in Mongo `pmchats`), `/pm_off` to switch it back; nobody else can.
 - `PostDailyDigestUseCase` runs from Vercel Cron on weekdays and posts to `PM_DIGEST_CHAT_ID`.
 - The webhook claims each `update_id` in Mongo first, so Telegram's retry of a slow answer is ignored.
 

@@ -119,6 +119,13 @@ describe('AnswerProjectQuestionUseCase', () => {
   });
 });
 
+const chats = (ids: number[]) => ({
+  isEnabled: jest.fn(),
+  enable: jest.fn(),
+  disable: jest.fn(),
+  digestChats: jest.fn().mockResolvedValue(ids),
+});
+
 describe('PostDailyDigestUseCase', () => {
   const ai = {
     answer: jest.fn(),
@@ -140,6 +147,7 @@ describe('PostDailyDigestUseCase', () => {
       ai as any,
       telegram,
       config,
+      chats([]),
     );
     await expect(useCase.execute(now)).resolves.toEqual({ posted: true });
     expect(refresh.execute).toHaveBeenCalled();
@@ -155,9 +163,24 @@ describe('PostDailyDigestUseCase', () => {
         ...config,
         digestChatId: null,
       },
+      chats([]),
     );
     await expect(useCase.execute(now)).resolves.toEqual({ posted: false });
     expect(ai.digest).not.toHaveBeenCalled();
     expect(telegram.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('also posts to chats switched on with /pm_on, once each', async () => {
+    const useCase = new PostDailyDigestUseCase(
+      refresh as any,
+      ai as any,
+      telegram,
+      config,
+      chats([-100, -300]),
+    );
+    await useCase.execute(now);
+    expect(
+      telegram.sendMessage.mock.calls.map((c) => c[0]).sort((a, b) => a - b),
+    ).toEqual([-300, -100]);
   });
 });
