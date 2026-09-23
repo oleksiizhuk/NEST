@@ -12,6 +12,7 @@ import {
 } from '@application/project-manager/pending-action.interface';
 import {
   IDesignHost,
+  IDocSearch,
   IDocComments,
   IIssueDetails,
   Remark,
@@ -114,6 +115,7 @@ export class PmToolbox {
       issues?: IIssueDetails;
       docs?: IDocComments;
       design?: IDesignHost;
+      search?: IDocSearch;
       // Display names of the team; a reply from one of them answers a question
       team?: string[];
     } = {},
@@ -365,6 +367,36 @@ export class PmToolbox {
             },
           ]
         : []),
+      ...(this.collab.search?.isConfigured()
+        ? [
+            {
+              name: 'confluence_search',
+              description:
+                'Search the documentation (allowed spaces only) by words or a title fragment. Returns up to 10 pages with id, title, space, last edit and a snippet. Use it when the answer may be in a doc that is not in the snapshot.',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  query: { type: 'string', maxLength: 100 },
+                },
+                required: ['query'],
+                additionalProperties: false,
+              },
+            },
+            {
+              name: 'confluence_read_page',
+              description:
+                'Read one documentation page by id (from confluence_search, a link or the snapshot): text with headings, tables, tasks, links, plus its child pages. Cite the page title.',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  id: { type: 'string', pattern: '^[0-9]{1,20}$' },
+                },
+                required: ['id'],
+                additionalProperties: false,
+              },
+            },
+          ]
+        : []),
       ...(this.questionReaders().some(([, r]) => r?.isConfigured())
         ? [
             {
@@ -577,6 +609,23 @@ export class PmToolbox {
         return wrapUntrusted(
           `jira:${key}`,
           await this.collab.issues.getIssue(key),
+        );
+      }
+      case 'confluence_search': {
+        if (!this.collab.search?.isConfigured())
+          throw new Error('Documentation search is not configured.');
+        return wrapUntrusted(
+          'confluence:search',
+          await this.collab.search.search(str(input.query, 100)),
+        );
+      }
+      case 'confluence_read_page': {
+        if (!this.collab.search?.isConfigured())
+          throw new Error('Documentation search is not configured.');
+        const id = str(input.id, 20);
+        return wrapUntrusted(
+          `confluence:${id}`,
+          await this.collab.search.readPage(id),
         );
       }
       case 'find_open_questions':

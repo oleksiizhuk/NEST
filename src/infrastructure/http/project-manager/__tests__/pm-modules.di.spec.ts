@@ -6,6 +6,7 @@ import { TelegramHttpModule } from '@infrastructure/http/telegram/telegram.modul
 import { PmCronController } from '@infrastructure/http/project-manager/pm-cron.controller';
 import { PmKnowledgeController } from '@infrastructure/http/project-manager/pm-knowledge.controller';
 import { TelegramController } from '@infrastructure/http/telegram/telegram.controller';
+import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
 import { PostDailyDigestUseCase } from '@application/project-manager/use-cases/post-daily-digest.use-case';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
 
@@ -43,6 +44,9 @@ describe('project-manager module wiring', () => {
       (instance as Record<string, unknown>)[field];
     expect(
       optional(moduleRef.get(PostDailyDigestUseCase), 'snapshots'),
+    ).toBeDefined();
+    expect(
+      optional(moduleRef.get(AnswerProjectQuestionUseCase), 'search'),
     ).toBeDefined();
     const handler = moduleRef.get(HandleTelegramMessageUseCase);
     for (const field of [

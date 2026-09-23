@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   IProjectSnapshotRepository,
   PROJECT_SNAPSHOT_REPOSITORY,
@@ -33,8 +33,10 @@ import {
 import {
   DESIGN_HOST,
   DOC_COMMENTS,
+  DOC_SEARCH,
   IDesignHost,
   IDocComments,
+  IDocSearch,
   IIssueDetails,
   ISSUE_DETAILS,
 } from '@application/project-manager/collaboration.interface';
@@ -77,6 +79,9 @@ export class AnswerProjectQuestionUseCase {
     @Inject(ISSUE_DETAILS) private readonly issues: IIssueDetails,
     @Inject(DOC_COMMENTS) private readonly docs: IDocComments,
     @Inject(DESIGN_HOST) private readonly design: IDesignHost,
+    @Optional()
+    @Inject(DOC_SEARCH)
+    private readonly search?: IDocSearch,
   ) {}
 
   async execute(
@@ -100,6 +105,7 @@ export class AnswerProjectQuestionUseCase {
       issues: this.issues,
       docs: this.docs,
       design: this.design,
+      search: this.search,
       team: this.config.team,
     });
     const ctx: ToolContext = { ...chat, proposal: null };

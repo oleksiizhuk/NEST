@@ -4,6 +4,7 @@
 export const ISSUE_DETAILS = 'ISSUE_DETAILS';
 export const DOC_COMMENTS = 'DOC_COMMENTS';
 export const DESIGN_HOST = 'DESIGN_HOST';
+export const DOC_SEARCH = 'DOC_SEARCH';
 
 export interface Remark {
   source: 'jira' | 'confluence' | 'figma';
@@ -37,4 +38,12 @@ export interface IDesignHost {
   getNodes(fileKey: string, ids: string[], depth: number): Promise<string>;
   imageLink(fileKey: string, id: string): Promise<string>;
   recentComments(days: number): Promise<Remark[]>;
+}
+
+// Docs beyond the pages in the snapshot, limited to allowed spaces. Pages
+// that look like they hold credentials are never returned.
+export interface IDocSearch {
+  isConfigured(): boolean;
+  search(query: string): Promise<string>;
+  readPage(id: string): Promise<string>;
 }
