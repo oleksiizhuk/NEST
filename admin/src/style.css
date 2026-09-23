@@ -194,3 +194,12 @@ button.link {
   padding: 0;
   font-weight: 500;
 }
+
+.login label {
+  display: block;
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+.login input {
+  max-width: 360px;
+}

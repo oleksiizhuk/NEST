@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, session, SettingsView, Unauthorized, Usage } from './api';
 import { SettingsForm } from './SettingsForm';
 import { UsagePanel } from './UsagePanel';
+import { LoginCard } from './LoginCard';
 
 type State = 'loading' | 'login' | 'ready';
 
@@ -103,14 +104,12 @@ export function App() {
       {state === 'loading' && <p className="muted">Загрузка…</p>}
 
       {state === 'login' && (
-        <section className="card">
-          <h2>Вход</h2>
-          <p>
-            Напишите боту в личку <code>/admin</code>. Он пришлёт одноразовую
-            ссылку на 10 минут: откройте её в этом браузере. Команда работает
-            только для владельца.
-          </p>
-        </section>
+        <LoginCard
+          onLoggedIn={() => {
+            setError(null);
+            load();
+          }}
+        />
       )}
 
       {state === 'ready' && (

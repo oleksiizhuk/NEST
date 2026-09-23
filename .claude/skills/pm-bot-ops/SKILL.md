@@ -16,6 +16,16 @@ Where it lives:
 
 The owner opens it by sending `/admin` to the bot in a private chat: the bot replies with a one-time link (10 minutes) to `https://<host>/admin/`. Limits, access lists, alert recipients and chat effort changed there apply within 30 s without a redeploy and override the Vercel env; an emptied field goes back to the env value. Nobody else can log in: links are issued only to `TELEGRAM_OWNER_ID`, and sessions are checked against it.
 
+Password login (optional): `PM_ADMIN_EMAIL` + `PM_ADMIN_PASSWORD_HASH` (bcrypt). To change the password, take it from a hidden dialog, hash it and replace the variable, then redeploy — the password is never printed or stored:
+
+```bash
+PMPW="$(osascript -e 'text returned of (display dialog "New admin password" default answer "" with hidden answer)')" \
+  node -e "process.stdout.write(require('bcryptjs').hashSync(process.env.PMPW, 12))" > /tmp/h && \
+  npx vercel env rm PM_ADMIN_PASSWORD_HASH production -y && npx vercel env add PM_ADMIN_PASSWORD_HASH production < /tmp/h; rm -f /tmp/h
+```
+
+Then press "Выйти везде" in the admin page to end old sessions.
+
 ## Health checks
 
 All `/cron/pm/*` routes need `Authorization: Bearer $CRON_SECRET` (the guard compares in constant time; unset secret = always 401). The secret is only in Vercel env — read it into a shell variable without echoing, never print it, never paste it into chat:
