@@ -22,8 +22,8 @@ import {
   ICodeHost,
 } from '@application/project-manager/code-host.interface';
 import {
-  IStagingAdmin,
-  STAGING_ADMIN,
+  ADMIN_TARGETS,
+  IAdminTargets,
 } from '@application/project-manager/staging-admin.interface';
 import {
   IPendingActions,
@@ -59,7 +59,7 @@ export class AnswerProjectQuestionUseCase {
     @Inject(PM_CONFIG) private readonly config: IPmConfig,
     @Inject(PM_KNOWLEDGE) private readonly knowledge: IKnowledgeStore,
     @Inject(CODE_HOST) private readonly code: ICodeHost,
-    @Inject(STAGING_ADMIN) private readonly staging: IStagingAdmin,
+    @Inject(ADMIN_TARGETS) private readonly targets: IAdminTargets,
     @Inject(PENDING_ACTIONS) private readonly actions: IPendingActions,
   ) {}
 
@@ -77,7 +77,7 @@ export class AnswerProjectQuestionUseCase {
       this.currentSnapshot(now),
       renderKnowledge(this.knowledge),
     ]);
-    const toolbox = new PmToolbox(this.code, this.staging, this.actions);
+    const toolbox = new PmToolbox(this.code, this.targets, this.actions);
     const ctx: ToolContext = { ...chat, proposal: null };
     const text = await this.ai.answer({
       brief: this.config.projectBrief,

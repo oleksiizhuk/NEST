@@ -137,6 +137,7 @@ PM_CODE_REPOS=          # Repos the bot may read code from (defaults to PM_GITHU
 PM_ACTION_USER_IDS=     # Telegram user ids besides the owner who may /confirm staging actions
 STAGING_API_BASE_URL=   # Staging admin API; with STAGING_ALLOWED_HOSTS (exact hosts) and STAGING_FORBIDDEN_HOSTS (e.g. the prod domain)
 STAGING_ADMIN_EMAIL=    # Dedicated least-privilege staging account for the bot, with STAGING_ADMIN_PASSWORD
+DEV_API_BASE_URL=       # Same four settings for the dev environment (DEV_ALLOWED_HOSTS, DEV_ADMIN_EMAIL, DEV_ADMIN_PASSWORD); STAGING_FORBIDDEN_HOSTS applies to both
 ENV=
 PORT=3000
 ```
@@ -154,7 +155,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 - `PostDailyDigestUseCase` runs from Vercel Cron on weekdays and posts to `PM_DIGEST_CHAT_ID`.
 - The webhook claims each `update_id` in Mongo first, so Telegram's retry of a slow answer is ignored.
 - Tools (`PmToolbox`, application layer): `search_code`, `read_file`, `list_dir`, `get_pull_request` over the allowlisted repos (read-only; `.env`/key files refused, secrets masked, output wrapped as `<tool_data>`), `staging_lookup`, and `propose_create_brand`. The loop in `AnthropicProjectManagerService` is bounded (8 iterations, 16 calls, deadline) and forces a final answer with `tool_choice: none`.
-- Staging actions are never executed by the model: `propose_create_brand` stores a `PendingAction` (Mongo `pmactions`, 10 min) and the reply gets a `/confirm <id>` line. `ConfirmPendingActionUseCase` runs it only for the owner or `PM_ACTION_USER_IDS`, claims it atomically, re-checks for a duplicate, and records the outcome (`done` / `failed` / `unknown`, no automatic retry). `HttpStagingAdmin` fails closed unless the base URL is HTTPS on an allowlisted host.
+- Actions target a test environment (`dev` or `staging`, `AdminTargets` builds one client per configured `DEV_*` / `STAGING_*` prefix) and are never executed by the model: `propose_create_brand` stores a `PendingAction` (Mongo `pmactions`, 10 min) and the reply gets a `/confirm <id>` line. `ConfirmPendingActionUseCase` runs it only for the owner or `PM_ACTION_USER_IDS`, claims it atomically, re-checks for a duplicate, and records the outcome (`done` / `failed` / `unknown`, no automatic retry). `HttpStagingAdmin` fails closed unless the base URL is HTTPS on an allowlisted host.
 - `PUT /cron/pm/knowledge/:key` (CRON_SECRET) stores reference text such as codebase maps in Mongo `pmknowledges`; it is loaded into the cached prompt. `GET` lists keys and sizes only.
 
 ---

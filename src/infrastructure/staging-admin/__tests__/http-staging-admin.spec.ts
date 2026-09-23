@@ -1,4 +1,5 @@
 import {
+  AdminTargets,
   checkStagingBase,
   HttpStagingAdmin,
 } from '@infrastructure/staging-admin/http-staging-admin';
@@ -92,6 +93,7 @@ describe('HttpStagingAdmin', () => {
 
     const admin = new HttpStagingAdmin(env(staging));
     const brand = await admin.createBrand({
+      tier: 'staging',
       nameEn: 'Test Brand',
       nameAr: 'تست',
       mallId: 'm1',
@@ -162,5 +164,35 @@ describe('placeholderPng', () => {
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     );
     expect(png.length).toBeLessThan(500_000);
+  });
+});
+
+describe('AdminTargets', () => {
+  it('builds one client per configured environment from its own prefix', () => {
+    const targets = new AdminTargets(
+      env({
+        ...staging,
+        DEV_API_BASE_URL: 'https://api.dev.example',
+        DEV_ALLOWED_HOSTS: 'api.dev.example',
+        DEV_ADMIN_EMAIL: 'dev@example.com',
+        DEV_ADMIN_PASSWORD: 'pw',
+      }),
+    );
+    expect(targets.tiers()).toEqual(['dev', 'staging']);
+    expect(targets.target('dev').describeTarget()).toBe('api.dev.example');
+    expect(() => targets.target('production')).toThrow(/not configured/);
+  });
+
+  it('applies the shared production blocklist to every environment', () => {
+    const targets = new AdminTargets(
+      env({
+        STAGING_FORBIDDEN_HOSTS: 'prod.example',
+        DEV_API_BASE_URL: 'https://api.prod.example',
+        DEV_ALLOWED_HOSTS: 'api.prod.example',
+        DEV_ADMIN_EMAIL: 'x',
+        DEV_ADMIN_PASSWORD: 'y',
+      }),
+    );
+    expect(targets.tiers()).toEqual([]);
   });
 });

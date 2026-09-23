@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   CreatedBrand,
+  IAdminTargets,
   IStagingAdmin,
   NamedRef,
   NewBrand,
@@ -58,7 +59,7 @@ export const checkStagingBase = (
   }
 };
 
-@Injectable()
+// One test environment; settings come from <PREFIX>_* env vars.
 export class HttpStagingAdmin implements IStagingAdmin {
   private readonly logger = new Logger(HttpStagingAdmin.name);
   private readonly base: URL | null;
@@ -67,19 +68,24 @@ export class HttpStagingAdmin implements IStagingAdmin {
   private token: { value: string; until: number } | null = null;
   private company: string | null = null;
 
-  constructor(config: ConfigService) {
+  constructor(config: ConfigService, prefix = 'STAGING') {
     const list = (key: string) =>
       (config.get<string>(key) ?? '')
         .split(',')
         .map((h) => h.trim().toLowerCase())
         .filter(Boolean);
     this.base = checkStagingBase(
-      config.get<string>('STAGING_API_BASE_URL') ?? '',
-      list('STAGING_ALLOWED_HOSTS'),
-      list('STAGING_FORBIDDEN_HOSTS'),
+      config.get<string>(`${prefix}_API_BASE_URL`) ?? '',
+      list(`${prefix}_ALLOWED_HOSTS`),
+      [
+        ...list(`${prefix}_FORBIDDEN_HOSTS`),
+        // The production blocklist is shared by every tier
+        ...list('STAGING_FORBIDDEN_HOSTS'),
+        ...list('PM_FORBIDDEN_HOSTS'),
+      ],
     );
-    this.email = config.get<string>('STAGING_ADMIN_EMAIL') ?? '';
-    this.password = config.get<string>('STAGING_ADMIN_PASSWORD') ?? '';
+    this.email = config.get<string>(`${prefix}_ADMIN_EMAIL`) ?? '';
+    this.password = config.get<string>(`${prefix}_ADMIN_PASSWORD`) ?? '';
   }
 
   isConfigured(): boolean {
@@ -322,5 +328,32 @@ export class HttpStagingAdmin implements IStagingAdmin {
       throw new StagingHttpError(response.status, String(message));
     }
     return data;
+  }
+}
+
+// dev → DEV_*, staging → STAGING_*. Order is the default order the model sees.
+const TIER_PREFIXES: Array<[string, string]> = [
+  ['dev', 'DEV'],
+  ['staging', 'STAGING'],
+];
+
+export class AdminTargets implements IAdminTargets {
+  private readonly byTier = new Map<string, IStagingAdmin>();
+
+  constructor(config: ConfigService) {
+    for (const [tier, prefix] of TIER_PREFIXES) {
+      const admin = new HttpStagingAdmin(config, prefix);
+      if (admin.isConfigured()) this.byTier.set(tier, admin);
+    }
+  }
+
+  tiers(): string[] {
+    return [...this.byTier.keys()];
+  }
+
+  target(tier: string): IStagingAdmin {
+    const admin = this.byTier.get(tier);
+    if (!admin) throw new Error(`Environment "${tier}" is not configured`);
+    return admin;
   }
 }

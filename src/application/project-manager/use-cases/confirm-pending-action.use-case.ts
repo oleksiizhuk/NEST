@@ -5,8 +5,8 @@ import {
   PendingAction,
 } from '@application/project-manager/pending-action.interface';
 import {
-  IStagingAdmin,
-  STAGING_ADMIN,
+  ADMIN_TARGETS,
+  IAdminTargets,
 } from '@application/project-manager/staging-admin.interface';
 
 export class StagingHttpError extends Error {
@@ -22,7 +22,7 @@ export class ConfirmPendingActionUseCase {
 
   constructor(
     @Inject(PENDING_ACTIONS) private readonly actions: IPendingActions,
-    @Inject(STAGING_ADMIN) private readonly staging: IStagingAdmin,
+    @Inject(ADMIN_TARGETS) private readonly targets: IAdminTargets,
   ) {}
 
   // id null = the newest pending action in this chat (a bare "да")
@@ -65,21 +65,22 @@ export class ConfirmPendingActionUseCase {
   }
 
   private async execute(action: PendingAction): Promise<string> {
+    // Proposals from before tiers existed were always staging
+    const tier = action.payload.tier || 'staging';
     try {
+      const admin = this.targets.target(tier);
       // Re-check right before writing: someone may have created it meanwhile
-      const existing = (
-        await this.staging.findBrands(action.payload.nameEn)
-      ).find(
+      const existing = (await admin.findBrands(action.payload.nameEn)).find(
         (b) =>
           b.name.trim().toLowerCase() === action.payload.nameEn.toLowerCase(),
       );
       if (existing) {
-        const text = `Бренд "${existing.name}" уже есть на staging (id ${existing.id}) — новый не создавал.`;
+        const text = `Бренд "${existing.name}" уже есть на ${tier} (id ${existing.id}) — новый не создавал.`;
         await this.actions.finish(action.id, 'done', text);
         return text;
       }
-      const brand = await this.staging.createBrand(action.payload);
-      const text = `Готово: на staging создан бренд "${brand.name}" (id ${
+      const brand = await admin.createBrand(action.payload);
+      const text = `Готово: на ${tier} создан бренд "${brand.name}" (id ${
         brand.id
       }) с магазином в "${action.payload.mallName}"${
         brand.note ? ` — ${brand.note}` : ''
@@ -89,10 +90,10 @@ export class ConfirmPendingActionUseCase {
     } catch (error) {
       const known = error instanceof StagingHttpError && error.status < 500;
       const text = known
-        ? `Не получилось: staging ответил ${
+        ? `Не получилось: ${tier} ответил ${
             (error as StagingHttpError).status
           } — ${error.message.slice(0, 300)}`
-        : 'Результат неизвестен (таймаут или ошибка сервера). Проверьте на staging, прежде чем повторять.';
+        : `Результат неизвестен (таймаут или ошибка сервера). Проверьте на ${tier}, прежде чем повторять.`;
       try {
         await this.actions.finish(
           action.id,

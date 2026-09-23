@@ -1,4 +1,4 @@
-export const STAGING_ADMIN = 'STAGING_ADMIN';
+export const ADMIN_TARGETS = 'ADMIN_TARGETS';
 
 export interface NamedRef {
   id: string;
@@ -6,6 +6,8 @@ export interface NamedRef {
 }
 
 export interface NewBrand {
+  // Which test environment (e.g. dev, staging) the brand goes to
+  tier: string;
   nameEn: string;
   nameAr: string;
   mallId: string;
@@ -26,8 +28,8 @@ export interface CreatedBrand {
   note?: string;
 }
 
-// The staging admin API of the team's product. Implementations must make
-// production unreachable; every method runs against staging only.
+// The admin API of one test environment of the team's product.
+// Implementations must make production unreachable.
 export interface IStagingAdmin {
   isConfigured(): boolean;
   describeTarget(): string;
@@ -35,4 +37,12 @@ export interface IStagingAdmin {
   findCategories(query: string): Promise<NamedRef[]>;
   findBrands(query: string): Promise<NamedRef[]>;
   createBrand(brand: NewBrand): Promise<CreatedBrand>;
+}
+
+// The test environments the bot may act on, keyed by tier name (dev,
+// staging). Only tiers with a valid allowlisted URL and credentials appear.
+export interface IAdminTargets {
+  tiers(): string[];
+  // Throws for an unknown or unconfigured tier
+  target(tier: string): IStagingAdmin;
 }

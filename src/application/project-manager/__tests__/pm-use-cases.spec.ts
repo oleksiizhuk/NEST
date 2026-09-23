@@ -88,14 +88,7 @@ const code = {
   listDir: jest.fn(),
   pullRequest: jest.fn(),
 };
-const staging = {
-  isConfigured: () => false,
-  describeTarget: () => 'staging',
-  findMalls: jest.fn(),
-  findCategories: jest.fn(),
-  findBrands: jest.fn(),
-  createBrand: jest.fn(),
-};
+const staging = { tiers: () => [], target: jest.fn() };
 const actions = {
   create: jest.fn(),
   claim: jest.fn(),

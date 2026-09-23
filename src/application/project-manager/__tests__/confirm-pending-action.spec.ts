@@ -7,6 +7,7 @@ const action = {
   id: 'K7Q2A',
   kind: 'create_brand' as const,
   payload: {
+    tier: 'staging',
     nameEn: 'Test Brand',
     nameAr: 'تست',
     mallId: 'm1',
@@ -43,7 +44,8 @@ describe('ConfirmPendingActionUseCase', () => {
     findBrands: jest.fn().mockResolvedValue([]),
     createBrand: jest.fn(),
   };
-  const useCase = new ConfirmPendingActionUseCase(actions as any, staging);
+  const targets = { tiers: () => ['staging'], target: jest.fn(() => staging) };
+  const useCase = new ConfirmPendingActionUseCase(actions as any, targets);
   beforeEach(() => {
     jest.clearAllMocks();
     staging.findBrands.mockResolvedValue([]);
@@ -71,7 +73,10 @@ describe('ConfirmPendingActionUseCase', () => {
       1,
       expect.any(Date),
     );
-    expect(reply).toMatch(/создан бренд "Test Brand" \(id b1\).*черновике/);
+    expect(reply).toMatch(
+      /на staging создан бренд "Test Brand" \(id b1\).*черновике/,
+    );
+    expect(targets.target).toHaveBeenCalledWith('staging');
     expect(actions.finish).toHaveBeenCalledWith(
       'K7Q2A',
       'done',

@@ -30,6 +30,10 @@ const staging = {
   findBrands: jest.fn(),
   createBrand: jest.fn(),
 };
+const targets = {
+  tiers: () => (staging.isConfigured() ? ['dev', 'staging'] : []),
+  target: () => staging,
+};
 const actions = {
   create: jest.fn(async (a) => ({
     ...a,
@@ -55,7 +59,7 @@ const brandInput = {
 };
 
 describe('PmToolbox', () => {
-  const toolbox = new PmToolbox(code, staging, actions as any);
+  const toolbox = new PmToolbox(code, targets, actions as any);
   beforeEach(() => {
     jest.clearAllMocks();
     staging.isConfigured.mockReturnValue(true);
@@ -118,6 +122,7 @@ describe('PmToolbox', () => {
         chatId: -100,
         requesterId: 7,
         payload: expect.objectContaining({
+          tier: 'dev',
           nameEn: 'Test Brand',
           mallId: 'm1',
           categoryId: 'c1',
@@ -151,7 +156,7 @@ describe('PmToolbox', () => {
   it('refuses to propose a brand that already exists', async () => {
     staging.findBrands.mockResolvedValue([{ id: 'b9', name: 'test brand' }]);
     const out = await toolbox.run('propose_create_brand', brandInput, ctx());
-    expect(out).toMatch(/already exists on staging \(id b9\)/);
+    expect(out).toMatch(/already exists on dev \(id b9\)/);
     expect(actions.create).not.toHaveBeenCalled();
   });
 
@@ -159,7 +164,26 @@ describe('PmToolbox', () => {
     staging.isConfigured.mockReturnValue(false);
     await expect(
       toolbox.run('staging_lookup', { entity: 'mall', query: 'x' }, ctx()),
-    ).rejects.toThrow(/not configured/);
+    ).rejects.toThrow(/No test environment/);
+  });
+});
+
+describe('PmToolbox environments', () => {
+  const toolbox = new PmToolbox(code, targets, actions as any);
+  beforeEach(() => staging.isConfigured.mockReturnValue(true));
+
+  it('offers only configured environments and rejects others, including production', async () => {
+    const tier = toolbox.specs()[4].input_schema.properties.tier as {
+      enum: string[];
+    };
+    expect(tier.enum).toEqual(['dev', 'staging']);
+    await expect(
+      toolbox.run(
+        'staging_lookup',
+        { tier: 'production', entity: 'mall', query: 'x' },
+        ctx(),
+      ),
+    ).rejects.toThrow(/Unknown environment "production"/);
   });
 });
 
