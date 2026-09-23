@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IProjectSource } from '@application/project-manager/project-source.interface';
+import { IssueFact, issueMetrics } from '@application/project-manager/metrics';
 import {
   basicAuth,
   getJson,
@@ -21,7 +22,12 @@ const FIELDS = [
   'created',
   'updated',
   'resolutiondate',
+  'fixVersions',
+  'components',
+  'statuscategorychangedate',
 ];
+// Jira Cloud's usual Sprint field; override when the site uses another id
+const DEFAULT_SPRINT_FIELD = 'customfield_10020';
 const PAGE_SIZE = 100;
 
 interface JiraIssue {
@@ -43,8 +49,46 @@ interface JiraIssue {
     created?: string;
     updated?: string;
     resolutiondate?: string | null;
+    fixVersions?: Array<{ name?: string }>;
+    components?: Array<{ name?: string }>;
+    statuscategorychangedate?: string | null;
+    [custom: string]: unknown;
   };
 }
+
+// Sprint values are objects with name/state; the active one (else the last)
+export const sprintOf = (value: unknown): string | null => {
+  if (!Array.isArray(value) || !value.length) return null;
+  const sprints = value.filter(
+    (v): v is { name?: string; state?: string } =>
+      typeof v === 'object' && v !== null,
+  );
+  const pick =
+    sprints.find((v) => v.state === 'active') ?? sprints[sprints.length - 1];
+  return pick?.name ?? null;
+};
+
+const names = (list?: Array<{ name?: string }>): string[] =>
+  (list ?? []).map((v) => v.name ?? '').filter(Boolean);
+
+export const toFact = (issue: JiraIssue): IssueFact => {
+  const f = issue.fields;
+  const category = f.status?.statusCategory?.key;
+  return {
+    key: issue.key,
+    type: f.issuetype?.name ?? '?',
+    status: f.status?.name ?? '?',
+    category:
+      category === 'done' || category === 'indeterminate' ? category : 'new',
+    priority: f.priority?.name ?? null,
+    assignee: f.assignee?.displayName ?? null,
+    fixVersions: names(f.fixVersions),
+    created: f.created ?? null,
+    doneAt: f.resolutiondate ?? f.statuscategorychangedate ?? null,
+    statusSince: f.statuscategorychangedate ?? null,
+    due: f.duedate ?? null,
+  };
+};
 
 interface Query {
   title: string;
@@ -53,8 +97,14 @@ interface Query {
 }
 
 // One line per issue keeps a few hundred issues within a small token budget.
-export const formatIssue = (issue: JiraIssue): string => {
+export const formatIssue = (
+  issue: JiraIssue,
+  sprintField = DEFAULT_SPRINT_FIELD,
+): string => {
   const f = issue.fields;
+  const fix = names(f.fixVersions);
+  const components = names(f.components);
+  const sprint = sprintOf(f[sprintField]);
   const links = (f.issuelinks ?? [])
     .map((link) => {
       if (link.inwardIssue) {
@@ -78,6 +128,9 @@ export const formatIssue = (issue: JiraIssue): string => {
     f.assignee?.displayName ?? 'UNASSIGNED',
     f.parent?.key ? `parent ${f.parent.key}` : '',
     f.labels?.length ? `labels ${f.labels.join(',')}` : '',
+    fix.length ? `fix ${fix.join(',')}` : '',
+    components.length ? `comp ${components.join(',')}` : '',
+    sprint ? `sprint ${sprint}` : '',
     f.duedate ? `due ${f.duedate}` : '',
     `created ${shortDate(f.created)}`,
     `updated ${shortDate(f.updated)}`,
@@ -95,6 +148,9 @@ export class JiraIssueReader implements IProjectSource {
   private readonly baseUrl: string;
   private readonly auth: string;
   private readonly queries: Query[];
+  private readonly sprintField: string;
+  private readonly releaseDate: string | null;
+  private readonly releaseVersion: string | null;
 
   constructor(config: ConfigService) {
     this.baseUrl = (
@@ -106,6 +162,18 @@ export class JiraIssueReader implements IProjectSource {
       config.get<string>('JIRA_EMAIL') ?? '',
       config.get<string>('JIRA_API_TOKEN') ?? '',
     );
+    const sprintField = (
+      config.get<string>('PM_JIRA_SPRINT_FIELD') ?? ''
+    ).trim();
+    this.sprintField = /^customfield_\d+$/.test(sprintField)
+      ? sprintField
+      : DEFAULT_SPRINT_FIELD;
+    const releaseDate = (config.get<string>('PM_RELEASE_DATE') ?? '').trim();
+    this.releaseDate = /^\d{4}-\d{2}-\d{2}$/.test(releaseDate)
+      ? releaseDate
+      : null;
+    this.releaseVersion =
+      (config.get<string>('PM_RELEASE_VERSION') ?? '').trim() || null;
     const projects = (config.get<string>('PM_JIRA_PROJECTS') ?? '')
       .split(',')
       .map((p) => p.trim())
@@ -133,19 +201,35 @@ export class JiraIssueReader implements IProjectSource {
     return Boolean(this.baseUrl && this.queries.length);
   }
 
-  async fetch(): Promise<string> {
+  async fetch(now = new Date()): Promise<string> {
     const parts: string[] = [];
+    const results: JiraIssue[][] = [];
+    const caps: boolean[] = [];
     for (const query of this.queries) {
       const issues = await this.search(query);
-      const more =
-        issues.length >= query.limit ? ` (capped at ${query.limit})` : '';
+      results.push(issues);
+      const hitCap = issues.length >= query.limit;
+      caps.push(hitCap);
+      const more = hitCap ? ` (capped at ${query.limit})` : '';
       parts.push(
         `## ${query.title}: ${issues.length}${more}\n` +
           'key | status | type | priority | assignee | … | summary\n' +
-          issues.map(formatIssue).join('\n'),
+          issues.map((i) => formatIssue(i, this.sprintField)).join('\n'),
       );
     }
-    return parts.join('\n\n');
+    const [open = [], done = []] = results;
+    const metrics = issueMetrics(open.map(toFact), done.map(toFact), now, {
+      releaseDate: this.releaseDate,
+      releaseVersion: this.releaseVersion,
+      openCapped: caps[0] ?? false,
+      doneCapped: caps[1] ?? false,
+    });
+    return [
+      `## Computed metrics (exact, from the lists below; computed ${now
+        .toISOString()
+        .slice(0, 16)} UTC)\n${metrics}`,
+      ...parts,
+    ].join('\n\n');
   }
 
   private async search(query: Query): Promise<JiraIssue[]> {
@@ -163,7 +247,7 @@ export class JiraIssueReader implements IProjectSource {
           method: 'POST',
           body: {
             jql: query.jql,
-            fields: FIELDS,
+            fields: [...FIELDS, this.sprintField],
             maxResults: PAGE_SIZE,
             ...(nextPageToken ? { nextPageToken } : {}),
           },

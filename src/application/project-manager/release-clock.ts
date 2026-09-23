@@ -26,3 +26,21 @@ export const todayLine = (now: Date, releaseDate: string | null): string => {
     `${workingDaysLeft(now, releaseDate)} working days left.`
   );
 };
+
+// Working days (Mon–Fri) after `from` up to and including `to`; 0 when `to`
+// is not later. Used for ages: "waiting 3 working days".
+export const workingDaysBetween = (from: Date, to: Date): number => {
+  const day = new Date(
+    Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate()),
+  );
+  const end = new Date(
+    Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), to.getUTCDate()),
+  );
+  let count = 0;
+  while (day < end) {
+    day.setUTCDate(day.getUTCDate() + 1);
+    const weekday = day.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) count += 1;
+  }
+  return count;
+};

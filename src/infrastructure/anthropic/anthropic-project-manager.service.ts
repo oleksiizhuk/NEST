@@ -44,6 +44,27 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> =>
     );
   });
 
+// One moving breakpoint on the last block of the conversation. The system
+// prompt already holds two of the four allowed, so the previous tail mark is
+// removed first. Default 5-minute TTL: a tool loop lasts a few minutes.
+export const markCacheTail = (messages: Anthropic.MessageParam[]): void => {
+  for (const message of messages) {
+    if (!Array.isArray(message.content)) continue;
+    for (const block of message.content) {
+      delete (block as { cache_control?: unknown }).cache_control;
+    }
+  }
+  const last = messages[messages.length - 1];
+  if (!last || !Array.isArray(last.content) || !last.content.length) return;
+  const tail = last.content[last.content.length - 1] as {
+    type: string;
+    cache_control?: { type: 'ephemeral' };
+  };
+  if (tail.type === 'tool_result' || tail.type === 'text') {
+    tail.cache_control = { type: 'ephemeral' };
+  }
+};
+
 @Injectable()
 export class AnthropicProjectManagerService
   implements IProjectManagerAiService
@@ -154,6 +175,9 @@ export class AnthropicProjectManagerService
         toolChars >= MAX_TOOL_CHARS_PER_TURN ||
         left < RESERVE_FOR_FINAL_MS + 20_000;
       if (wrapUp && iteration > 0) this.appendUserText(messages, WRAP_UP);
+      // Each call re-sends the whole conversation, tool results included;
+      // a breakpoint on its tail lets the next call read it from the cache
+      if (iteration > 0) markCacheTail(messages);
 
       const response = await this.create(
         {

@@ -17,6 +17,9 @@ const json = (data: unknown) =>
     headers: new Headers(),
   });
 
+const firstFields = (mock: jest.Mock): string[] =>
+  JSON.parse(mock.mock.calls[0][1].body).fields;
+
 describe('Jira reader', () => {
   const realFetch = global.fetch;
   afterEach(() => (global.fetch = realFetch));
@@ -50,6 +53,23 @@ describe('Jira reader', () => {
     );
   });
 
+  it('adds fixVersion, component and active sprint to the line', () => {
+    const line = formatIssue({
+      key: 'ABC-7',
+      fields: {
+        summary: 'Checkout',
+        status: { name: 'In Progress' },
+        fixVersions: [{ name: '1.0' }],
+        components: [{ name: 'mobile' }],
+        customfield_10020: [
+          { name: 'Sprint 3', state: 'closed' },
+          { name: 'Sprint 4', state: 'active' },
+        ],
+      },
+    });
+    expect(line).toContain('| fix 1.0 | comp mobile | sprint Sprint 4 |');
+  });
+
   it('is off until projects are configured, then pages with nextPageToken', async () => {
     expect(
       new JiraIssueReader(
@@ -80,7 +100,12 @@ describe('Jira reader', () => {
     );
     const text = await reader.fetch();
 
+    expect(text.startsWith('## Computed metrics')).toBe(true);
+    expect(text).toContain('Open work items: 2 — to do 2, in progress 0.');
     expect(text).toContain('## Open issues: 2');
+    expect(firstFields(fetchMock)).toEqual(
+      expect.arrayContaining(['fixVersions', 'customfield_10020']),
+    );
     expect(text).toContain('## Done in the last 14 days: 1');
     const firstBody = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(firstBody.jql).toContain(
@@ -107,6 +132,23 @@ describe('Confluence reader', () => {
     expect(text).toContain('## Release 1');
     expect(text).toContain('| Profile | [ ] DELETE on prod BLOCKER');
     expect(text).toContain('Checked on 2026-09-23');
+  });
+
+  it('keeps ticket keys, page titles and design links', () => {
+    const text = storageToText(
+      '<p>See <ac:structured-macro ac:name="jira"><ac:parameter ac:name="server">X</ac:parameter><ac:parameter ac:name="key">ABC-12</ac:parameter></ac:structured-macro> and <a href="https://x.atlassian.net/browse/ABC-13">ticket</a>, design <a href="https://www.figma.com/design/KEY?node-id=1-2&amp;t=z">Checkout</a>, <ac:link><ri:page ri:content-title="Release plan" /></ac:link>, <ac:link><ri:user ri:account-id="123" /></ac:link> <a href="mailto:x@y">mail</a></p>',
+      1000,
+    );
+    expect(text).toContain('ABC-12');
+    expect(text).toContain('ticket ABC-13');
+    expect(text).toContain(
+      'Checkout (https://www.figma.com/design/KEY?node-id=1-2&t=z)',
+    );
+    expect(text).toContain('[page: Release plan]');
+    expect(text).toContain('@someone');
+    expect(text).toContain('mail');
+    expect(text).not.toContain('mailto');
+    expect(text).not.toContain('server');
   });
 
   it('keeps going when one page cannot be read', async () => {
@@ -178,6 +220,30 @@ describe('GitHub reader', () => {
             },
           ],
         });
+      if (url.endsWith('/graphql'))
+        return json({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes: [
+                  {
+                    number: 9,
+                    reviewDecision: null,
+                    author: { login: 'dev' },
+                    // The author's own reply and a bot do not count
+                    reviews: {
+                      nodes: [
+                        { author: { __typename: 'User', login: 'dev' } },
+                        { author: { __typename: 'Bot', login: 'coderabbit' } },
+                      ],
+                    },
+                    timelineItems: { nodes: [] },
+                  },
+                ],
+              },
+            },
+          },
+        });
       if (url.includes('/compare/'))
         return json({ ahead_by: 435, behind_by: 0, status: 'ahead' });
       return Promise.resolve({ ok: false, status: 404 });
@@ -192,7 +258,15 @@ describe('GitHub reader', () => {
       }),
     ).fetch(now);
 
-    expect(text).toContain('#9 | dev | feat/ABC-1-x → main | open 3d | PR 9');
+    expect(text).toContain(
+      '#9 | dev | feat/ABC-1-x → main | open 3d | no review yet | PR 9',
+    );
+    expect(text).toContain(
+      'Waiting for a first review more than 2 working days: api#9 dev 3d.',
+    );
+    expect(text).toContain(
+      'Red pipelines: api:Deploy@main since 2026-09-22 (1 working days).',
+    );
     expect(text).toContain('1 work PRs (dev 1)');
     expect(text).toContain('Branch promotions: staging→main #7 09-21');
     expect(text).toContain('Deploy@main: failure (09-22)');
