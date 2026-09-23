@@ -1,9 +1,10 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Bot } from 'grammy';
-import type { Message } from 'grammy/types';
+import type { CallbackQuery, Message } from 'grammy/types';
 import {
   IBotInfo,
+  InlineButton,
   ITelegramGateway,
 } from '@application/telegram/telegram.gateway.interface';
 
@@ -68,10 +69,41 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
   // Telegram rejects anything past 4096 characters with a 400, which used to
   // lose the whole reply. No parse_mode is set, so the persona's asterisks and
   // underscores cannot break formatting mid-chunk.
-  async sendMessage(chatId: number, text: string): Promise<void> {
-    for (const chunk of splitForTelegram(text)) {
-      await this.bot.api.sendMessage(chatId, chunk);
+  async sendMessage(
+    chatId: number,
+    text: string,
+    buttons?: InlineButton[][],
+  ): Promise<void> {
+    const chunks = splitForTelegram(text);
+    for (const [i, chunk] of chunks.entries()) {
+      const last = i === chunks.length - 1;
+      await this.bot.api.sendMessage(
+        chatId,
+        chunk,
+        last && buttons?.length
+          ? {
+              reply_markup: {
+                inline_keyboard: buttons.map((row) =>
+                  row.map((b) => ({ text: b.text, callback_data: b.data })),
+                ),
+              },
+            }
+          : undefined,
+      );
     }
+  }
+
+  async answerCallback(callbackId: string, text?: string): Promise<void> {
+    await this.bot.api.answerCallbackQuery(
+      callbackId,
+      text ? { text } : undefined,
+    );
+  }
+
+  async clearButtons(chatId: number, messageId: number): Promise<void> {
+    await this.bot.api.editMessageReplyMarkup(chatId, messageId, {
+      reply_markup: { inline_keyboard: [] },
+    });
   }
 
   async sendTyping(chatId: number): Promise<void> {
@@ -88,7 +120,7 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
     const before = await this.bot.api.getWebhookInfo();
     await this.bot.api.setWebhook(url, {
       secret_token: secret,
-      allowed_updates: ['message'],
+      allowed_updates: ['message', 'callback_query'],
     });
     return {
       url: before.url,
@@ -100,6 +132,10 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
   // Local long polling only; production receives updates on the webhook.
   onMessage(handler: (message: Message) => void): void {
     this.bot.on('message', (ctx) => handler(ctx.message));
+  }
+
+  onCallback(handler: (query: CallbackQuery) => void): void {
+    this.bot.on('callback_query', (ctx) => handler(ctx.callbackQuery));
   }
 
   // bot.start() resolves only when polling stops, so it runs in the

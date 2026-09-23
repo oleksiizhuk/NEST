@@ -45,7 +45,8 @@ Reading the results:
 
 - `/pm_on`, `/pm_off` — owner only, in a group: switch that chat to PM mode and into the digest (stored in `pmchats`), or back to the persona. In a private chat the bot asks to use it in the group.
 - `/status` — verdict, focus per person, risks. `/refresh` — owner only, rebuilds the snapshot.
-- Actions: the reply to a proposal ends with `/confirm <id>` and `/cancel <id>`; a bare "да" (or yes/ok) confirms the newest pending action in that chat. Proposals expire after 10 minutes, run once, never retry automatically; outcome is `done`, `failed` or `unknown` — on `unknown` check the environment by hand before proposing again.
+- Actions: the reply to a proposal carries ✅ Confirm / ❌ Cancel inline buttons (callback data `c:<id>` / `x:<id>`) and ends with `/confirm <id>` and `/cancel <id>`; a bare "да" (or yes/ok) confirms the newest pending action in that chat. A press from someone without rights only gets a toast, and the buttons stay.
+- Choices: `offer_choices` attaches up to 6 option buttons (`o:<n>`). A press becomes the message "Выбираю вариант: <label>", with the label read back from the message itself, and the bot then proposes right away. The webhook must allow `callback_query` updates; the cold-start registration sets that. Proposals expire after 10 minutes, run once, never retry automatically; outcome is `done`, `failed` or `unknown` — on `unknown` check the environment by hand before proposing again.
 - Who may confirm: the owner (`TELEGRAM_OWNER_ID`) and ids in `PM_ACTION_USER_IDS`. `TELEGRAM_PM_CHAT_IDS` and `PM_ACTION_USER_IDS` accept `owner` as a shorthand for the owner id.
 
 ## Daily digest

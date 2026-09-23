@@ -43,7 +43,12 @@ export class ConfirmPendingActionUseCase {
     if (!authorised) return 'Нет прав на подтверждение действий.';
     const target =
       id ?? (await this.actions.latestPending(chatId, now))?.id ?? null;
-    if (!target) return 'Нет действий, ожидающих подтверждения.';
+    if (!target) {
+      return (
+        'Нет действий, ожидающих подтверждения. Сначала попросите меня что-то сделать: ' +
+        'я пришлю заявку с кнопкой «Подтвердить». Если я только что спросил «ок?», ответьте на вопрос текстом.'
+      );
+    }
 
     const action = await this.actions.claim(
       target.toUpperCase(),

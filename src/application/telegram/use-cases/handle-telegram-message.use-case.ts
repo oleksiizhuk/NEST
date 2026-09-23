@@ -1,5 +1,6 @@
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
 import {
+  InlineButton,
   ITelegramGateway,
   TELEGRAM_GATEWAY,
 } from '@application/telegram/telegram.gateway.interface';
@@ -58,7 +59,18 @@ const BOT_COMMANDS = [
 const CONFIRM_WORDS = /^(да|ага|yes|ok|ок|подтверждаю|confirm)[.!]*$/i;
 
 const proposalFooter = (action: PendingAction): string =>
-  `\n\n${action.summary}\nПодтвердить: /confirm ${action.id} (или ответьте «да»). Отменить: /cancel ${action.id}. Действует 10 минут.`;
+  `\n\n${action.summary}\nПодтвердить: кнопка ниже, «да» или /confirm ${action.id}. Отменить: /cancel ${action.id}. Действует 10 минут.`;
+
+const proposalButtons = (action: PendingAction): InlineButton[][] => [
+  [
+    { text: '✅ Подтвердить', data: `c:${action.id}` },
+    { text: '❌ Отменить', data: `x:${action.id}` },
+  ],
+];
+
+// One option per row: labels are short sentences, not single words
+const choiceButtons = (choices: string[]): InlineButton[][] =>
+  choices.map((text, i) => [{ text, data: `o:${i}` }]);
 
 // "/status@my_bot args" → "/status" when addressed to this bot or to nobody
 const commandOf = (text: string, botUsername: string): string | null => {
@@ -145,6 +157,12 @@ export class HandleTelegramMessageUseCase {
       return;
     }
 
+    // A button press is addressed to the bot by definition; no mention needed
+    if (msg.callback) {
+      await this.handleButton(msg, text);
+      return;
+    }
+
     const botInfo = await this.telegram.getBotInfo();
 
     const command = commandOf(text, botInfo.username);
@@ -201,6 +219,38 @@ export class HandleTelegramMessageUseCase {
     }
   }
 
+  // Options may be picked by anyone who can talk to the bot here; confirm
+  // and cancel only by someone allowed to run actions. An unauthorised
+  // press gets a toast and leaves the buttons for someone who may press them.
+  private async handleButton(
+    msg: IncomingTelegramMessage,
+    text: string,
+  ): Promise<void> {
+    const callback = msg.callback;
+    if (!callback) return;
+    if (!(await this.isPmChat(msg.chatId, msg))) {
+      await this.telegram.answerCallback(callback.id).catch(() => undefined);
+      return;
+    }
+    const allowed =
+      callback.kind === 'option' || this.canRunActions(msg.from.id);
+    await this.telegram
+      .answerCallback(
+        callback.id,
+        allowed
+          ? callback.kind === 'option'
+            ? 'Принято'
+            : undefined
+          : 'Нет прав на это действие',
+      )
+      .catch(() => undefined);
+    if (!allowed) return;
+    await this.telegram
+      .clearButtons(msg.chatId, callback.messageId)
+      .catch(() => undefined);
+    await this.handleAsProjectManager(msg, text);
+  }
+
   // Only the owner can open project data to a chat. Anyone else asking gets
   // no reply, so the command does not advertise itself.
   private async togglePmMode(
@@ -255,6 +305,8 @@ export class HandleTelegramMessageUseCase {
     try {
       await this.telegram.sendTyping(chatId);
       let reply: string;
+      let buttons: InlineButton[][] | undefined;
+      let logged: string | undefined;
       const [, arg] = text.trim().split(/\s+/);
       const authorised = this.canRunActions(msg.from.id);
       if (command === '/refresh') {
@@ -297,12 +349,23 @@ export class HandleTelegramMessageUseCase {
           history,
           { chatId, requesterId: msg.from.id },
         );
-        reply = answer.proposal
-          ? answer.text + proposalFooter(answer.proposal)
-          : answer.text;
+        if (answer.proposal) {
+          reply = answer.text + proposalFooter(answer.proposal);
+          buttons = proposalButtons(answer.proposal);
+        } else {
+          reply = answer.text;
+          if (answer.choices?.length) {
+            buttons = choiceButtons(answer.choices);
+            // The model reads its own past replies; it must see what it offered
+            logged = `${reply}\n[Кнопки: ${answer.choices.join(' | ')}]`;
+          }
+        }
       }
-      await this.telegram.sendMessage(chatId, reply);
-      await this.saveLog(msg, reply, PM_MODE);
+      // Buttons only when there are any: plain replies keep the two-argument call
+      await (buttons
+        ? this.telegram.sendMessage(chatId, reply, buttons)
+        : this.telegram.sendMessage(chatId, reply));
+      await this.saveLog(msg, logged ?? reply, PM_MODE);
     } catch (error) {
       this.logger.error(error);
       await this.telegram

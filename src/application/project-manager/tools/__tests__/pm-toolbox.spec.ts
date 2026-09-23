@@ -97,6 +97,7 @@ describe('PmToolbox', () => {
       'propose_update_store',
       'propose_create_property',
       'propose_property_action',
+      'offer_choices',
     ]);
     expect(
       (specs[0].input_schema.properties.repo as { enum: string[] }).enum,
@@ -149,6 +150,30 @@ describe('PmToolbox', () => {
       }),
     );
     expect(c.proposal?.id).toBe('K7Q2A');
+  });
+
+  it('keeps offered choices as short distinct labels for the reply buttons', async () => {
+    const c = ctx();
+    const out = await toolbox.run(
+      'offer_choices',
+      {
+        options: ['  Galleria,  Riyadh ', 'Galleria, Riyadh', 'Park Avenue', 7],
+      },
+      c,
+    );
+    expect(c.choices).toEqual(['Galleria, Riyadh', 'Park Avenue']);
+    expect(out).toContain('2 buttons');
+    await expect(
+      toolbox.run('offer_choices', { options: ['only one'] }, ctx()),
+    ).rejects.toThrow('2 to 6');
+  });
+
+  it('refuses choices in a message that already holds a proposal', async () => {
+    const c = { ...ctx(), reserved: true };
+    await expect(
+      toolbox.run('offer_choices', { options: ['A', 'B'] }, c),
+    ).rejects.toThrow('Confirm/Cancel');
+    expect(c.choices).toBeUndefined();
   });
 
   it('allows one proposal per message', async () => {

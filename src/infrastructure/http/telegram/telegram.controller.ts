@@ -13,7 +13,10 @@ import {
 import { ApiExcludeEndpoint, ApiTags } from '@nestjs/swagger';
 import type { Update } from 'grammy/types';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
-import { mapToIncoming } from '@infrastructure/telegram/incoming-message.mapper';
+import {
+  mapCallbackToIncoming,
+  mapToIncoming,
+} from '@infrastructure/telegram/incoming-message.mapper';
 import { TelegramWebhookGuard } from '@infrastructure/http/telegram/guards/telegram-webhook.guard';
 
 @ApiTags('telegram')
@@ -40,11 +43,12 @@ export class TelegramController {
     ) {
       return { ok: true };
     }
-    const message = update?.message;
-    if (message) {
-      const incoming = mapToIncoming(message);
-      if (incoming) await this.handleTelegramMessage.execute(incoming);
-    }
+    const incoming = update?.message
+      ? mapToIncoming(update.message)
+      : update?.callback_query
+      ? mapCallbackToIncoming(update.callback_query)
+      : null;
+    if (incoming) await this.handleTelegramMessage.execute(incoming);
     return { ok: true };
   }
 }
