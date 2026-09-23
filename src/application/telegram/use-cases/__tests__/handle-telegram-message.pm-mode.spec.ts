@@ -26,7 +26,12 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
   const persona = {
     generateReply: jest.fn().mockResolvedValue('persona reply'),
   };
-  const repo = { save: jest.fn(), findByChatId: jest.fn() };
+  const repo = {
+    save: jest.fn(),
+    findByChatId: jest.fn(),
+    setFeedback: jest.fn().mockResolvedValue(true),
+    recentAnswers: jest.fn(),
+  };
   const pmAnswer = {
     execute: jest
       .fn()
@@ -95,9 +100,17 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       requesterId: 7,
     });
     expect(persona.generateReply).not.toHaveBeenCalled();
-    expect(telegram.sendMessage).toHaveBeenCalledWith(PM_GROUP, 'AT RISK: …');
+    const [chat, text, buttons] = telegram.sendMessage.mock.calls[0];
+    expect([chat, text]).toEqual([PM_GROUP, 'AT RISK: …']);
+    const token = buttons[0][0].data.slice(4);
+    expect(buttons).toEqual([
+      [
+        { text: '👍', data: `f:+:${token}` },
+        { text: '👎', data: `f:-:${token}` },
+      ],
+    ]);
     expect(repo.save).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: 'pm' }),
+      expect.objectContaining({ mode: 'pm', feedbackToken: token }),
     );
   });
 
@@ -283,6 +296,47 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       true,
     );
     expect(telegram.sendMessage).toHaveBeenCalledWith(PM_GROUP, 'Готово');
+  });
+
+  it('stores usage with the answer', async () => {
+    pmAnswer.execute.mockResolvedValueOnce({
+      text: 'ok',
+      proposal: null,
+      choices: [],
+      usage: { model: 'm', outputTokens: 10, ms: 1200 },
+    });
+    await useCase.execute(group(PM_GROUP, '@nest_bot как дела?'));
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage: { model: 'm', outputTokens: 10, ms: 1200 },
+      }),
+    );
+  });
+
+  it('records a 👎 from anyone in the chat, then removes the buttons', async () => {
+    await useCase.execute({
+      ...group(PM_GROUP, '👎', 7),
+      callback: {
+        id: 'cb1',
+        messageId: 99,
+        kind: 'feedback',
+        vote: -1,
+        token: 'abc123def456',
+      },
+    });
+    expect(repo.setFeedback).toHaveBeenCalledWith(
+      'abc123def456',
+      PM_GROUP,
+      -1,
+      7,
+    );
+    expect(telegram.answerCallback).toHaveBeenCalledWith(
+      'cb1',
+      expect.stringContaining('учту'),
+    );
+    expect(telegram.clearButtons).toHaveBeenCalledWith(PM_GROUP, 99);
+    expect(pmAnswer.execute).not.toHaveBeenCalled();
+    expect(telegram.sendMessage).not.toHaveBeenCalled();
   });
 
   it('ignores button presses in a chat without PM mode', async () => {

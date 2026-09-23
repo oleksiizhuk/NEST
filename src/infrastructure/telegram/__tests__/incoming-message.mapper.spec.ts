@@ -43,6 +43,14 @@ describe('mapCallbackToIncoming', () => {
     });
   });
 
+  it('reads a feedback vote and its token', () => {
+    expect(mapCallbackToIncoming(query('f:-:abc123def456'))).toMatchObject({
+      text: '👎',
+      callback: { kind: 'feedback', vote: -1, token: 'abc123def456' },
+    });
+    expect(mapCallbackToIncoming(query('f:+:bad token'))).toBeNull();
+  });
+
   it('drops unknown data, bad ids and options it cannot read', () => {
     expect(mapCallbackToIncoming(query('z:1'))).toBeNull();
     expect(mapCallbackToIncoming(query('c:K7 Q2A; rm'))).toBeNull();

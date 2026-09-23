@@ -54,6 +54,11 @@ import { ProjectManagerModule } from '@infrastructure/project-manager/project-ma
     TelegramPollingBootstrap,
     TelegramWebhookBootstrap,
   ],
-  exports: [TELEGRAM_GATEWAY, TELEGRAM_CONFIG, HandleTelegramMessageUseCase],
+  exports: [
+    TELEGRAM_GATEWAY,
+    TELEGRAM_CONFIG,
+    TELEGRAM_MESSAGE_REPOSITORY,
+    HandleTelegramMessageUseCase,
+  ],
 })
 export class TelegramInfraModule {}

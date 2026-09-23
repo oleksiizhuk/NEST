@@ -1,4 +1,5 @@
 import { Injectable, Inject, Logger, Optional } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import {
   InlineButton,
   ITelegramGateway,
@@ -65,6 +66,16 @@ const proposalButtons = (action: PendingAction): InlineButton[][] => [
   [
     { text: '✅ Подтвердить', data: `c:${action.id}` },
     { text: '❌ Отменить', data: `x:${action.id}` },
+  ],
+];
+
+// Ties a 👍/👎 press to the logged answer without exposing its id
+const newFeedbackToken = (): string => randomBytes(6).toString('hex');
+
+const feedbackButtons = (token: string): InlineButton[][] => [
+  [
+    { text: '👍', data: `f:+:${token}` },
+    { text: '👎', data: `f:-:${token}` },
   ],
 ];
 
@@ -232,6 +243,10 @@ export class HandleTelegramMessageUseCase {
       await this.telegram.answerCallback(callback.id).catch(() => undefined);
       return;
     }
+    if (callback.kind === 'feedback') {
+      await this.recordFeedback(msg);
+      return;
+    }
     const allowed =
       callback.kind === 'option' || this.canRunActions(msg.from.id);
     await this.telegram
@@ -249,6 +264,34 @@ export class HandleTelegramMessageUseCase {
       .clearButtons(msg.chatId, callback.messageId)
       .catch(() => undefined);
     await this.handleAsProjectManager(msg, text);
+  }
+
+  // Anyone who can talk to the bot here may rate an answer; the buttons go
+  // away after the first vote
+  private async recordFeedback(msg: IncomingTelegramMessage): Promise<void> {
+    const { callback } = msg;
+    if (!callback?.token || !callback.vote) return;
+    const saved = await this.messageRepository
+      .setFeedback(callback.token, msg.chatId, callback.vote, msg.from.id)
+      .catch((error) => {
+        this.logger.error(error);
+        return false;
+      });
+    await this.telegram
+      .answerCallback(
+        callback.id,
+        saved
+          ? callback.vote > 0
+            ? 'Спасибо!'
+            : 'Спасибо, учту. Напишите, что было не так, — это поможет.'
+          : 'Не нашёл этот ответ',
+      )
+      .catch(() => undefined);
+    if (saved) {
+      await this.telegram
+        .clearButtons(msg.chatId, callback.messageId)
+        .catch(() => undefined);
+    }
   }
 
   // Only the owner can open project data to a chat. Anyone else asking gets
@@ -307,6 +350,8 @@ export class HandleTelegramMessageUseCase {
       let reply: string;
       let buttons: InlineButton[][] | undefined;
       let logged: string | undefined;
+      let usage: Record<string, unknown> | undefined;
+      let feedbackToken: string | undefined;
       const [, arg] = text.trim().split(/\s+/);
       const authorised = this.canRunActions(msg.from.id);
       if (command === '/refresh') {
@@ -349,6 +394,7 @@ export class HandleTelegramMessageUseCase {
           history,
           { chatId, requesterId: msg.from.id },
         );
+        if (answer.usage) usage = { ...answer.usage };
         if (answer.proposal) {
           reply = answer.text + proposalFooter(answer.proposal);
           buttons = proposalButtons(answer.proposal);
@@ -358,6 +404,9 @@ export class HandleTelegramMessageUseCase {
             buttons = choiceButtons(answer.choices);
             // The model reads its own past replies; it must see what it offered
             logged = `${reply}\n[Кнопки: ${answer.choices.join(' | ')}]`;
+          } else {
+            feedbackToken = newFeedbackToken();
+            buttons = feedbackButtons(feedbackToken);
           }
         }
       }
@@ -365,7 +414,10 @@ export class HandleTelegramMessageUseCase {
       await (buttons
         ? this.telegram.sendMessage(chatId, reply, buttons)
         : this.telegram.sendMessage(chatId, reply));
-      await this.saveLog(msg, logged ?? reply, PM_MODE);
+      await this.saveLog(msg, logged ?? reply, PM_MODE, {
+        ...(usage ? { usage } : {}),
+        ...(feedbackToken ? { feedbackToken } : {}),
+      });
     } catch (error) {
       this.logger.error(error);
       await this.telegram
@@ -456,6 +508,7 @@ export class HandleTelegramMessageUseCase {
     msg: IncomingTelegramMessage,
     botResponse: string | null,
     mode?: string,
+    extra: { usage?: Record<string, unknown>; feedbackToken?: string } = {},
   ): Promise<unknown> {
     return this.messageRepository.save({
       userId: msg.from.id,
@@ -468,6 +521,7 @@ export class HandleTelegramMessageUseCase {
       text: msg.text,
       botResponse,
       ...(mode ? { mode } : {}),
+      ...extra,
     });
   }
 }

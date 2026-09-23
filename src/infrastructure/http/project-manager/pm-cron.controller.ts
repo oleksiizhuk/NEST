@@ -12,6 +12,11 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { CronSecretGuard } from '@infrastructure/http/project-manager/cron-secret.guard';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { PostDailyDigestUseCase } from '@application/project-manager/use-cases/post-daily-digest.use-case';
+import {
+  ITelegramMessageRepository,
+  TELEGRAM_MESSAGE_REPOSITORY,
+} from '@domain/telegram/telegram-message.repository.interface';
+import { summarizeAnswers } from '@application/project-manager/answer-stats';
 
 @ApiExcludeController()
 @UseGuards(CronSecretGuard)
@@ -23,7 +28,17 @@ export class PmCronController {
     @Inject(ADMIN_TARGETS) private readonly targets: IAdminTargets,
     @Inject(PENDING_ACTIONS) private readonly actions: IPendingActions,
     private readonly answer: AnswerProjectQuestionUseCase,
+    @Inject(TELEGRAM_MESSAGE_REPOSITORY)
+    private readonly messages: ITelegramMessageRepository,
   ) {}
+
+  // Ratings, time and tokens of recent answers; the 👎 ones with their
+  // questions, to turn into fixes or test questions
+  @Get('feedback')
+  async feedback(@Query('limit') limit?: string) {
+    const n = Math.min(Math.max(Number(limit) || 100, 1), 500);
+    return summarizeAnswers(await this.messages.recentAnswers(n));
+  }
 
   // Last proposals with their outcome (the audit trail)
   @Get('actions')

@@ -81,6 +81,47 @@ describe('AnthropicProjectManagerService tool loop', () => {
     });
   });
 
+  it('reports tokens, iterations, tools and time once per answer', async () => {
+    const client = fakeClient([
+      {
+        ...message(
+          [{ type: 'tool_use', id: 't1', name: 'search_code', input: {} }],
+          'tool_use',
+        ),
+        usage: {
+          input_tokens: 100,
+          cache_read_input_tokens: 5000,
+          cache_creation_input_tokens: 50,
+          output_tokens: 20,
+        },
+      },
+      {
+        ...message([{ type: 'text', text: 'done' }], 'end_turn'),
+        usage: {
+          input_tokens: 10,
+          cache_read_input_tokens: 5100,
+          output_tokens: 300,
+        },
+      },
+    ]);
+    const onUsage = jest.fn();
+    const service = new AnthropicProjectManagerService(env, client as any);
+    await service.answer({
+      ...request(jest.fn().mockResolvedValue('x')),
+      onUsage,
+    });
+    expect(onUsage).toHaveBeenCalledTimes(1);
+    expect(onUsage.mock.calls[0][0]).toMatchObject({
+      model: 'claude-opus-5-5',
+      iterations: 2,
+      tools: ['search_code'],
+      inputTokens: 110,
+      cacheReadTokens: 10_100,
+      cacheWriteTokens: 50,
+      outputTokens: 320,
+    });
+  });
+
   it('reports a failing tool as is_error instead of crashing', async () => {
     const client = fakeClient([
       message(

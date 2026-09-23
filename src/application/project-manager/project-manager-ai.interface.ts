@@ -28,6 +28,19 @@ export interface PmRequest {
   tools?: PmTools;
   // Epoch ms by which the final answer must exist
   deadline?: number;
+  // Called once per answer with what it cost, success or not
+  onUsage?: (usage: PmUsage) => void;
+}
+
+export interface PmUsage {
+  model: string;
+  iterations: number;
+  tools: string[];
+  inputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  outputTokens: number;
+  ms: number;
 }
 
 export interface IProjectManagerAiService {

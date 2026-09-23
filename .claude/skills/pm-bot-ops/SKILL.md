@@ -23,6 +23,7 @@ BASE=https://nest-ruby-theta.vercel.app
 curl -s -H "$H" $BASE/cron/pm/refresh   | jq '.sources[] | {source, ok, chars, error}'
 curl -s -H "$H" $BASE/cron/pm/targets   | jq '.[] | {tier, ok, malls, categories, error}'
 curl -s -H "$H" $BASE/cron/pm/knowledge | jq
+curl -s -H "$H" "$BASE/cron/pm/feedback?limit=100" | jq '{answers, up, down, avgSeconds, avgOutputTokens, disliked}'
 ```
 
 Ask the user before running them: `refresh` rebuilds the snapshot (several API calls, up to a minute), `targets` signs in to each test environment. Neither writes to Jira/Confluence/GitHub/Figma or the admin API. Do not call `/cron/pm/daily` to "test" — it posts the digest to the team chat.

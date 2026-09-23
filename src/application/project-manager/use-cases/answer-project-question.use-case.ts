@@ -12,6 +12,7 @@ import {
   IProjectManagerAiService,
   PM_AI_SERVICE,
   PmTurn,
+  PmUsage,
 } from '@application/project-manager/project-manager-ai.interface';
 import {
   IKnowledgeStore,
@@ -56,6 +57,8 @@ export interface PmAnswer {
   proposal: PendingAction | null;
   // Button labels to attach; ignored when there is a proposal
   choices: string[];
+  // What the answer cost; absent when the model service does not report it
+  usage?: PmUsage;
 }
 
 @Injectable()
@@ -108,6 +111,7 @@ export class AnswerProjectQuestionUseCase {
       team: this.config.team,
     });
     const ctx: ToolContext = { ...chat, proposal: null };
+    let usage: PmUsage | undefined;
     const text = await this.ai.answer({
       brief: knowledge.brief ?? this.config.projectBrief,
       knowledge: knowledge.text,
@@ -122,11 +126,15 @@ export class AnswerProjectQuestionUseCase {
         },
       },
       deadline: until,
+      onUsage: (u) => {
+        usage = u;
+      },
     });
     return {
       text,
       proposal: ctx.proposal,
       choices: ctx.proposal ? [] : ctx.choices ?? [],
+      ...(usage ? { usage } : {}),
     };
   }
 

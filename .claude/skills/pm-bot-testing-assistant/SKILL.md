@@ -64,6 +64,8 @@ The bot answers in PM chats only (`TELEGRAM_PM_CHAT_IDS` or a group switched on 
 
 ## 4. Golden questions — run after every bot change
 
+Feed the list from real use: every 👎 in `GET /cron/pm/feedback` (`disliked`) is a candidate golden question with what a good answer must contain.
+
 Run in a PM test chat, on dev, as an authorised user unless stated. Record pass/fail per item.
 
 | # | Ask / do | Pass looks like |
