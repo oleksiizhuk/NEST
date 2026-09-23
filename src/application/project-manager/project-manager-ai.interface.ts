@@ -32,5 +32,8 @@ export interface PmRequest {
 
 export interface IProjectManagerAiService {
   answer(request: PmRequest): Promise<string>;
-  digest(request: Omit<PmRequest, 'history' | 'tools'>): Promise<string>;
+  // history: at most the previous digest, so the verdict stays consistent
+  digest(
+    request: Omit<PmRequest, 'history' | 'tools'> & { history?: PmTurn[] },
+  ): Promise<string>;
 }

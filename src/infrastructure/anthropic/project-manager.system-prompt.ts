@@ -56,4 +56,5 @@ Plain text, at most about 25 lines:
 4. Blockers and waits, with owner.
 5. Focus today: one line per person.
 6. Risks that need a decision today.
-7. Last line: which sources were fresh and which failed.`;
+7. Last line: which sources were fresh and which failed.
+If your previous digest is in the conversation, use it: say what changed since then (the snapshot's "Trend" lines give the numbers), keep the verdict unless the data moved, and when you change it, say why. Do not repeat items that did not change unless they are still blocking.`;

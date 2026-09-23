@@ -295,6 +295,32 @@ describe('PostDailyDigestUseCase', () => {
     expect(telegram.sendMessage).toHaveBeenCalledWith(-100, 'digest text');
   });
 
+  it('shows the previous digest to the model and stores the new one', async () => {
+    const snapshots = repo();
+    snapshots.findLastDigest.mockResolvedValue({
+      createdAt: new Date('2026-09-22T05:00:00Z'),
+      text: 'yesterday: AT RISK',
+    });
+    const useCase = new PostDailyDigestUseCase(
+      refresh as any,
+      ai as any,
+      telegram,
+      config,
+      chats([]),
+      knowledge as any,
+      snapshots as any,
+    );
+    await useCase.execute(now);
+    expect(snapshots.findLastDigest).toHaveBeenCalledWith(now);
+    expect(ai.digest.mock.calls[0][0].history).toEqual([
+      {
+        userText: expect.stringContaining('(2026-09-22)'),
+        botResponse: 'yesterday: AT RISK',
+      },
+    ]);
+    expect(snapshots.saveDigest).toHaveBeenCalledWith('r', 'digest text');
+  });
+
   it('only refreshes when no digest chat is configured', async () => {
     const useCase = new PostDailyDigestUseCase(
       refresh as any,

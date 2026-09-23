@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   IProjectManagerAiService,
   PmRequest,
+  PmTurn,
 } from '@application/project-manager/project-manager-ai.interface';
 import { PROJECT_MANAGER_SYSTEM_PROMPT } from '@infrastructure/anthropic/project-manager.system-prompt';
 
@@ -137,10 +138,12 @@ export class AnthropicProjectManagerService
     };
   }
 
-  async digest(request: Omit<PmRequest, 'history' | 'tools'>): Promise<string> {
+  async digest(
+    request: Omit<PmRequest, 'history' | 'tools'> & { history?: PmTurn[] },
+  ): Promise<string> {
     const response = await this.create(
       this.buildParams(
-        { ...request, history: [] },
+        { ...request, history: request.history ?? [] },
         this.digestEffort,
         DIGEST_MAX_TOKENS,
       ),

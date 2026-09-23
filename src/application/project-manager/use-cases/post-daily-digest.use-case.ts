@@ -1,4 +1,8 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import {
+  IProjectSnapshotRepository,
+  PROJECT_SNAPSHOT_REPOSITORY,
+} from '@domain/project-status/project-snapshot.repository.interface';
 import {
   IPmConfig,
   PM_CONFIG,
@@ -38,6 +42,10 @@ export class PostDailyDigestUseCase {
     @Inject(PM_CONFIG) private readonly config: IPmConfig,
     @Inject(PM_CHAT_REGISTRY) private readonly chats: IPmChatRegistry,
     @Inject(PM_KNOWLEDGE) private readonly knowledge: IKnowledgeStore,
+    // Remembers each digest so the next one can say what changed since
+    @Optional()
+    @Inject(PROJECT_SNAPSHOT_REPOSITORY)
+    private readonly snapshots?: IProjectSnapshotRepository,
   ) {}
 
   // Always rebuilds the snapshot first: the digest is the morning's source
@@ -53,7 +61,20 @@ export class PostDailyDigestUseCase {
       this.logger.log('No digest chat configured; snapshot refreshed only');
       return { posted: false };
     }
+    const previous = await this.snapshots
+      ?.findLastDigest(snapshot.createdAt)
+      .catch(() => null);
     const text = await this.ai.digest({
+      history: previous
+        ? [
+            {
+              userText: `(${previous.createdAt
+                .toISOString()
+                .slice(0, 10)}) ${DIGEST_REQUEST}`,
+              botResponse: previous.text,
+            },
+          ]
+        : [],
       brief: this.config.projectBrief,
       knowledge: await renderKnowledge(this.knowledge),
       snapshot: snapshot.render(),
@@ -63,6 +84,9 @@ export class PostDailyDigestUseCase {
       )}\n\n${DIGEST_REQUEST}`,
       deadline,
     });
+    await this.snapshots
+      ?.saveDigest(snapshot.id, text)
+      .catch((error) => this.logger.error(`digest not saved: ${error}`));
     for (const chatId of targets) {
       // One unreachable chat (bot removed) must not stop the others
       try {
