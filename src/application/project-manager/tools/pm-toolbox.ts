@@ -49,6 +49,23 @@ export interface ToolContext {
 }
 
 const ACTION_TTL_MS = 10 * 60_000;
+// Under the model loop's per-tool limit (15 s)
+const SOURCE_BUDGET_MS = 12_000;
+
+const withSourceTimeout = <T>(work: Promise<T>, ms: number): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('too slow')), ms);
+    work.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const str = (value: unknown, max = 200): string =>
@@ -342,31 +359,38 @@ export class PmToolbox {
             },
           ]
         : []),
-      {
-        name: 'find_open_questions',
-        description:
-          'Find questions people left in ticket comments, on the doc pages and in design comments, and whether the team answered them. Filter by author (e.g. the client), by a mentioned name, by source and period. Use for "what did X ask", "what questions are open", "did we answer X".',
-        input_schema: {
-          type: 'object' as const,
-          properties: {
-            author: {
-              type: 'string',
-              description: "Part of the asker's display name",
+      ...(this.questionReaders().some(([, r]) => r?.isConfigured())
+        ? [
+            {
+              name: 'find_open_questions',
+              description:
+                'Find questions people left in ticket comments, on the doc pages and in design comments, and whether the team answered them. Filter by author (e.g. the client), by a mentioned name, by source and period. Use for "what did X ask", "what questions are open", "did we answer X".',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  author: {
+                    type: 'string',
+                    description: "Part of the asker's display name",
+                  },
+                  mentioned: {
+                    type: 'string',
+                    description: 'A name the question mentions',
+                  },
+                  sources: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      enum: ['jira', 'confluence', 'figma'],
+                    },
+                  },
+                  since_days: { type: 'integer', minimum: 1, maximum: 60 },
+                  include_answered: { type: 'boolean' },
+                },
+                additionalProperties: false,
+              },
             },
-            mentioned: {
-              type: 'string',
-              description: 'A name the question mentions',
-            },
-            sources: {
-              type: 'array',
-              items: { type: 'string', enum: ['jira', 'confluence', 'figma'] },
-            },
-            since_days: { type: 'integer', minimum: 1, maximum: 60 },
-            include_answered: { type: 'boolean' },
-          },
-          additionalProperties: false,
-        },
-      },
+          ]
+        : []),
       ...(this.collab.design?.isConfigured()
         ? [
             {
@@ -579,6 +603,25 @@ export class PmToolbox {
     return { name, role, admin: this.targets.target(name, role) };
   }
 
+  private questionReaders(): Array<
+    [
+      Remark['source'],
+      (
+        | {
+            isConfigured(): boolean;
+            recentComments(d: number): Promise<Remark[]>;
+          }
+        | undefined
+      ),
+    ]
+  > {
+    return [
+      ['jira', this.collab.issues],
+      ['confluence', this.collab.docs],
+      ['figma', this.collab.design],
+    ];
+  }
+
   private async findQuestions(input: Record<string, unknown>): Promise<string> {
     const days =
       typeof input.since_days === 'number'
@@ -587,39 +630,49 @@ export class PmToolbox {
     const sources = Array.isArray(input.sources)
       ? (input.sources.map((x) => str(x, 12)) as Array<Remark['source']>)
       : [];
-    const want = (s: Remark['source']) =>
-      !sources.length || sources.includes(s);
-    const readers: Array<
-      [
-        Remark['source'],
-        (
-          | {
-              isConfigured(): boolean;
-              recentComments(d: number): Promise<Remark[]>;
-            }
-          | undefined
-        ),
-      ]
-    > = [
-      ['jira', this.collab.issues],
-      ['confluence', this.collab.docs],
-      ['figma', this.collab.design],
+    const wanted = this.questionReaders().filter(
+      ([s]) => !sources.length || sources.includes(s),
+    );
+    const notConfigured = wanted
+      .filter(([, r]) => !r?.isConfigured())
+      .map(([s]) => s);
+    const active = wanted.filter(([, r]) => r?.isConfigured());
+    // Each source gets its own budget inside the tool's time limit, so one
+    // slow source never throws away what the others already returned
+    const results = await Promise.all(
+      active.map(async ([source, reader]) => {
+        try {
+          const remarks = await withSourceTimeout(
+            (
+              reader as { recentComments(d: number): Promise<Remark[]> }
+            ).recentComments(days),
+            SOURCE_BUDGET_MS,
+          );
+          return { source, remarks, error: null as string | null };
+        } catch (error) {
+          return {
+            source,
+            remarks: [] as Remark[],
+            error: String((error as Error)?.message ?? error).slice(0, 120),
+          };
+        }
+      }),
+    );
+    const read = results.filter((r) => !r.error).map((r) => r.source);
+    const unread = [
+      ...results.filter((r) => r.error).map((r) => `${r.source} (${r.error})`),
+      ...notConfigured.map((s) => `${s} (not configured)`),
     ];
-    const results = await Promise.allSettled(
-      readers
-        .filter(([s, r]) => want(s) && r?.isConfigured())
-        .map(([, r]) =>
-          (
-            r as { recentComments(d: number): Promise<Remark[]> }
-          ).recentComments(days),
-        ),
-    );
-    const remarks = results.flatMap((r) =>
-      r.status === 'fulfilled' ? r.value : [],
-    );
-    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (!read.length) {
+      return wrapUntrusted(
+        'questions',
+        `COULD NOT CHECK — no source could be read: ${
+          unread.join(', ') || 'none configured'
+        }. Do not say there are no questions.`,
+      );
+    }
     const text = openQuestions(
-      remarks,
+      results.flatMap((r) => r.remarks),
       {
         author: input.author ? str(input.author, 60) : undefined,
         mentioned: input.mentioned ? str(input.mentioned, 60) : undefined,
@@ -631,7 +684,13 @@ export class PmToolbox {
     );
     return wrapUntrusted(
       'questions',
-      `${text}${failed ? `\n(${failed} source(s) could not be read)` : ''}`,
+      `Sources read: ${read.join(', ')}${
+        unread.length
+          ? `. NOT read: ${unread.join(
+              ', ',
+            )} — say so; questions there are unknown`
+          : ''
+      }.\n${text}`,
     );
   }
 

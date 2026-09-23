@@ -8,6 +8,8 @@ import {
 import { basicAuth, getJson } from '@infrastructure/project-manager/http-json';
 import { storageToText } from '@infrastructure/project-manager/storage-to-text';
 
+const CONCURRENCY = 8;
+
 // Footer and open inline comments (with replies) on the configured pages.
 @Injectable()
 export class ConfluenceCommentsReader implements IDocComments {
@@ -60,67 +62,118 @@ export class ConfluenceCommentsReader implements IDocComments {
     return this.names.get(accountId) as string;
   }
 
+  // The original author and time: version 1 of an edited comment
+  private async original(
+    kind: string,
+    c: any,
+  ): Promise<{ authorId?: string; createdAt: Date }> {
+    const latest = {
+      authorId: c.version?.authorId,
+      createdAt: new Date(c.version?.createdAt ?? 0),
+    };
+    if (!c.version?.number || c.version.number <= 1) return latest;
+    try {
+      const { data } = await getJson<any>(
+        `${this.baseUrl}/wiki/api/v2/${kind}-comments/${c.id}/versions/1`,
+        this.headers,
+      );
+      return {
+        authorId: data.authorId ?? latest.authorId,
+        createdAt: new Date(data.createdAt ?? latest.createdAt),
+      };
+    } catch {
+      return latest;
+    }
+  }
+
+  private async toRemark(
+    page: any,
+    kind: string,
+    c: any,
+    since: number,
+  ): Promise<Remark | null> {
+    const first = await this.original(kind, c);
+    // Questions asked before the window are out of scope; skip before
+    // spending requests on their replies
+    if (first.createdAt.getTime() < since) return null;
+    const { data: children } = await getJson<any>(
+      `${this.baseUrl}/wiki/api/v2/${kind}-comments/${c.id}/children?limit=50`,
+      this.headers,
+    ).catch(() => ({ data: { results: [] as any[] } }));
+    const replies = await Promise.all(
+      (children.results ?? []).map(async (r: any) => ({
+        author: await this.author(r.version?.authorId),
+        createdAt: new Date(r.version?.createdAt ?? 0),
+      })),
+    );
+    const anchor = c.properties?.inlineOriginalSelection;
+    return {
+      source: 'confluence',
+      where: `${page.title}${
+        anchor ? ` — on «${String(anchor).slice(0, 80)}»` : ''
+      }`,
+      link: page._links?.webui
+        ? `${this.baseUrl}/wiki${page._links.webui}`
+        : null,
+      author: await this.author(first.authorId),
+      createdAt: first.createdAt,
+      text: storageToText(c.body?.storage?.value ?? '', 400).replace(
+        /\n/g,
+        ' ',
+      ),
+      replies: replies.sort(
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+      ),
+      resolved: c.resolutionStatus === 'resolved',
+    };
+  }
+
   async recentComments(days: number): Promise<Remark[]> {
     const since = Date.now() - days * 86_400_000;
-    const out: Remark[] = [];
-    for (const pageId of this.pageIds) {
-      const [{ data: page }, footer, inline] = await Promise.all([
-        getJson<any>(
-          `${this.baseUrl}/wiki/api/v2/pages/${pageId}`,
-          this.headers,
-        ),
-        getJson<any>(
-          `${this.baseUrl}/wiki/api/v2/pages/${pageId}/footer-comments?body-format=storage&limit=100`,
-          this.headers,
-        ),
-        getJson<any>(
-          `${this.baseUrl}/wiki/api/v2/pages/${pageId}/inline-comments?body-format=storage&resolution-status=open&limit=100`,
-          this.headers,
-        ),
-      ]);
-      const kinds: Array<[string, any[]]> = [
-        ['footer', footer.data.results ?? []],
-        ['inline', inline.data.results ?? []],
-      ];
-      for (const [kind, comments] of kinds) {
-        for (const c of comments) {
-          const created = new Date(c.version?.createdAt ?? c.createdAt ?? 0);
-          const { data: children } = await getJson<any>(
-            `${this.baseUrl}/wiki/api/v2/${kind}-comments/${c.id}/children?limit=50`,
+    const pages = await Promise.all(
+      this.pageIds.map(async (pageId) => {
+        const [{ data: page }, footer, inline] = await Promise.all([
+          getJson<any>(
+            `${this.baseUrl}/wiki/api/v2/pages/${pageId}`,
             this.headers,
-          ).catch(() => ({ data: { results: [] } }));
-          const replies = await Promise.all(
-            (children.results ?? []).map(async (r: any) => ({
-              author: await this.author(r.version?.authorId),
-              createdAt: new Date(r.version?.createdAt ?? 0),
-            })),
-          );
-          const latest = replies.reduce(
-            (t, r) => Math.max(t, r.createdAt.getTime()),
-            created.getTime(),
-          );
-          if (latest < since) continue;
-          const anchor = c.properties?.inlineOriginalSelection;
-          out.push({
-            source: 'confluence',
-            where: `${page.title}${
-              anchor ? ` — on «${String(anchor).slice(0, 80)}»` : ''
-            }`,
-            link: page._links?.webui
-              ? `${this.baseUrl}/wiki${page._links.webui}`
-              : null,
-            author: await this.author(c.version?.authorId),
-            createdAt: created,
-            text: storageToText(c.body?.storage?.value ?? '', 400).replace(
-              /\n/g,
-              ' ',
-            ),
-            replies,
-            resolved: c.resolutionStatus === 'resolved',
-          });
-        }
+          ),
+          getJson<any>(
+            `${this.baseUrl}/wiki/api/v2/pages/${pageId}/footer-comments?body-format=storage&limit=100`,
+            this.headers,
+          ),
+          getJson<any>(
+            `${this.baseUrl}/wiki/api/v2/pages/${pageId}/inline-comments?body-format=storage&resolution-status=open&limit=100`,
+            this.headers,
+          ),
+        ]);
+        return [
+          ...(footer.data.results ?? []).map((c: any) => ({
+            page,
+            kind: 'footer',
+            c,
+          })),
+          ...(inline.data.results ?? []).map((c: any) => ({
+            page,
+            kind: 'inline',
+            c,
+          })),
+        ];
+      }),
+    );
+    const jobs = pages.flat();
+    // A few requests at a time: quick enough, polite to the API
+    const out: Array<Remark | null> = new Array(jobs.length).fill(null);
+    let next = 0;
+    const worker = async () => {
+      while (next < jobs.length) {
+        const i = next++;
+        const { page, kind, c } = jobs[i];
+        out[i] = await this.toRemark(page, kind, c, since).catch(() => null);
       }
-    }
-    return out;
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, jobs.length) }, worker),
+    );
+    return out.filter((r): r is Remark => r !== null);
   }
 }

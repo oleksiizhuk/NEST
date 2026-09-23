@@ -3,9 +3,11 @@ import { Remark } from '@application/project-manager/collaboration.interface';
 // \b only knows Latin letters, so the word end is spelled out for Cyrillic
 // and Arabic question words
 const QUESTION_START =
-  /^(who|what|when|where|why|how|can|could|should|would|will|is|are|do|does|did|any update|please confirm|let me know|кто|что|когда|где|почему|зачем|как|можно|можете|нужно ли|подтвердите|есть ли|هل|متى|لماذا|كيف|ماذا|من|أين)(?=[\s,.!:]|$)/iu;
+  /^(who|what|when|where|why|how|could|should|would|please confirm|let me know|any update|кто|что|когда|где|почему|зачем|как|можно|можете|нужно ли|подтвердите|есть ли|هل|متى|لماذا|كيف|ماذا|أين)(?=[\s,.!:]|$)/iu;
+// "Do …", "Is …", "Will …" and "من" start plenty of statements, so those count
+// only with a question mark; phrases below are questions wherever they are
 const QUESTION_ANYWHERE =
-  /(\?|؟|please confirm|let me know|any update|can you|could you|подтвердите|подскажите|уточните)/i;
+  /(\?|؟|please confirm|let me know|any update|\bcan you\b|\bcould you\b|подтвердите|подскажите|уточните)/i;
 
 export const looksLikeQuestion = (text: string): boolean => {
   const t = text.trim();
@@ -17,16 +19,20 @@ const same = (a: string, b: string) =>
 
 // Answered = the thread is resolved/done, or someone other than the asker
 // wrote after it (a team member, when a roster is given).
-export const isAnswered = (remark: Remark, team: string[]): boolean => {
-  if (remark.resolved) return true;
-  return remark.replies.some(
+// The first later reply from someone other than the asker (a team member,
+// when a roster is given)
+export const answerer = (remark: Remark, team: string[]): string | null =>
+  remark.replies.find(
     (r) =>
       r.createdAt >= remark.createdAt &&
       !same(r.author, remark.author) &&
       (!team.length ||
         team.some((m) => r.author.toLowerCase().includes(m.toLowerCase()))),
-  );
-};
+  )?.author ?? null;
+
+// Answered = the thread is resolved/done, or it has an answerer
+export const isAnswered = (remark: Remark, team: string[]): boolean =>
+  remark.resolved || answerer(remark, team) !== null;
 
 export interface QuestionFilter {
   author?: string;
@@ -56,8 +62,11 @@ export const openQuestions = (
     Math.max(0, Math.floor((now.getTime() - d.getTime()) / 86_400_000));
   const lines = picked.slice(0, limit).map(({ r, answered }) => {
     const last = r.replies[r.replies.length - 1];
+    const by = answerer(r, team);
     const status = answered
-      ? `answered${last ? ` by ${last.author}` : ' (resolved)'}`
+      ? by
+        ? `answered by ${by}`
+        : 'resolved'
       : r.replies.length
       ? `no answer from the team (last reply by ${last.author})`
       : 'no reply';
