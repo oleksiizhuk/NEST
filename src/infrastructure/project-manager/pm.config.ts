@@ -26,6 +26,10 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       '\n',
     ),
     maxSnapshotAgeHours: maxAge > 0 ? maxAge : 30,
+    dmUsernames: (config.get<string>('PM_DM_USERNAMES') ?? '')
+      .split(',')
+      .map((u) => u.trim().replace(/^@/, '').toLowerCase())
+      .filter((u) => /^[a-z0-9_]{4,32}$/.test(u)),
     actionUserIds: ids(
       config.get<string>('PM_ACTION_USER_IDS'),
       Number(config.get<string>('TELEGRAM_OWNER_ID')),

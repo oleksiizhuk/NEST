@@ -208,6 +208,7 @@ describe('pmConfig', () => {
         TELEGRAM_OWNER_ID: '55',
         PM_RELEASE_DATE: '2026-09-30',
         PM_PROJECT_BRIEF: 'line1\\nline2',
+        PM_DM_USERNAMES: '@Dmytro_AA, annazhukkkk,bad name',
       }),
     );
     expect(config.chatIds).toEqual([55, -1001234]);
@@ -215,5 +216,6 @@ describe('pmConfig', () => {
     expect(config.projectBrief).toBe('line1\nline2');
     expect(config.digestChatId).toBeNull();
     expect(config.maxSnapshotAgeHours).toBe(30);
+    expect(config.dmUsernames).toEqual(['dmytro_aa', 'annazhukkkk']);
   });
 });

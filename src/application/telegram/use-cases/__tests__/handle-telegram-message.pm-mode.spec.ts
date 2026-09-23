@@ -76,6 +76,7 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
         projectBrief: '',
         maxSnapshotAgeHours: 30,
         actionUserIds: [],
+        dmUsernames: ['dmytro_aa'],
       },
       pmAnswer as any,
       pmRefresh as any,
@@ -239,5 +240,51 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     });
     expect(confirm.confirm).not.toHaveBeenCalled();
     expect(pmAnswer.execute).toHaveBeenCalled();
+  });
+
+  it('answers listed team members in private as project manager', async () => {
+    await useCase.execute({
+      chatId: 555,
+      chatType: 'private',
+      chatTitle: null,
+      text: 'как дела по релизу?',
+      from: {
+        id: 555,
+        username: 'Dmytro_AA',
+        firstName: 'Dmytro',
+        lastName: null,
+      },
+    });
+    expect(pmAnswer.execute).toHaveBeenCalled();
+    expect(persona.generateReply).not.toHaveBeenCalled();
+  });
+
+  it('still ignores private messages from anyone else', async () => {
+    await useCase.execute({
+      chatId: 777,
+      chatType: 'private',
+      chatTitle: null,
+      text: 'привет',
+      from: { id: 777, username: 'stranger', firstName: 'S', lastName: null },
+    });
+    expect(pmAnswer.execute).not.toHaveBeenCalled();
+    expect(persona.generateReply).not.toHaveBeenCalled();
+    expect(telegram.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not let a team member confirm actions unless allowed', async () => {
+    await useCase.execute({
+      chatId: 555,
+      chatType: 'private',
+      chatTitle: null,
+      text: '/confirm K7Q2A',
+      from: {
+        id: 555,
+        username: 'dmytro_aa',
+        firstName: 'Dmytro',
+        lastName: null,
+      },
+    });
+    expect(confirm.confirm).toHaveBeenCalledWith('K7Q2A', 555, 555, false);
   });
 });

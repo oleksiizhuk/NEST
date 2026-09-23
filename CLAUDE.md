@@ -136,6 +136,7 @@ PM_FIGMA_TOKEN=         # Figma personal token (read: file content, comments, ve
 CRON_SECRET=            # Bearer secret Vercel Cron sends to /cron/pm/*
 PM_CODE_REPOS=          # Repos the bot may read code from (defaults to PM_GITHUB_REPOS)
 PM_ACTION_USER_IDS=     # Telegram user ids besides the owner who may /confirm staging actions
+PM_DM_USERNAMES=        # Telegram usernames (no @) of team members who may DM the bot; their DMs get PM mode, confirming still needs PM_ACTION_USER_IDS
 STAGING_API_BASE_URL=   # Staging admin API; with STAGING_ALLOWED_HOSTS (exact hosts) and STAGING_FORBIDDEN_HOSTS (e.g. the prod domain)
 STAGING_ADMIN_EMAIL=    # Dedicated least-privilege staging account for the bot, with STAGING_ADMIN_PASSWORD
 DEV_API_BASE_URL=       # Same four settings for the dev environment (DEV_ALLOWED_HOSTS, DEV_ADMIN_EMAIL, DEV_ADMIN_PASSWORD); STAGING_FORBIDDEN_HOSTS applies to both
@@ -194,6 +195,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 | POST | `/email/send`, `/email/sendEmailTemple` | JWT | Email the caller's own address only |
 | POST | `/email/convert` | JWT | OCR an uploaded image (`file`, ≤ 5 MB) |
 | POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_advice { prompt, context?, model? }` |
+| GET | `/cron/pm/actions`, `/cron/pm/ask?q=`, `/cron/pm/targets` | Bearer `CRON_SECRET` | Diagnostics: recent actions with outcome, one question through the PM pipeline, dev/staging sign-in check |
 | GET | `/cron/pm/refresh`, `/cron/pm/daily` | Bearer `CRON_SECRET` | Rebuild the project snapshot; daily also posts the digest (Vercel Cron, weekdays 05:00 UTC) |
 | GET | `/api/docs` | — | Swagger UI |
 

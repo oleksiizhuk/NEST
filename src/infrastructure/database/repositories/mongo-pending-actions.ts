@@ -85,4 +85,18 @@ export class MongoPendingActions implements IPendingActions {
     );
     return res.modifiedCount === 1;
   }
+
+  async recent(
+    limit: number,
+  ): Promise<Array<PendingAction & { createdAt: Date }>> {
+    const docs = await this.model
+      .find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+    return docs.map((d) => ({
+      ...toAction(d as unknown as PmActionDocument),
+      createdAt: new Date((d as unknown as PmActionDocument).createdAt),
+    }));
+  }
 }
