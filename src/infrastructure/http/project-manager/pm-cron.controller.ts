@@ -23,6 +23,9 @@ export class PmCronController {
         ok: s.ok,
         chars: s.text.length,
         error: s.error,
+        // Enough to diagnose "could not read …" lines; the endpoint is
+        // behind CRON_SECRET
+        preview: s.text.slice(0, 400),
       })),
     };
   }
