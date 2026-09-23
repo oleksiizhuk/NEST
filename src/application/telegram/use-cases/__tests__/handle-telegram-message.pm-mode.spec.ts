@@ -77,6 +77,7 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
         maxSnapshotAgeHours: 30,
         actionUserIds: [],
         dmUsernames: ['dmytro_aa'],
+        team: [],
       },
       pmAnswer as any,
       pmRefresh as any,

@@ -18,4 +18,6 @@ export interface IPmConfig {
   // Telegram usernames (lowercase, no @) allowed to talk to the bot in a
   // private chat; their DMs get project-manager mode
   dmUsernames: string[];
+  // Team members' display names (any tool); their reply answers a question
+  team: string[];
 }

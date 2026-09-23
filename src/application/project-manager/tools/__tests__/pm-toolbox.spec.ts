@@ -1,3 +1,4 @@
+import { Remark } from '@application/project-manager/collaboration.interface';
 import {
   PmToolbox,
   pickOne,
@@ -96,6 +97,7 @@ describe('PmToolbox', () => {
       'propose_update_store',
       'propose_create_property',
       'propose_property_action',
+      'find_open_questions',
     ]);
     expect(
       (specs[0].input_schema.properties.repo as { enum: string[] }).enum,
@@ -560,6 +562,116 @@ describe('PmToolbox roles', () => {
     const call = actions.create.mock.calls[0][0];
     expect(call.payload).toMatchObject({ tier: 'staging', role: 'admin' });
     expect(call.summary).toContain('на STAGING как admin');
+  });
+});
+
+describe('PmToolbox collaboration tools', () => {
+  const now = Date.now();
+  const remark = (over: Partial<Remark>): Remark => ({
+    source: 'jira',
+    where: 'ABC-1 Release',
+    link: 'https://x/browse/ABC-1',
+    author: 'Faisal Client',
+    createdAt: new Date(now - 3 * 86_400_000),
+    text: 'When will the build be ready?',
+    replies: [],
+    resolved: false,
+    ...over,
+  });
+  const issues = {
+    isConfigured: () => true,
+    getIssue: jest
+      .fn()
+      .mockResolvedValue(
+        'ABC-1 · Story · Open\nDescription:\nAC: 1) login works',
+      ),
+    recentComments: jest.fn().mockResolvedValue([
+      remark({}),
+      remark({ text: 'Thanks, looks good.' }),
+      remark({
+        author: 'Anna',
+        text: 'Can QA retest?',
+        replies: [{ author: 'Ira', createdAt: new Date(now) }],
+      }),
+    ]),
+  };
+  const docs = {
+    isConfigured: () => true,
+    recentComments: jest.fn().mockResolvedValue([
+      remark({
+        source: 'confluence',
+        where: 'Release 1',
+        text: 'Is the privacy text final?',
+      }),
+    ]),
+  };
+  const design = {
+    isConfigured: () => true,
+    fileKeys: () => ['FileKey12345'],
+    getNodes: jest.fn().mockResolvedValue('FRAME "Home" [1:2]'),
+    imageLink: jest.fn().mockResolvedValue('PNG (temporary link): https://img'),
+    recentComments: jest.fn().mockResolvedValue([]),
+  };
+  const toolbox = new PmToolbox(code, targets, actions as any, {
+    issues,
+    docs,
+    design,
+    team: ['Ira', 'Oleksii'],
+  });
+
+  it('lists the collaboration tools when configured', () => {
+    const names = toolbox.specs().map((t) => t.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'jira_get_issue',
+        'find_open_questions',
+        'figma_get_node',
+        'figma_image_link',
+      ]),
+    );
+  });
+
+  it('reads a ticket as untrusted data', async () => {
+    const out = await toolbox.run('jira_get_issue', { key: 'abc-1' }, ctx());
+    expect(issues.getIssue).toHaveBeenCalledWith('ABC-1');
+    expect(out).toMatch(/^<tool_data source="jira:ABC-1">/);
+  });
+
+  it('finds unanswered questions by author across sources, oldest first', async () => {
+    const out = await toolbox.run(
+      'find_open_questions',
+      { author: 'faisal' },
+      ctx(),
+    );
+    expect(out).toContain('2 question(s) without an answer');
+    expect(out).toContain('«When will the build be ready?»');
+    expect(out).toContain('«Is the privacy text final?»');
+    expect(out).not.toContain('looks good');
+    expect(out).not.toContain('Can QA retest');
+  });
+
+  it('counts a team reply as an answer and can include answered ones', async () => {
+    const out = await toolbox.run(
+      'find_open_questions',
+      { author: 'anna', include_answered: true },
+      ctx(),
+    );
+    expect(out).toContain('answered by Ira');
+  });
+
+  it('limits sources when asked', async () => {
+    docs.recentComments.mockClear();
+    await toolbox.run('find_open_questions', { sources: ['jira'] }, ctx());
+    expect(docs.recentComments).not.toHaveBeenCalled();
+  });
+
+  it('caps design images at three per message', async () => {
+    const c = ctx();
+    for (let i = 0; i < 3; i++)
+      await toolbox.run('figma_image_link', { id: '1:2' }, c);
+    await expect(
+      toolbox.run('figma_image_link', { id: '1:2' }, c),
+    ).rejects.toThrow(/At most 3/);
   });
 });
 

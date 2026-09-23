@@ -26,6 +26,10 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       '\n',
     ),
     maxSnapshotAgeHours: maxAge > 0 ? maxAge : 30,
+    team: (config.get<string>('PM_TEAM') ?? '')
+      .split(',')
+      .map((n) => n.trim())
+      .filter(Boolean),
     dmUsernames: (config.get<string>('PM_DM_USERNAMES') ?? '')
       .split(',')
       .map((u) => u.trim().replace(/^@/, '').toLowerCase())
