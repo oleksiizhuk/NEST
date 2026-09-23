@@ -80,7 +80,7 @@ export class ConfirmPendingActionUseCase {
     // Proposals from before tiers existed were always staging
     const tier = action.payload.tier || 'staging';
     try {
-      const admin = this.targets.target(tier);
+      const admin = this.targets.target(tier, action.payload.role ?? 'client');
       const text = await this.run(admin, tier, action);
       await this.actions.finish(action.id, 'done', text);
       return text;

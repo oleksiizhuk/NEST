@@ -89,7 +89,7 @@ const code = {
   listDir: jest.fn(),
   pullRequest: jest.fn(),
 };
-const staging = { tiers: () => [], target: jest.fn() };
+const staging = { tiers: () => [], roles: () => [], target: jest.fn() };
 const actions = {
   create: jest.fn(),
   claim: jest.fn(),

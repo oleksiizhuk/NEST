@@ -140,6 +140,7 @@ PM_DM_USERNAMES=        # Telegram usernames (no @) of team members who may DM t
 STAGING_API_BASE_URL=   # Staging admin API; with STAGING_ALLOWED_HOSTS (exact hosts) and STAGING_FORBIDDEN_HOSTS (e.g. the prod domain)
 STAGING_ADMIN_EMAIL=    # Dedicated least-privilege staging account for the bot, with STAGING_ADMIN_PASSWORD
 DEV_API_BASE_URL=       # Same four settings for the dev environment (DEV_ALLOWED_HOSTS, DEV_ADMIN_EMAIL, DEV_ADMIN_PASSWORD); STAGING_FORBIDDEN_HOSTS applies to both
+<P>_CLIENT_EMAIL=       # Per environment (P = DEV / STAGING): client account (falls back to <P>_ADMIN_*); <P>_PLATFORM_ADMIN_EMAIL/PASSWORD = platform admin. Tools take as=client|admin
 ENV=
 PORT=3000
 ```

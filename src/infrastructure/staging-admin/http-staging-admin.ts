@@ -67,6 +67,7 @@ export const checkStagingBase = (
 export class HttpStagingAdmin implements IStagingAdmin {
   private readonly logger = new Logger(HttpStagingAdmin.name);
   private readonly base: URL | null;
+  private readonly role: string;
   private readonly email: string;
   private readonly password: string;
   private token: { value: string; until: number } | null = null;
@@ -77,7 +78,15 @@ export class HttpStagingAdmin implements IStagingAdmin {
   private queue: Promise<unknown> = Promise.resolve();
   private company: string | null = null;
 
-  constructor(config: ConfigService, prefix = 'STAGING') {
+  constructor(
+    config: ConfigService,
+    prefix = 'STAGING',
+    account: { role: string; emailKeys: string[]; passwordKeys: string[] } = {
+      role: 'client',
+      emailKeys: [`${prefix}_ADMIN_EMAIL`],
+      passwordKeys: [`${prefix}_ADMIN_PASSWORD`],
+    },
+  ) {
     const list = (key: string) =>
       (config.get<string>(key) ?? '')
         .split(',')
@@ -93,8 +102,12 @@ export class HttpStagingAdmin implements IStagingAdmin {
         ...list('PM_FORBIDDEN_HOSTS'),
       ],
     );
-    this.email = config.get<string>(`${prefix}_ADMIN_EMAIL`) ?? '';
-    this.password = config.get<string>(`${prefix}_ADMIN_PASSWORD`) ?? '';
+    // First key that is set wins, so older variable names keep working
+    const first = (keys: string[]) =>
+      keys.map((k) => config.get<string>(k)).find(Boolean) ?? '';
+    this.role = account.role;
+    this.email = first(account.emailKeys);
+    this.password = first(account.passwordKeys);
   }
 
   isConfigured(): boolean {
@@ -103,6 +116,18 @@ export class HttpStagingAdmin implements IStagingAdmin {
 
   describeTarget(): string {
     return this.base?.hostname ?? 'not configured';
+  }
+
+  async whoAmI(): Promise<string> {
+    const token = await this.serial(() => this.login());
+    try {
+      const payload = JSON.parse(
+        Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8'),
+      );
+      return String(payload.role ?? payload.type ?? 'unknown');
+    } catch {
+      return 'unknown';
+    }
   }
 
   async findMalls(query: string): Promise<NamedRef[]> {
@@ -142,6 +167,19 @@ export class HttpStagingAdmin implements IStagingAdmin {
   }
 
   async findBrands(query: string): Promise<NamedRef[]> {
+    // A platform admin sees every company's brands; a client only its own
+    if (this.role === 'admin') {
+      const all = await this.call(
+        'GET',
+        `/businesses/brands?search=${encodeURIComponent(
+          query,
+        )}&page=1&pageSize=20`,
+      );
+      return listOf(all).map((b: Json) => ({
+        id: String(b.id),
+        name: nameOf(b),
+      }));
+    }
     const cid = await this.companyId();
     const data = await this.call(
       'GET',
@@ -555,23 +593,55 @@ const TIER_PREFIXES: Array<[string, string]> = [
   ['staging', 'STAGING'],
 ];
 
+// client: a partner account that owns a company (<P>_CLIENT_*, falling back
+// to the original <P>_ADMIN_*). admin: a platform admin (<P>_PLATFORM_ADMIN_*).
+const ROLE_KEYS = (prefix: string) => [
+  {
+    role: 'client',
+    emailKeys: [`${prefix}_CLIENT_EMAIL`, `${prefix}_ADMIN_EMAIL`],
+    passwordKeys: [`${prefix}_CLIENT_PASSWORD`, `${prefix}_ADMIN_PASSWORD`],
+  },
+  {
+    role: 'admin',
+    emailKeys: [`${prefix}_PLATFORM_ADMIN_EMAIL`],
+    passwordKeys: [`${prefix}_PLATFORM_ADMIN_PASSWORD`],
+  },
+];
+
 export class AdminTargets implements IAdminTargets {
-  private readonly byTier = new Map<string, IStagingAdmin>();
+  private readonly accounts = new Map<string, IStagingAdmin>();
+  private readonly order: string[] = [];
 
   constructor(config: ConfigService) {
     for (const [tier, prefix] of TIER_PREFIXES) {
-      const admin = new HttpStagingAdmin(config, prefix);
-      if (admin.isConfigured()) this.byTier.set(tier, admin);
+      for (const account of ROLE_KEYS(prefix)) {
+        const admin = new HttpStagingAdmin(config, prefix, account);
+        if (!admin.isConfigured()) continue;
+        this.accounts.set(`${tier}:${account.role}`, admin);
+        if (!this.order.includes(tier)) this.order.push(tier);
+      }
     }
   }
 
   tiers(): string[] {
-    return [...this.byTier.keys()];
+    return [...this.order];
   }
 
-  target(tier: string): IStagingAdmin {
-    const admin = this.byTier.get(tier);
-    if (!admin) throw new Error(`Environment "${tier}" is not configured`);
+  roles(tier: string): string[] {
+    return ['client', 'admin'].filter((r) => this.accounts.has(`${tier}:${r}`));
+  }
+
+  target(tier: string, role = 'client'): IStagingAdmin {
+    const admin = this.accounts.get(`${tier}:${role}`);
+    if (!admin) {
+      throw new Error(
+        `No ${role} account configured on "${tier}"${
+          this.roles(tier).length
+            ? ` (available: ${this.roles(tier).join(', ')})`
+            : ''
+        }`,
+      );
+    }
     return admin;
   }
 }

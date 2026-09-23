@@ -11,6 +11,8 @@ export interface NamedRef {
 export interface NewBrand {
   // Which test environment (e.g. dev, staging) the brand goes to
   tier: string;
+  // Which account runs it: 'client' (default) or 'admin'
+  role?: string;
   nameEn: string;
   nameAr: string;
   mallId: string;
@@ -26,6 +28,8 @@ export interface NewBrand {
 
 export interface BrandTarget {
   tier: string;
+  // Which account runs it: 'client' (default) or 'admin'
+  role?: string;
   brandId: string;
   brandName: string;
 }
@@ -56,6 +60,8 @@ export interface StoreChanges {
 
 export interface StoreEdit {
   tier: string;
+  // Which account runs it: 'client' (default) or 'admin'
+  role?: string;
   brandId: string;
   brandName: string;
   storeId: string;
@@ -67,6 +73,8 @@ export type PropertyType = 'mall' | 'outlet' | 'plaza';
 
 export interface NewProperty {
   tier: string;
+  // Which account runs it: 'client' (default) or 'admin'
+  role?: string;
   type: PropertyType;
   nameEn: string;
   nameAr: string;
@@ -79,6 +87,8 @@ export interface NewProperty {
 
 export interface PropertyTarget {
   tier: string;
+  // Which account runs it: 'client' (default) or 'admin'
+  role?: string;
   propertyId: string;
   propertyName: string;
 }
@@ -100,6 +110,8 @@ export interface CreatedBrand {
 export interface IStagingAdmin {
   isConfigured(): boolean;
   describeTarget(): string;
+  // The role claimed by this account's token (e.g. client, owner)
+  whoAmI(): Promise<string>;
   findMalls(query: string): Promise<NamedRef[]>;
   findCategories(query: string): Promise<NamedRef[]>;
   findBrands(query: string): Promise<NamedRef[]>;
@@ -125,6 +137,8 @@ export interface IStagingAdmin {
 // staging). Only tiers with a valid allowlisted URL and credentials appear.
 export interface IAdminTargets {
   tiers(): string[];
-  // Throws for an unknown or unconfigured tier
-  target(tier: string): IStagingAdmin;
+  // Accounts configured for a tier: 'client' and/or 'admin'
+  roles(tier: string): string[];
+  // Throws for an unknown or unconfigured tier/role
+  target(tier: string, role?: string): IStagingAdmin;
 }
