@@ -92,6 +92,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
   ],
   exports: [
     PM_CONFIG,
+    PROJECT_SNAPSHOT_REPOSITORY,
     PENDING_ACTIONS,
     ADMIN_TARGETS,
     PM_KNOWLEDGE,
