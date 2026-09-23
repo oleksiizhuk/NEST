@@ -93,6 +93,15 @@ export class PmToolbox {
         configured[0] ?? 'none'
       } unless the user names another. Production is never available.`,
     };
+    const roles = [
+      ...new Set(configured.flatMap((t) => this.targets.roles(t))),
+    ];
+    const as = {
+      type: 'string',
+      enum: roles.length ? roles : ['client'],
+      description:
+        'Which account acts: "client" (a partner that owns its company; default) or "admin" (platform admin, sees and changes every company). Use admin only when the user asks for it or the action needs it.',
+    };
     return [
       {
         name: 'search_code',
@@ -156,6 +165,7 @@ export class PmToolbox {
           type: 'object',
           properties: {
             tier,
+            as,
             entity: { type: 'string', enum: ['mall', 'category', 'brand'] },
             query: { type: 'string', maxLength: 100 },
           },
@@ -171,6 +181,7 @@ export class PmToolbox {
           type: 'object',
           properties: {
             tier,
+            as,
             name_en: { type: 'string', maxLength: 80 },
             name_ar: { type: 'string', maxLength: 80 },
             mall: { type: 'string', description: 'Mall / outlet / plaza name' },
@@ -191,7 +202,7 @@ export class PmToolbox {
           'Read-only: one brand on a test environment with its stores, their status (draft / active / inactive) and malls. Pass the brand name or id. Use before publishing, unpublishing or deleting, and to answer "is X published".',
         input_schema: {
           type: 'object',
-          properties: { tier, brand: { type: 'string', maxLength: 100 } },
+          properties: { tier, as, brand: { type: 'string', maxLength: 100 } },
           required: ['brand'],
           additionalProperties: false,
         },
@@ -204,6 +215,7 @@ export class PmToolbox {
           type: 'object',
           properties: {
             tier,
+            as,
             brand: {
               type: 'string',
               maxLength: 100,
@@ -226,6 +238,7 @@ export class PmToolbox {
           type: 'object',
           properties: {
             tier,
+            as,
             brand: {
               type: 'string',
               maxLength: 100,
@@ -258,6 +271,7 @@ export class PmToolbox {
           type: 'object',
           properties: {
             tier,
+            as,
             type: { type: 'string', enum: ['mall', 'outlet', 'plaza'] },
             name_en: { type: 'string', maxLength: 64 },
             name_ar: { type: 'string', maxLength: 64 },
@@ -283,6 +297,7 @@ export class PmToolbox {
           type: 'object',
           properties: {
             tier,
+            as,
             property: {
               type: 'string',
               maxLength: 100,
@@ -352,7 +367,11 @@ export class PmToolbox {
         return wrapUntrusted(`github:${repo}#${input.number}`, text);
       }
       case 'staging_lookup': {
-        const { name: tierName, admin } = this.admin(input.tier);
+        const {
+          name: tierName,
+          role,
+          admin,
+        } = this.admin(input.tier, input.as);
         const query = str(input.query, 100);
         const refs =
           input.entity === 'mall'
@@ -361,14 +380,18 @@ export class PmToolbox {
             ? await admin.findCategories(query)
             : await admin.findBrands(query);
         return wrapUntrusted(
-          `${tierName}:${input.entity}`,
+          `${tierName}/${role}:${input.entity}`,
           list(refs.slice(0, 15)),
         );
       }
       case 'propose_create_brand':
         return this.proposing(ctx, () => this.proposeBrand(input, ctx));
       case 'staging_get_brand': {
-        const { name: tierName, admin } = this.admin(input.tier);
+        const {
+          name: tierName,
+          role,
+          admin,
+        } = this.admin(input.tier, input.as);
         const brand = await this.resolveBrand(admin, str(input.brand, 100));
         if (typeof brand === 'string') return brand;
         const details = await admin.getBrand(brand.id);
@@ -383,7 +406,7 @@ export class PmToolbox {
               .join('\n')
           : '(no stores)';
         return wrapUntrusted(
-          `${tierName}:brand`,
+          `${tierName}/${role}:brand`,
           `${details.name} (id ${details.id})\n${stores}`,
         );
       }
@@ -408,7 +431,10 @@ export class PmToolbox {
     }
   }
 
-  private admin(value: unknown): { name: string; admin: IStagingAdmin } {
+  private admin(
+    value: unknown,
+    roleValue?: unknown,
+  ): { name: string; role: string; admin: IStagingAdmin } {
     const tiers = this.targets.tiers();
     if (!tiers.length) throw new Error('No test environment is configured.');
     const name = str(value, 20) || tiers[0];
@@ -417,7 +443,8 @@ export class PmToolbox {
         `Unknown environment "${name}". Available: ${tiers.join(', ')}`,
       );
     }
-    return { name, admin: this.targets.target(name) };
+    const role = str(roleValue, 10) || 'client';
+    return { name, role, admin: this.targets.target(name, role) };
   }
 
   private async store(
@@ -480,7 +507,7 @@ export class PmToolbox {
     input: Record<string, unknown>,
     ctx: ToolContext,
   ): Promise<string> {
-    const { name: tierName, admin } = this.admin(input.tier);
+    const { name: tierName, role, admin } = this.admin(input.tier, input.as);
     this.reserve(ctx);
     const brand = await this.resolveBrand(admin, str(input.brand, 100));
     if (typeof brand === 'string') return `NOT PROPOSED — ${brand}`;
@@ -562,13 +589,14 @@ export class PmToolbox {
         kind: 'update_store',
         payload: {
           tier: tierName,
+          role,
           brandId: details.id,
           brandName: details.name,
           storeId: target.id,
           storeLabel,
           changes,
         },
-        summary: `Изменить на ${tierName.toUpperCase()} (${admin.describeTarget()}) магазин ${storeLabel} бренда "${
+        summary: `Изменить на ${tierName.toUpperCase()} как ${role} (${admin.describeTarget()}) магазин ${storeLabel} бренда "${
           details.name
         }": ${describe}. Остальные магазины бренда не меняются.`,
       },
@@ -582,7 +610,7 @@ export class PmToolbox {
     input: Record<string, unknown>,
     ctx: ToolContext,
   ): Promise<string> {
-    const { name: tierName, admin } = this.admin(input.tier);
+    const { name: tierName, role, admin } = this.admin(input.tier, input.as);
     this.reserve(ctx);
     const type = str(input.type, 10) as PropertyType;
     if (!['mall', 'outlet', 'plaza'].includes(type))
@@ -613,6 +641,7 @@ export class PmToolbox {
     }
     const payload = {
       tier: tierName,
+      role,
       type,
       nameEn,
       nameAr,
@@ -629,7 +658,7 @@ export class PmToolbox {
       {
         kind: 'create_property',
         payload,
-        summary: `Создать на ${tierName.toUpperCase()} (${admin.describeTarget()}) ${type} "${nameEn}" / "${nameAr}", адрес: ${where}${
+        summary: `Создать на ${tierName.toUpperCase()} как ${role} (${admin.describeTarget()}) ${type} "${nameEn}" / "${nameAr}", адрес: ${where}${
           lat !== null ? `, координаты ${lat}, ${lng}` : ', без координат'
         }. Будет черновиком.`,
       },
@@ -643,14 +672,21 @@ export class PmToolbox {
     input: Record<string, unknown>,
     ctx: ToolContext,
   ): Promise<string> {
-    const { name: tierName, admin } = this.admin(input.tier);
+    const { name: tierName, role, admin } = this.admin(input.tier, input.as);
     this.reserve(ctx);
     const action = str(input.action, 20);
     if (!['publish', 'unpublish'].includes(action))
       throw new Error('action must be publish or unpublish');
     const query = str(input.property, 100);
     const found = this.isUuid(query)
-      ? { match: { id: query, name: query }, candidates: [] }
+      ? {
+          // Show the real name in the confirmation line, not the id
+          match: (await admin.findMalls('')).find((p) => p.id === query) ?? {
+            id: query,
+            name: query,
+          },
+          candidates: [],
+        }
       : pickOne(query, await admin.findMalls(query));
     if (!found.match)
       return `NOT PROPOSED — no single property matches "${query}":\n${list(
@@ -661,6 +697,7 @@ export class PmToolbox {
         kind: action === 'publish' ? 'publish_property' : 'unpublish_property',
         payload: {
           tier: tierName,
+          role,
           propertyId: found.match.id,
           propertyName: found.match.name,
         },
@@ -668,7 +705,7 @@ export class PmToolbox {
           action === 'publish' ? 'Опубликовать' : 'Снять с публикации'
         } "${found.match.name}" (id ${
           found.match.id
-        }) на ${tierName.toUpperCase()} (${admin.describeTarget()}).`,
+        }) на ${tierName.toUpperCase()} как ${role} (${admin.describeTarget()}).`,
       },
       ctx,
     );
@@ -700,7 +737,7 @@ export class PmToolbox {
     input: Record<string, unknown>,
     ctx: ToolContext,
   ): Promise<string> {
-    const { name: tierName, admin } = this.admin(input.tier);
+    const { name: tierName, role, admin } = this.admin(input.tier, input.as);
     this.reserve(ctx);
     const action = str(input.action, 20);
     if (!['publish', 'unpublish', 'delete'].includes(action)) {
@@ -718,7 +755,7 @@ export class PmToolbox {
         : 'Удалить (без возможности восстановления через API) бренд';
     const summary = `${verb} "${details.name}" (id ${
       details.id
-    }) на ${tierName.toUpperCase()} (${admin.describeTarget()}).`;
+    }) на ${tierName.toUpperCase()} как ${role} (${admin.describeTarget()}).`;
     const stored = await this.store(
       {
         kind: `${action}_brand` as
@@ -727,6 +764,7 @@ export class PmToolbox {
           | 'delete_brand',
         payload: {
           tier: tierName,
+          role,
           brandId: details.id,
           brandName: details.name,
         },
@@ -746,7 +784,7 @@ export class PmToolbox {
     input: Record<string, unknown>,
     ctx: ToolContext,
   ): Promise<string> {
-    const { name: tierName, admin } = this.admin(input.tier);
+    const { name: tierName, role, admin } = this.admin(input.tier, input.as);
     this.reserve(ctx);
     const nameEn = str(input.name_en, 80);
     const nameAr = str(input.name_ar, 80);
@@ -784,6 +822,7 @@ export class PmToolbox {
 
     const payload = {
       tier: tierName,
+      role,
       nameEn,
       nameAr,
       mallId: mall.match.id,
@@ -797,7 +836,7 @@ export class PmToolbox {
       close,
     };
     const summary =
-      `Создать на ${tierName.toUpperCase()} (${admin.describeTarget()}) бренд "${nameEn}" / "${nameAr}"` +
+      `Создать на ${tierName.toUpperCase()} как ${role} (${admin.describeTarget()}) бренд "${nameEn}" / "${nameAr}"` +
       ` с магазином в "${payload.mallName}", категория "${payload.categoryName}",` +
       ` ${
         [

@@ -22,6 +22,7 @@ The bot answers in PM chats only (`TELEGRAM_PM_CHAT_IDS` or a group switched on 
 - Create a brand with one store in a mall (`propose_create_brand`); publish / unpublish all its stores or delete the brand (`propose_brand_action`).
 - Edit one store of a brand — name, floor, wing, gate, daily hours, category; the brand's other stores stay untouched (`propose_update_store`).
 - Create a mall/outlet/plaza as a draft (`propose_create_property`) and publish / unpublish it (`propose_property_action`).
+- Every action can run as `client` (partner account, default) or `admin` (platform admin) — say «как админ» / «как клиент». Useful to test what each role may do.
 
 **Cannot** — anything on production (refuses by design), arbitrary endpoints or raw API calls, uploading real images (a placeholder image is used), sending invitations, changing Jira/GitHub/Figma, executing anything without a human `/confirm`.
 

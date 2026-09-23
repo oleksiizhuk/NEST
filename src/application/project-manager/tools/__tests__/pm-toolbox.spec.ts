@@ -25,6 +25,7 @@ const code = {
 const staging = {
   isConfigured: jest.fn(() => true),
   describeTarget: () => 'api.staging.example',
+  whoAmI: jest.fn(),
   findMalls: jest.fn(),
   findCategories: jest.fn(),
   findBrands: jest.fn(),
@@ -40,7 +41,8 @@ const staging = {
 };
 const targets = {
   tiers: () => (staging.isConfigured() ? ['dev', 'staging'] : []),
-  target: () => staging,
+  roles: () => ['client', 'admin'],
+  target: jest.fn((): typeof staging => staging),
 };
 const actions = {
   create: jest.fn(async (a) => ({
@@ -255,7 +257,12 @@ describe('PmToolbox brand actions', () => {
     expect(actions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: 'publish_brand',
-        payload: { tier: 'dev', brandId: 'b1', brandName: 'Test Brand' },
+        payload: {
+          tier: 'dev',
+          role: 'client',
+          brandId: 'b1',
+          brandName: 'Test Brand',
+        },
         summary: expect.stringContaining(
           'Опубликовать все магазины (1) бренда "Test Brand"',
         ),
@@ -510,6 +517,49 @@ describe('PmToolbox review fixes', () => {
       ctx(),
     );
     expect(out).toMatch(/already exists/);
+  });
+});
+
+describe('PmToolbox roles', () => {
+  const toolbox = new PmToolbox(code, targets, actions as any);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    staging.isConfigured.mockReturnValue(true);
+    staging.findBrands.mockResolvedValue([{ id: 'b1', name: 'Test Brand' }]);
+    staging.getBrand.mockResolvedValue({
+      id: 'b1',
+      name: 'Test Brand',
+      stores: [{ id: 's1', name: 'x', status: 'draft', property: 'Galleria' }],
+    });
+  });
+
+  it('offers the configured roles and acts as client unless told otherwise', async () => {
+    const as = toolbox.specs().find((t) => t.name === 'propose_brand_action')
+      ?.input_schema.properties.as as { enum: string[] };
+    expect(as.enum).toEqual(['client', 'admin']);
+    await toolbox.run(
+      'propose_brand_action',
+      { brand: 'Test Brand', action: 'publish' },
+      ctx(),
+    );
+    expect(targets.target).toHaveBeenLastCalledWith('dev', 'client');
+  });
+
+  it('records the admin role in the proposal and shows it in the summary', async () => {
+    await toolbox.run(
+      'propose_brand_action',
+      {
+        tier: 'staging',
+        as: 'admin',
+        brand: 'Test Brand',
+        action: 'unpublish',
+      },
+      ctx(),
+    );
+    expect(targets.target).toHaveBeenLastCalledWith('staging', 'admin');
+    const call = actions.create.mock.calls[0][0];
+    expect(call.payload).toMatchObject({ tier: 'staging', role: 'admin' });
+    expect(call.summary).toContain('на STAGING как admin');
   });
 });
 

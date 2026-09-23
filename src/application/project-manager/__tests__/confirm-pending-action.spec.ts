@@ -40,6 +40,7 @@ describe('ConfirmPendingActionUseCase', () => {
   const staging = {
     isConfigured: () => true,
     describeTarget: () => 'staging',
+    whoAmI: jest.fn(),
     findMalls: jest.fn(),
     findCategories: jest.fn(),
     findBrands: jest.fn().mockResolvedValue([]),
@@ -53,7 +54,11 @@ describe('ConfirmPendingActionUseCase', () => {
     publishProperties: jest.fn(),
     unpublishProperties: jest.fn(),
   };
-  const targets = { tiers: () => ['staging'], target: jest.fn(() => staging) };
+  const targets = {
+    tiers: () => ['staging'],
+    roles: () => ['client', 'admin'],
+    target: jest.fn((): typeof staging => staging),
+  };
   const useCase = new ConfirmPendingActionUseCase(actions as any, targets);
   beforeEach(() => {
     jest.clearAllMocks();
@@ -85,7 +90,7 @@ describe('ConfirmPendingActionUseCase', () => {
     expect(reply).toMatch(
       /на staging создан бренд "Test Brand" \(id b1\).*черновике/,
     );
-    expect(targets.target).toHaveBeenCalledWith('staging');
+    expect(targets.target).toHaveBeenCalledWith('staging', 'client');
     expect(actions.finish).toHaveBeenCalledWith(
       'K7Q2A',
       'done',
@@ -163,7 +168,7 @@ describe('ConfirmPendingActionUseCase', () => {
     });
     const reply = await useCase.confirm('K7Q2A', -100, 1, true);
     expect(staging.publishStores).toHaveBeenCalledWith(['s1', 's2']);
-    expect(targets.target).toHaveBeenCalledWith('dev');
+    expect(targets.target).toHaveBeenCalledWith('dev', 'client');
     expect(reply).toBe(
       'Готово на dev: у бренда "Test Brand" опубликовано магазинов: 1 из 2. Не получилось для 1: s2 (не хватает: image).',
     );
@@ -245,5 +250,20 @@ describe('ConfirmPendingActionUseCase', () => {
     await expect(useCase.confirm('K7Q2A', -100, 1, true)).resolves.toBe(
       'Не получилось опубликовать "QA Mall" на dev: не хватает logo.',
     );
+  });
+
+  it('runs the action with the account role it was proposed for', async () => {
+    actions.claim.mockResolvedValue({
+      ...action,
+      kind: 'delete_brand',
+      payload: {
+        tier: 'dev',
+        role: 'admin',
+        brandId: 'b1',
+        brandName: 'Test Brand',
+      },
+    });
+    await useCase.confirm('K7Q2A', -100, 1, true);
+    expect(targets.target).toHaveBeenLastCalledWith('dev', 'admin');
   });
 });

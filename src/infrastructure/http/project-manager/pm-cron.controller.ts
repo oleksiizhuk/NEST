@@ -74,16 +74,24 @@ export class PmCronController {
   // malls and categories. Creates nothing.
   @Get('targets')
   async checkTargets() {
+    const pairs = this.targets
+      .tiers()
+      .flatMap((tier) =>
+        this.targets.roles(tier).map((role) => ({ tier, role })),
+      );
     return Promise.all(
-      this.targets.tiers().map(async (tier) => {
-        const admin = this.targets.target(tier);
+      pairs.map(async ({ tier, role }) => {
+        const admin = this.targets.target(tier, role);
         try {
+          const tokenRole = await admin.whoAmI();
           const [malls, categories] = await Promise.all([
             admin.findMalls(''),
             admin.findCategories(''),
           ]);
           return {
             tier,
+            role,
+            tokenRole,
             host: admin.describeTarget(),
             ok: true,
             malls: malls.length,
@@ -93,6 +101,7 @@ export class PmCronController {
         } catch (error) {
           return {
             tier,
+            role,
             host: admin.describeTarget(),
             ok: false,
             error: String((error as Error).message).slice(0, 200),

@@ -180,7 +180,9 @@ describe('AdminTargets', () => {
     );
     expect(targets.tiers()).toEqual(['dev', 'staging']);
     expect(targets.target('dev').describeTarget()).toBe('api.dev.example');
-    expect(() => targets.target('production')).toThrow(/not configured/);
+    expect(() => targets.target('production')).toThrow(
+      /No client account configured/,
+    );
   });
 
   it('applies the shared production blocklist to every environment', () => {
@@ -327,5 +329,70 @@ describe('HttpStagingAdmin.updateStore', () => {
         floor: 'L2',
       }),
     ).rejects.toThrow(/not in brand/);
+  });
+});
+
+describe('AdminTargets roles', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+  const base = {
+    DEV_API_BASE_URL: 'https://api.dev.example',
+    DEV_ALLOWED_HOSTS: 'api.dev.example',
+  };
+
+  it('uses the old *_ADMIN_* pair as the client and *_PLATFORM_ADMIN_* as admin', () => {
+    const targets = new AdminTargets(
+      env({
+        ...base,
+        DEV_ADMIN_EMAIL: 'c@x',
+        DEV_ADMIN_PASSWORD: 'p',
+        DEV_PLATFORM_ADMIN_EMAIL: 'a@x',
+        DEV_PLATFORM_ADMIN_PASSWORD: 'p',
+      }),
+    );
+    expect(targets.tiers()).toEqual(['dev']);
+    expect(targets.roles('dev')).toEqual(['client', 'admin']);
+    expect(() => targets.target('dev', 'owner')).toThrow(/No owner account/);
+  });
+
+  it('prefers *_CLIENT_* over the old pair, and admin searches brands platform-wide', async () => {
+    const logins: string[] = [];
+    const paths: string[] = [];
+    global.fetch = jest.fn(async (url: URL, init: RequestInit) => {
+      paths.push(url.pathname + url.search);
+      if (url.pathname === '/auth/login')
+        logins.push(JSON.parse(String(init.body)).email);
+      const data =
+        url.pathname === '/auth/login'
+          ? { accessToken: 'h.eyJyb2xlIjoib3duZXIifQ.s' }
+          : { data: [{ id: 'b9', name: { en: 'Other Co Brand' } }] };
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify(data),
+      };
+    }) as any;
+    const targets = new AdminTargets(
+      env({
+        ...base,
+        DEV_ADMIN_EMAIL: 'old@x',
+        DEV_ADMIN_PASSWORD: 'p',
+        DEV_CLIENT_EMAIL: 'client@x',
+        DEV_CLIENT_PASSWORD: 'p',
+        DEV_PLATFORM_ADMIN_EMAIL: 'admin@x',
+        DEV_PLATFORM_ADMIN_PASSWORD: 'p',
+      }),
+    );
+    const admin = targets.target('dev', 'admin');
+    await expect(admin.findBrands('Other')).resolves.toEqual([
+      { id: 'b9', name: 'Other Co Brand' },
+    ]);
+    expect(paths).toContain(
+      '/businesses/brands?search=Other&page=1&pageSize=20',
+    );
+    await expect(admin.whoAmI()).resolves.toBe('owner');
+    await targets.target('dev', 'client').findMalls('');
+    expect(logins).toEqual(['admin@x', 'client@x']);
   });
 });
