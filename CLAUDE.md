@@ -108,7 +108,7 @@ Controllers only handle HTTP concerns (parsing request, calling use case, return
 Copy `.env.example` to `.env` and fill in:
 
 ```
-MONGODB_URI=            # MongoDB connection string (falls back to hardcoded Atlas URL)
+MONGODB_URI=            # MongoDB connection string (required, the app fails to start without it)
 JWT_SECRET=             # JWT signing secret
 MAIL_HOST=
 MAIL_PORT=
@@ -178,7 +178,7 @@ Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API inste
 
 ## Testing
 
-Tests live in `src/route/*/test/` directories. Run with `npm test`.
+Specs live in `__tests__/` folders next to the code they cover. Run with `npm test`; the pre-push hook runs `npm run test:cov`.
 
 Use cases in `src/application/` can be unit-tested without any NestJS or MongoDB setup — just mock the repository interface.
 
@@ -187,6 +187,12 @@ Use cases in `src/application/` can be unit-tested without any NestJS or MongoDB
 const mockRepo: IUserRepository = { create: jest.fn().mockResolvedValue(user), ... };
 const useCase = new CreateUserUseCase(mockRepo);
 ```
+
+---
+
+## AI tooling
+
+Skills, agents and hooks for Claude Code are in `.claude/`; the catalog is `.claude/README.md`. Use `new-feature` to add an endpoint, `quality-gates` before a PR, `commit` / `pr` / `deploy` to ship.
 
 ---
 

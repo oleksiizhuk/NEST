@@ -1,11 +1,13 @@
 ---
 name: quality-gates
-description: Run all quality checks before creating a PR — type check, lint, tests, build.
+description: Run all quality checks — type check, lint, tests with coverage, build — and report per gate. Use for "прогони проверки", "run the gates", before a commit or PR. Not for reviewing logic (review).
 ---
 
 # Quality Gates
 
-Run in order. Fix failures before moving to the next step.
+Run all four even when an early one fails, so the caller sees the full picture in one pass. Fix only when the caller asked for fixes.
+
+The husky hooks run a subset: `pre-commit` → `npm run lint`, `pre-push` → lint + `npm run test:cov`. Types and build are only checked here and on Vercel, so a green push can still fail the deploy.
 
 ## 1. TypeScript — no errors
 
@@ -22,7 +24,7 @@ npm run lint
 ## 3. Tests
 
 ```bash
-npm test
+npm run test:cov
 ```
 
 Use cases in `src/application/` can be unit-tested without NestJS or MongoDB:
@@ -47,8 +49,10 @@ npm run build
 ```
 ✅ tsc --noEmit  — no errors
 ✅ lint          — no errors
-✅ test          — all passing
+✅ test:cov      — all passing
 ✅ build         — compiled successfully
 ```
 
-→ Ready for `pr` skill.
+Report a per-gate pass/fail table, then the trimmed error lines and root cause for each failure. `npm run lint` runs with `--fix` and may rewrite files — mention any it touched.
+
+→ Ready for the `commit` / `pr` skills.
