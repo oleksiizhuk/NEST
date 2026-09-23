@@ -39,6 +39,12 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       ]),
     ),
   };
+  const registry = {
+    isEnabled: jest.fn().mockResolvedValue(false),
+    enable: jest.fn(),
+    disable: jest.fn(),
+    digestChats: jest.fn(),
+  };
   let useCase: HandleTelegramMessageUseCase;
 
   beforeEach(() => {
@@ -63,6 +69,7 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       },
       pmAnswer as any,
       pmRefresh as any,
+      registry,
     );
   });
 
@@ -140,5 +147,36 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     expect(personaHistory.map((t: { userText: string }) => t.userText)).toEqual(
       ['Dev @dev: joke'],
     );
+  });
+
+  it('lets the owner switch a group on with /pm_on, without an @mention', async () => {
+    await useCase.execute(group(OTHER_GROUP, '/pm_on', OWNER));
+    expect(registry.enable).toHaveBeenCalledWith(OTHER_GROUP, 'Team');
+    expect(telegram.sendMessage.mock.calls[0][1]).toMatch(/включён/);
+    expect(persona.generateReply).not.toHaveBeenCalled();
+  });
+
+  it('ignores /pm_on from anyone but the owner, silently', async () => {
+    await useCase.execute(group(OTHER_GROUP, '/pm_on@nest_bot'));
+    expect(registry.enable).not.toHaveBeenCalled();
+    expect(telegram.sendMessage).not.toHaveBeenCalled();
+    expect(persona.generateReply).not.toHaveBeenCalled();
+  });
+
+  it('ignores commands addressed to another bot', async () => {
+    await useCase.execute(group(OTHER_GROUP, '/pm_on@other_bot', OWNER));
+    expect(registry.enable).not.toHaveBeenCalled();
+  });
+
+  it('answers as project manager in a group switched on at runtime', async () => {
+    registry.isEnabled.mockResolvedValue(true);
+    await useCase.execute(group(OTHER_GROUP, '/status'));
+    expect(pmAnswer.execute).toHaveBeenCalled();
+    expect(persona.generateReply).not.toHaveBeenCalled();
+  });
+
+  it('switches a group off with /pm_off', async () => {
+    await useCase.execute(group(OTHER_GROUP, '/pm_off', OWNER));
+    expect(registry.disable).toHaveBeenCalledWith(OTHER_GROUP);
   });
 });

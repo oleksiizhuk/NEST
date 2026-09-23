@@ -14,12 +14,16 @@ import { JiraIssueReader } from '@infrastructure/project-manager/jira-issue.read
 import { ConfluencePageReader } from '@infrastructure/project-manager/confluence-page.reader';
 import { GitHubActivityReader } from '@infrastructure/project-manager/github-activity.reader';
 import { pmConfig } from '@infrastructure/project-manager/pm.config';
+import { PM_CHAT_REGISTRY } from '@application/project-manager/pm-chat-registry.interface';
+import { PmChatSchema } from '@infrastructure/database/schemas/pm-chat.schema';
+import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo-pm-chat.registry';
 
 @Module({
   imports: [
     ConfigModule,
     MongooseModule.forFeature([
       { name: 'ProjectSnapshot', schema: ProjectSnapshotSchema },
+      { name: 'PmChat', schema: PmChatSchema },
     ]),
   ],
   providers: [
@@ -41,11 +45,13 @@ import { pmConfig } from '@infrastructure/project-manager/pm.config';
       useClass: MongoProjectSnapshotRepository,
     },
     { provide: PM_AI_SERVICE, useClass: AnthropicProjectManagerService },
+    { provide: PM_CHAT_REGISTRY, useClass: MongoPmChatRegistry },
     RefreshProjectSnapshotUseCase,
     AnswerProjectQuestionUseCase,
   ],
   exports: [
     PM_CONFIG,
+    PM_CHAT_REGISTRY,
     PM_AI_SERVICE,
     RefreshProjectSnapshotUseCase,
     AnswerProjectQuestionUseCase,

@@ -25,6 +25,10 @@ import {
 } from '@application/project-manager/pm.config.interface';
 import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
+import {
+  IPmChatRegistry,
+  PM_CHAT_REGISTRY,
+} from '@application/project-manager/pm-chat-registry.interface';
 
 // "Оксана @oksana" — whatever Telegram gave us, falling back to the numeric id
 const authorLabel = (from: {
@@ -40,6 +44,17 @@ const authorLabel = (from: {
 
 const FALLBACK_MESSAGE = 'Что-то пошло не так 😢';
 const PM_MODE = 'pm';
+// Commands the bot answers in a group even without an @mention
+const BOT_COMMANDS = ['/pm_on', '/pm_off', '/status', '/refresh'];
+
+// "/status@my_bot args" → "/status" when addressed to this bot or to nobody
+const commandOf = (text: string, botUsername: string): string | null => {
+  const [first] = text.trim().split(/\s+/);
+  if (!first.startsWith('/')) return null;
+  const [name, target] = first.toLowerCase().split('@');
+  if (target && target !== botUsername.toLowerCase()) return null;
+  return name;
+};
 const STATUS_QUESTION =
   'How are we doing? Give the release verdict, what each person should focus on today, and the top risks.';
 const ERROR_PREFIX = 'ERROR: ';
@@ -62,12 +77,19 @@ export class HandleTelegramMessageUseCase {
     private readonly pmConfig?: IPmConfig,
     @Optional() private readonly pmAnswer?: AnswerProjectQuestionUseCase,
     @Optional() private readonly pmRefresh?: RefreshProjectSnapshotUseCase,
+    @Optional()
+    @Inject(PM_CHAT_REGISTRY)
+    private readonly pmChats?: IPmChatRegistry,
   ) {}
 
   // Project data only ever reaches chats the owner listed; any other group
   // gets the persona, which has no access to it.
-  private isPmChat(chatId: number): boolean {
-    return Boolean(this.pmAnswer && this.pmConfig?.chatIds.includes(chatId));
+  private async isPmChat(chatId: number): Promise<boolean> {
+    if (!this.pmAnswer) return false;
+    if (this.pmConfig?.chatIds.includes(chatId)) return true;
+    return this.pmChats
+      ? this.pmChats.isEnabled(chatId).catch(() => false)
+      : false;
   }
 
   async execute(msg: IncomingTelegramMessage): Promise<void> {
@@ -83,19 +105,27 @@ export class HandleTelegramMessageUseCase {
 
     const botInfo = await this.telegram.getBotInfo();
 
+    const command = commandOf(text, botInfo.username);
+
     if (isGroup) {
       const isMentioned = text
         .toLowerCase()
         .includes(`@${botInfo.username.toLowerCase()}`);
       const isReply = msg.replyToBotId === botInfo.id;
-      if (!isMentioned && !isReply) return;
+      const isOurCommand = command !== null && BOT_COMMANDS.includes(command);
+      if (!isMentioned && !isReply && !isOurCommand) return;
+    }
+
+    if (command === '/pm_on' || command === '/pm_off') {
+      await this.togglePmMode(msg, command === '/pm_on', isGroup);
+      return;
     }
 
     const cleanText = text
       .replace(new RegExp(`@${botInfo.username}`, 'gi'), '')
       .trim();
 
-    if (this.isPmChat(chatId)) {
+    if (await this.isPmChat(chatId)) {
       await this.handleAsProjectManager(msg, cleanText || text);
       return;
     }
@@ -117,6 +147,42 @@ export class HandleTelegramMessageUseCase {
         .catch(() => undefined);
       await this.saveLog(msg, ERROR_PREFIX + (error as Error).message).catch(
         (logError) => this.logger.error(logError),
+      );
+    }
+  }
+
+  // Only the owner can open project data to a chat. Anyone else asking gets
+  // no reply, so the command does not advertise itself.
+  private async togglePmMode(
+    msg: IncomingTelegramMessage,
+    on: boolean,
+    isGroup: boolean,
+  ): Promise<void> {
+    if (
+      msg.from.id !== this.config.ownerId ||
+      !this.pmChats ||
+      !this.pmAnswer
+    ) {
+      return;
+    }
+    if (!isGroup) {
+      await this.telegram.sendMessage(
+        msg.chatId,
+        'Эта команда для группы: напишите /pm_on в чате команды.',
+      );
+      return;
+    }
+    if (on) {
+      await this.pmChats.enable(msg.chatId, msg.chatTitle);
+      await this.telegram.sendMessage(
+        msg.chatId,
+        'Режим менеджера проекта включён в этом чате. Спросите /status или упомяните меня с вопросом; по будням утром пришлю сводку.',
+      );
+    } else {
+      await this.pmChats.disable(msg.chatId);
+      await this.telegram.sendMessage(
+        msg.chatId,
+        'Режим менеджера проекта выключен в этом чате.',
       );
     }
   }
