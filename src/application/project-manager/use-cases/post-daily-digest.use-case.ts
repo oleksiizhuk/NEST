@@ -43,6 +43,8 @@ export class PostDailyDigestUseCase {
   // Always rebuilds the snapshot first: the digest is the morning's source
   // of truth, and its prompt warms the cache for the questions that follow.
   async execute(now = new Date()): Promise<{ posted: boolean }> {
+    // Refresh + digest share one function run; keep them inside its limit
+    const deadline = Date.now() + 250_000;
     const snapshot = await this.refresh.execute(now);
     const targets = new Set(await this.chats.digestChats().catch(() => []));
     if (this.config.digestChatId !== null)
@@ -59,6 +61,7 @@ export class PostDailyDigestUseCase {
         now,
         this.config.releaseDate,
       )}\n\n${DIGEST_REQUEST}`,
+      deadline,
     });
     for (const chatId of targets) {
       // One unreachable chat (bot removed) must not stop the others

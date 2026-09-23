@@ -31,6 +31,12 @@ export interface ToolContext {
   requesterId: number;
   // Filled when this turn stored a proposal; one per turn
   proposal: PendingAction | null;
+  // Taken synchronously by the first propose_* call of the turn, so tool
+  // calls running in parallel cannot both store a proposal
+  reserved?: boolean;
+  // Set when the turn gave up on its tools (timeout or final answer); a
+  // proposal finishing after that is discarded, never left pending unseen
+  closed?: boolean;
 }
 
 const ACTION_TTL_MS = 10 * 60_000;
@@ -57,9 +63,14 @@ export const pickOne = (
   };
 };
 
+const describeRef = (r: NamedRef): string => {
+  const extra = [r.type, r.city].filter(Boolean).join(', ');
+  return `${r.name}${extra ? ` (${extra})` : ''}`;
+};
+
 const list = (refs: NamedRef[]): string =>
   refs.length
-    ? refs.map((r) => `- ${r.name} (id ${r.id})`).join('\n')
+    ? refs.map((r) => `- ${describeRef(r)} (id ${r.id})`).join('\n')
     : '(nothing found)';
 
 export class PmToolbox {
@@ -355,7 +366,7 @@ export class PmToolbox {
         );
       }
       case 'propose_create_brand':
-        return this.proposeBrand(input, ctx);
+        return this.proposing(ctx, () => this.proposeBrand(input, ctx));
       case 'staging_get_brand': {
         const { name: tierName, admin } = this.admin(input.tier);
         const brand = await this.resolveBrand(admin, str(input.brand, 100));
@@ -377,13 +388,15 @@ export class PmToolbox {
         );
       }
       case 'propose_brand_action':
-        return this.proposeBrandAction(input, ctx);
+        return this.proposing(ctx, () => this.proposeBrandAction(input, ctx));
       case 'propose_update_store':
-        return this.proposeStoreUpdate(input, ctx);
+        return this.proposing(ctx, () => this.proposeStoreUpdate(input, ctx));
       case 'propose_create_property':
-        return this.proposeProperty(input, ctx);
+        return this.proposing(ctx, () => this.proposeProperty(input, ctx));
       case 'propose_property_action':
-        return this.proposePropertyAction(input, ctx);
+        return this.proposing(ctx, () =>
+          this.proposePropertyAction(input, ctx),
+        );
       default:
         throw new Error(`Unknown tool ${name}`);
     }
@@ -407,19 +420,52 @@ export class PmToolbox {
     return { name, admin: this.targets.target(name) };
   }
 
-  private store(
+  private async store(
     action: Omit<
       PendingAction,
       'id' | 'status' | 'result' | 'chatId' | 'requesterId' | 'expiresAt'
     >,
     ctx: ToolContext,
   ): Promise<PendingAction> {
-    return this.actions.create({
+    if (ctx.closed)
+      throw new Error('Too late: this turn is over, nothing was proposed.');
+    const stored = await this.actions.create({
       ...action,
       chatId: ctx.chatId,
       requesterId: ctx.requesterId,
       expiresAt: new Date(Date.now() + ACTION_TTL_MS),
     });
+    if (ctx.closed) {
+      // The turn timed out or answered while this was being written
+      await this.actions.cancel(stored.id, ctx.chatId);
+      throw new Error(
+        'Too late: this turn is over, the proposal was discarded.',
+      );
+    }
+    return stored;
+  }
+
+  private reserve(ctx: ToolContext): void {
+    if (ctx.closed) throw new Error('This turn is over; no more proposals.');
+    if (ctx.reserved || ctx.proposal) {
+      throw new Error(
+        'Only one proposal per message; another one is already being prepared.',
+      );
+    }
+    ctx.reserved = true;
+  }
+
+  // Frees the slot when a propose_* call ended without storing anything
+  // (a name to clarify, an error), so the model can try again this turn
+  private async proposing(
+    ctx: ToolContext,
+    work: () => Promise<string>,
+  ): Promise<string> {
+    try {
+      return await work();
+    } finally {
+      if (!ctx.proposal) ctx.reserved = false;
+    }
   }
 
   private receipt(action: PendingAction): string {
@@ -435,10 +481,7 @@ export class PmToolbox {
     ctx: ToolContext,
   ): Promise<string> {
     const { name: tierName, admin } = this.admin(input.tier);
-    if (ctx.proposal)
-      throw new Error(
-        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
-      );
+    this.reserve(ctx);
     const brand = await this.resolveBrand(admin, str(input.brand, 100));
     if (typeof brand === 'string') return `NOT PROPOSED — ${brand}`;
     const details = await admin.getBrand(brand.id);
@@ -540,10 +583,7 @@ export class PmToolbox {
     ctx: ToolContext,
   ): Promise<string> {
     const { name: tierName, admin } = this.admin(input.tier);
-    if (ctx.proposal)
-      throw new Error(
-        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
-      );
+    this.reserve(ctx);
     const type = str(input.type, 10) as PropertyType;
     if (!['mall', 'outlet', 'plaza'].includes(type))
       throw new Error('type must be mall, outlet or plaza');
@@ -556,11 +596,20 @@ export class PmToolbox {
     const lng = typeof input.longitude === 'number' ? input.longitude : null;
     if ((lat === null) !== (lng === null))
       throw new Error('give both latitude and longitude, or neither');
-    const existing = (await admin.findMalls(nameEn)).find((p) =>
-      p.name.toLowerCase().startsWith(nameEn.toLowerCase()),
+    // The API refuses the same type + name in the same city; anything else
+    // (another type, another city) is allowed
+    const same = (a?: string, b?: string) =>
+      !a || !b || a.trim().toLowerCase() === b.trim().toLowerCase();
+    const existing = (await admin.findMalls(nameEn)).find(
+      (p) =>
+        p.name.trim().toLowerCase() === nameEn.toLowerCase() &&
+        same(p.type, type) &&
+        same(p.city, city),
     );
     if (existing) {
-      return `NOT PROPOSED — "${existing.name}" (id ${existing.id}) already exists on ${tierName}. Ask whether a different name is wanted.`;
+      return `NOT PROPOSED — "${describeRef(existing)}" (id ${
+        existing.id
+      }) already exists on ${tierName}. Ask whether a different name is wanted.`;
     }
     const payload = {
       tier: tierName,
@@ -595,10 +644,7 @@ export class PmToolbox {
     ctx: ToolContext,
   ): Promise<string> {
     const { name: tierName, admin } = this.admin(input.tier);
-    if (ctx.proposal)
-      throw new Error(
-        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
-      );
+    this.reserve(ctx);
     const action = str(input.action, 20);
     if (!['publish', 'unpublish'].includes(action))
       throw new Error('action must be publish or unpublish');
@@ -655,11 +701,7 @@ export class PmToolbox {
     ctx: ToolContext,
   ): Promise<string> {
     const { name: tierName, admin } = this.admin(input.tier);
-    if (ctx.proposal) {
-      throw new Error(
-        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
-      );
-    }
+    this.reserve(ctx);
     const action = str(input.action, 20);
     if (!['publish', 'unpublish', 'delete'].includes(action)) {
       throw new Error('action must be publish, unpublish or delete');
@@ -677,17 +719,21 @@ export class PmToolbox {
     const summary = `${verb} "${details.name}" (id ${
       details.id
     }) на ${tierName.toUpperCase()} (${admin.describeTarget()}).`;
-    const stored = await this.actions.create({
-      kind: `${action}_brand` as
-        | 'publish_brand'
-        | 'unpublish_brand'
-        | 'delete_brand',
-      payload: { tier: tierName, brandId: details.id, brandName: details.name },
-      summary,
-      chatId: ctx.chatId,
-      requesterId: ctx.requesterId,
-      expiresAt: new Date(Date.now() + ACTION_TTL_MS),
-    });
+    const stored = await this.store(
+      {
+        kind: `${action}_brand` as
+          | 'publish_brand'
+          | 'unpublish_brand'
+          | 'delete_brand',
+        payload: {
+          tier: tierName,
+          brandId: details.id,
+          brandName: details.name,
+        },
+        summary,
+      },
+      ctx,
+    );
     ctx.proposal = stored;
     return (
       `Proposal ${stored.id} stored, NOT executed. It awaits confirmation by an authorised person ` +
@@ -701,11 +747,7 @@ export class PmToolbox {
     ctx: ToolContext,
   ): Promise<string> {
     const { name: tierName, admin } = this.admin(input.tier);
-    if (ctx.proposal) {
-      throw new Error(
-        `Only one proposal per message; ${ctx.proposal.id} is already waiting.`,
-      );
-    }
+    this.reserve(ctx);
     const nameEn = str(input.name_en, 80);
     const nameAr = str(input.name_ar, 80);
     if (!nameEn || !nameAr) throw new Error('name_en and name_ar are required');
@@ -767,14 +809,14 @@ export class PmToolbox {
           .join(', ') || 'этаж, крыло и вход не указаны'
       },` +
       ` ежедневно ${open}–${close}.`;
-    const action = await this.actions.create({
-      kind: 'create_brand',
-      payload,
-      summary,
-      chatId: ctx.chatId,
-      requesterId: ctx.requesterId,
-      expiresAt: new Date(Date.now() + ACTION_TTL_MS),
-    });
+    const action = await this.store(
+      {
+        kind: 'create_brand',
+        payload,
+        summary,
+      },
+      ctx,
+    );
     ctx.proposal = action;
     return (
       `Proposal ${action.id} stored, NOT executed. It awaits confirmation by an authorised person ` +

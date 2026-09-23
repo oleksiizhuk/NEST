@@ -123,13 +123,21 @@ export class AnthropicProjectManagerService
         this.digestEffort,
         DIGEST_MAX_TOKENS,
       ),
-      Date.now() + DEFAULT_BUDGET_MS,
+      request.deadline ?? Date.now() + DEFAULT_BUDGET_MS,
       'digest',
     );
     return this.textOf(response) || PM_UNAVAILABLE_REPLY;
   }
 
   async answer(request: PmRequest): Promise<string> {
+    try {
+      return await this.loop(request);
+    } finally {
+      request.tools?.close?.();
+    }
+  }
+
+  private async loop(request: PmRequest): Promise<string> {
     const deadline = request.deadline ?? Date.now() + DEFAULT_BUDGET_MS;
     const params = this.buildParams(request, this.chatEffort, CHAT_MAX_TOKENS);
     const messages = params.messages;
@@ -197,6 +205,9 @@ export class AnthropicProjectManagerService
               content: output,
             };
           } catch (error) {
+            // A timed-out tool keeps running; stop it from storing anything
+            if (String((error as Error)?.message) === 'timed out')
+              tools.close?.();
             return {
               type: 'tool_result' as const,
               tool_use_id: call.id,
