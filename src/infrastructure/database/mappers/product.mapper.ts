@@ -4,7 +4,9 @@ import { ProductDocument } from '@infrastructure/database/schemas/product.schema
 export class ProductMapper {
   static toDomain(doc: ProductDocument): Product {
     return new Product(
-      doc.id,
+      // The schema's own `id` string is legacy data; the Mongo _id is what
+      // findById and the cart's `items.item` reference use.
+      doc._id ? String(doc._id) : doc.id,
       doc.age,
       doc.type,
       doc.imageUrl,

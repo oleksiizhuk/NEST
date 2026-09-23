@@ -5,13 +5,12 @@ import {
   UseGuards,
   Headers,
   Get,
-  Request,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { LoginHttpDto } from '@infrastructure/http/auth/dto/login.dto';
 import { RegisterHttpDto } from '@infrastructure/http/auth/dto/register.dto';
-import { LocalAuthGuard } from '@infrastructure/http/auth/guards/local-auth.guard';
 import { JwtAuthGuard } from '@infrastructure/http/auth/guards/jwt-auth.guard';
+import { CurrentUserEmail } from '@infrastructure/http/auth/auth-user.decorator';
 import { LoginUseCase } from '@application/auth/use-cases/login.use-case';
 import { RegisterUseCase } from '@application/auth/use-cases/register.use-case';
 import { RefreshTokenUseCase } from '@application/auth/use-cases/refresh-token.use-case';
@@ -27,26 +26,38 @@ export class AuthController {
     private readonly getProfileUseCase: GetProfileUseCase,
   ) {}
 
-  @UseGuards(LocalAuthGuard)
   @Post('login')
   logIn(@Body() dto: LoginHttpDto) {
     return this.loginUseCase.execute(dto);
   }
 
   @Post('registration')
-  async registration(@Body() dto: RegisterHttpDto) {
-    return this.registerUseCase.execute(dto);
+  registration(
+    @Body() { email, password, firstName, lastName, age }: RegisterHttpDto,
+  ) {
+    return this.registerUseCase.execute({
+      email,
+      password,
+      firstName,
+      lastName,
+      age,
+    });
   }
 
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @Get('profile')
-  profile(@Request() req) {
-    return this.getProfileUseCase.execute(req.user.email.email);
+  profile(@CurrentUserEmail() email: string) {
+    return this.getProfileUseCase.execute(email);
   }
 
+  // Send the refresh token as `Authorization: Bearer <refreshToken>`.
+  @ApiBearerAuth()
   @Post('refresh-token')
-  refreshToken(@Headers() headers: any) {
-    const { authorization } = headers;
-    return this.refreshTokenUseCase.execute(authorization.split(' ')[1]);
+  refreshToken(@Headers('authorization') authorization?: string) {
+    const [scheme, token] = (authorization ?? '').split(' ');
+    return this.refreshTokenUseCase.execute(
+      scheme?.toLowerCase() === 'bearer' ? token : undefined,
+    );
   }
 }

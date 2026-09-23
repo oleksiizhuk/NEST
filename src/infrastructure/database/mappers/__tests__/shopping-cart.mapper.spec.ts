@@ -48,13 +48,27 @@ describe('ShoppingCartMapper', () => {
       expect(cart.items).toHaveLength(0);
     });
 
-    it('defaults price fields to 0 when undefined', () => {
-      const noPrice = {
+    it('recomputes totals from the items instead of trusting stored ones', () => {
+      const stale = {
         ...mockDoc,
-        price: undefined,
+        price: { price: 1, discount: 0, finalPrice: 1 },
       } as unknown as ShoppingCartDocument;
-      const cart = ShoppingCartMapper.toDomain(noPrice);
-      expect(cart.price).toEqual({ price: 0, discount: 0, finalPrice: 0 });
+      const cart = ShoppingCartMapper.toDomain(stale);
+      expect(cart.price).toEqual({
+        price: 1000,
+        discount: 100,
+        finalPrice: 900,
+      });
+    });
+
+    it('drops lines whose product no longer exists', () => {
+      const orphan = {
+        ...mockDoc,
+        items: [{ count: 1, item: null }, ...mockDoc.items],
+      } as unknown as ShoppingCartDocument;
+      const cart = ShoppingCartMapper.toDomain(orphan);
+      expect(cart.items).toHaveLength(1);
+      expect(cart.price.finalPrice).toBe(900);
     });
   });
 });

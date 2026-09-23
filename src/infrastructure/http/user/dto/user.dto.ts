@@ -4,6 +4,8 @@ import {
   IsNotEmpty,
   MinLength,
   IsNumber,
+  IsEmail,
+  MaxLength,
   Max,
   Min,
 } from 'class-validator';
@@ -26,13 +28,14 @@ export class UserHttpDto {
   @Min(14, { message: 'min age is 14' })
   age: number;
 
-  @IsString()
-  @MinLength(4)
+  @IsEmail()
   @ApiProperty()
   email: string;
 
   @IsString()
   @IsNotEmpty()
+  @MinLength(8)
+  @MaxLength(72)
   @ApiProperty()
   password: string;
 }

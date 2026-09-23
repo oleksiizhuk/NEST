@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import {
   IProductRepository,
   PRODUCT_REPOSITORY,
@@ -26,6 +26,10 @@ export class AddProductUseCase {
   ) {}
 
   async execute(dto: AddProductDto): Promise<Product> {
+    // discount is an absolute amount taken off price (see calculatePrice).
+    if (dto.discount > dto.price) {
+      throw new BadRequestException('discount cannot exceed price');
+    }
     return this.productRepository.create(dto);
   }
 }

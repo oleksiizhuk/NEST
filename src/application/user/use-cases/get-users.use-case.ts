@@ -3,7 +3,7 @@ import {
   IUserRepository,
   USER_REPOSITORY,
 } from '@domain/user/user.repository.interface';
-import { User } from '@domain/user/user.entity';
+import { PublicUser } from '@domain/user/user.entity';
 
 @Injectable()
 export class GetUsersUseCase {
@@ -12,7 +12,8 @@ export class GetUsersUseCase {
     private readonly userRepository: IUserRepository,
   ) {}
 
-  async execute(): Promise<User[]> {
-    return this.userRepository.findAll();
+  async execute(): Promise<PublicUser[]> {
+    const users = await this.userRepository.findAll();
+    return users.map((user) => user.toPublicProfile());
   }
 }

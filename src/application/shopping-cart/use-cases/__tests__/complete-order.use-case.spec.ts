@@ -1,96 +1,51 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { CompleteOrderUseCase } from '@application/shopping-cart/use-cases/complete-order.use-case';
-import { SHOPPING_CART_REPOSITORY } from '@domain/shopping-cart/shopping-cart.repository.interface';
-import { USER_REPOSITORY } from '@domain/user/user.repository.interface';
 import { User } from '@domain/user/user.entity';
-import { ShoppingCart } from '@domain/shopping-cart/shopping-cart.entity';
 import { Product } from '@domain/product/product.entity';
+import { ShoppingCart } from '@domain/shopping-cart/shopping-cart.entity';
 
-const mockUser = new User(
-  'u1',
-  'John',
-  'Doe',
-  30,
-  'john@test.com',
-  'pass',
-  'cart-1',
-);
-const mockUserNoCart = new User(
-  'u1',
-  'John',
-  'Doe',
-  30,
-  'john@test.com',
-  'pass',
-  null,
-);
-const product = new Product(
-  'p1',
-  0,
-  'phone',
-  '',
-  'iPhone',
-  '',
-  999,
-  0,
-  '',
-  '',
-  '',
-);
-const cartWithItems = new ShoppingCart(
-  'cart-1',
-  [{ count: 1, item: product }],
-  { price: 999, discount: 0, finalPrice: 999 },
-);
-const emptyCart = new ShoppingCart('cart-1', [], {
-  price: 0,
-  discount: 0,
-  finalPrice: 0,
-});
+const withCart = () =>
+  new User('u1', 'John', 'Doe', 30, 'john@test.com', 'h', 'cart-1');
+const noCart = () =>
+  new User('u1', 'John', 'Doe', 30, 'john@test.com', 'h', null);
+const product = (id: string, price: number, discount = 0) =>
+  new Product(id, 0, 'phone', '', id, '', price, discount, '', '', '');
+const emptyCart = () =>
+  new ShoppingCart('cart-1', [], { price: 0, discount: 0, finalPrice: 0 });
 
 describe('CompleteOrderUseCase', () => {
+  const cartRepo = { findById: jest.fn(), delete: jest.fn() };
+  const userRepo = { findByEmail: jest.fn(), updateShoppingCart: jest.fn() };
   let useCase: CompleteOrderUseCase;
-  const mockCartRepo = { findById: jest.fn() };
-  const mockUserRepo = {
-    findByEmail: jest.fn(),
-    updateShoppingCart: jest.fn(),
-  };
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        CompleteOrderUseCase,
-        { provide: SHOPPING_CART_REPOSITORY, useValue: mockCartRepo },
-        { provide: USER_REPOSITORY, useValue: mockUserRepo },
-      ],
-    }).compile();
-    useCase = module.get(CompleteOrderUseCase);
+  beforeEach(() => {
     jest.clearAllMocks();
+    useCase = new CompleteOrderUseCase(cartRepo as any, userRepo as any);
   });
 
-  it('completes order and clears cart from user', async () => {
-    mockUserRepo.findByEmail.mockResolvedValue(mockUser);
-    mockCartRepo.findById.mockResolvedValue(cartWithItems);
-    mockUserRepo.updateShoppingCart.mockResolvedValue({
-      ...mockUser,
-      shoppingCartId: null,
-    });
+  it('detaches the cart from the user and deletes it', async () => {
+    userRepo.findByEmail.mockResolvedValue(withCart());
+    const cart = emptyCart();
+    cart.addItem(product('p1', 10), 1);
+    cartRepo.findById.mockResolvedValue(cart);
 
     await useCase.execute('john@test.com');
-    expect(mockUserRepo.updateShoppingCart).toHaveBeenCalledWith('u1', null);
+
+    expect(userRepo.updateShoppingCart).toHaveBeenCalledWith('u1', null);
+    expect(cartRepo.delete).toHaveBeenCalledWith('cart-1');
   });
 
-  it('throws BadRequestException when user has no cart', async () => {
-    mockUserRepo.findByEmail.mockResolvedValue(mockUserNoCart);
+  it('rejects an empty cart', async () => {
+    userRepo.findByEmail.mockResolvedValue(withCart());
+    cartRepo.findById.mockResolvedValue(emptyCart());
     await expect(useCase.execute('john@test.com')).rejects.toThrow(
       BadRequestException,
     );
+    expect(cartRepo.delete).not.toHaveBeenCalled();
   });
 
-  it('throws BadRequestException when cart is empty', async () => {
-    mockUserRepo.findByEmail.mockResolvedValue(mockUser);
-    mockCartRepo.findById.mockResolvedValue(emptyCart);
+  it('rejects a user without a cart', async () => {
+    userRepo.findByEmail.mockResolvedValue(noCart());
     await expect(useCase.execute('john@test.com')).rejects.toThrow(
       BadRequestException,
     );

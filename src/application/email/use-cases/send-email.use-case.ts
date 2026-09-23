@@ -3,6 +3,7 @@ import {
   IEmailService,
   EMAIL_SERVICE,
 } from '@application/email/email.service.interface';
+import { assertOwnRecipient } from '@application/email/assert-own-recipient';
 
 @Injectable()
 export class SendEmailUseCase {
@@ -10,7 +11,12 @@ export class SendEmailUseCase {
     @Inject(EMAIL_SERVICE) private readonly emailService: IEmailService,
   ) {}
 
-  async execute(email: string, message: string): Promise<unknown> {
+  async execute(
+    requesterEmail: string,
+    email: string,
+    message: string,
+  ): Promise<unknown> {
+    assertOwnRecipient(requesterEmail, email);
     return this.emailService.sendMail(email, message);
   }
 }

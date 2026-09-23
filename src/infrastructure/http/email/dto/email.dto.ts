@@ -1,20 +1,19 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString, MaxLength } from 'class-validator';
 
 export class EmailDto {
-  @IsString()
-  @MinLength(4)
+  @IsEmail()
   @ApiProperty()
   email: string;
 
   @IsString()
+  @MaxLength(5000)
   @ApiProperty()
   message: string;
 }
 
 export class EmailWithTemplateDto {
-  @IsString()
-  @MinLength(4)
+  @IsEmail()
   @ApiProperty()
   email: string;
 }

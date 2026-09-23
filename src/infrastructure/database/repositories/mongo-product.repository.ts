@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { isValidObjectId, Model, Types } from 'mongoose';
 import { IProductRepository } from '@domain/product/product.repository.interface';
 import { Product, IPaginationProduct } from '@domain/product/product.entity';
 import { ProductDocument } from '@infrastructure/database/schemas/product.schema';
@@ -32,12 +32,14 @@ export class MongoProductRepository implements IProductRepository {
   }
 
   async findById(id: string): Promise<Product | null> {
+    if (!isValidObjectId(id)) return null;
     const doc = await this.productModel.findById(id).exec();
     return doc ? ProductMapper.toDomain(doc) : null;
   }
 
   async create(data: Omit<Product, 'id'>): Promise<Product> {
-    const doc = new this.productModel(data);
+    const _id = new Types.ObjectId();
+    const doc = new this.productModel({ ...data, _id, id: _id.toString() });
     await doc.save();
     return ProductMapper.toDomain(doc);
   }

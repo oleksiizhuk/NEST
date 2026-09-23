@@ -37,12 +37,12 @@ src/
 │   │   ├── product.entity.ts        # Product class + IPaginationProduct
 │   │   └── product.repository.interface.ts
 │   └── shopping-cart/
-│       ├── shopping-cart.entity.ts  # ShoppingCart + calculatePrice() static method
+│       ├── shopping-cart.entity.ts  # ShoppingCart: addItem() + calculatePrice()
 │       └── shopping-cart.repository.interface.ts
 │
 ├── application/                     # Use cases — one file per operation
 │   ├── user/use-cases/              # GetUsers, CreateUser, GetById, GetByEmail, Update, Delete, UpdateShoppingCart
-│   ├── auth/use-cases/              # Login, Register, RefreshToken, GetProfile
+│   ├── auth/                        # IPasswordHasher, ITokenService + use-cases: Login, Register, RefreshToken, GetProfile
 │   ├── product/use-cases/           # GetProducts, GetProductById, AddProduct
 │   ├── shopping-cart/use-cases/    # CreateCart, AddItem, GetCart, CompleteOrder
 │   └── mcp/                         # ICodeAssistantService + AskClaudeUseCase
@@ -61,8 +61,7 @@ src/
 │       ├── shopping-cart/          # Controller + Module
 │       └── mcp/                     # POST /mcp (MCP Streamable HTTP) + bearer guard + Module
 │
-├── route/app/app.module.ts          # Root module — imports infrastructure modules
-└── route/email/                     # Email module (not yet migrated to Clean Architecture)
+└── route/app/app.module.ts          # Root module — imports infrastructure modules
 ```
 
 ### DI Tokens
@@ -99,7 +98,7 @@ Binding happens in each module's `providers`:
 Controllers only handle HTTP concerns (parsing request, calling use case, returning response). No business logic in controllers.
 
 ### Business logic in domain
-`ShoppingCart.calculatePrice(items)` lives in the entity, not the repository.
+`ShoppingCart.addItem()` and `calculatePrice(items)` live in the entity, not the repository.
 
 ---
 
@@ -134,9 +133,11 @@ PORT=3000
 
 ## Authentication Flow
 
-- **Local strategy** (`POST /auth/login`) → `LoginUseCase` validates credentials, returns tokens
-- **JWT strategy** (`Authorization: Bearer <token>`) → guards protected routes
-- JWT payload: `{ email: string }` — extractable from `req.user.email.email` in controllers (nested due to strategy wrapping)
+- `POST /auth/login` → `LoginUseCase` checks the password through `IPasswordHasher` (bcrypt) and returns `{ user, accessToken, refreshToken }`. `user` is always `toPublicProfile()`, never the password. Accounts still holding a plain-text password are rehashed on their first successful login.
+- Tokens come from `ITokenService` (`JwtTokenService`): payload `{ sub, email, typ }`, where `sub` is the user id and `typ` is `access` (24h) or `refresh` (100h). A token is honoured only while that user id still owns the email, so deleting an account or changing its email invalidates its tokens. `JWT_SECRET` is required; the app refuses to start without it.
+- `JwtAuthGuard` (`JwtStrategy`) accepts only `typ: 'access'` tokens and sets `req.user = { email }`. Read it in controllers with the `@CurrentUserEmail()` decorator.
+- `POST /auth/refresh-token` takes the refresh token as `Authorization: Bearer <refreshToken>`, verifies it and returns a new pair.
+- A user may `PATCH` / `DELETE` only their own `/user/:id` (403 otherwise). The global `ValidationPipe` rejects body fields the DTO doesn't declare.
 
 ---
 
@@ -147,19 +148,21 @@ PORT=3000
 | POST | `/auth/login` | — | Login, returns accessToken + refreshToken |
 | POST | `/auth/registration` | — | Register new user |
 | GET | `/auth/profile` | JWT | Get current user profile |
-| POST | `/auth/refresh-token` | — | Decode/refresh token |
+| POST | `/auth/refresh-token` | Bearer refresh token | New access + refresh token pair |
 | GET | `/user` | JWT | List all users |
 | POST | `/user` | — | Create user |
 | GET | `/user/:id` | JWT | Get user by ID |
-| PATCH | `/user/:id` | JWT | Update user |
-| DELETE | `/user/:id` | JWT | Delete user |
+| PATCH | `/user/:id` | JWT, own account | Update user (partial) |
+| DELETE | `/user/:id` | JWT, own account | Delete user |
 | GET | `/product?page=1&limit=10` | — | Paginated products |
-| POST | `/product` | — | Add product |
-| GET | `/product/:id` | — | Get product by ID |
-| POST | `/shoppingCart/createShoppingCart` | JWT | Create cart for user |
-| POST | `/shoppingCart/addItem` | JWT | Add item `{ itemID, count }` |
+| POST | `/product` | JWT | Add product (`discount` is an amount, ≤ `price`) |
+| GET | `/product/:id` | — | Get product by ID (the Mongo `_id`, also used as `itemID` in the cart) |
+| POST | `/shoppingCart/createShoppingCart` | JWT | Create cart for user, or return the existing one |
+| POST | `/shoppingCart/addItem` | JWT | Add item `{ itemID, count }` (count 1–1000) |
 | GET | `/shoppingCart` | JWT | Get user's cart |
-| POST | `/shoppingCart/completeOrder` | JWT | Complete order, clear cart |
+| POST | `/shoppingCart/completeOrder` | JWT | Complete order, delete the cart |
+| POST | `/email/send`, `/email/sendEmailTemple` | JWT | Email the caller's own address only |
+| POST | `/email/convert` | JWT | OCR an uploaded image (`file`, ≤ 5 MB) |
 | POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_advice { prompt, context?, model? }` |
 | GET | `/api/docs` | — | Swagger UI |
 
@@ -198,6 +201,4 @@ Skills, agents and hooks for Claude Code are in `.claude/`; the catalog is `.cla
 
 ## Legacy Code
 
-`src/route/` still contains the old modules (auth, user, product, shoppingCart). They are **no longer used** — `app.module.ts` now imports from `src/infrastructure/http/`. The old files can be cleaned up once confirmed stable.
-
-`src/route/email/` is still active — it has not been migrated to Clean Architecture yet.
+The old `src/route/` modules have been removed; only `src/route/app/` (the root module) remains. Email now lives in `src/application/email/` and `src/infrastructure/http/email/`.

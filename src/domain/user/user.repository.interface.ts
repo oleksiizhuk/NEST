@@ -10,7 +10,10 @@ export interface IUserRepository {
   update(
     id: string,
     data: Partial<Omit<User, 'id' | 'toPublicProfile'>>,
-  ): Promise<User>;
-  delete(id: string): Promise<User>;
-  updateShoppingCart(userId: string, cartId: string | null): Promise<User>;
+  ): Promise<User | null>;
+  delete(id: string): Promise<User | null>;
+  updateShoppingCart(
+    userId: string,
+    cartId: string | null,
+  ): Promise<User | null>;
 }

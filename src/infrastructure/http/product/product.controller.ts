@@ -1,4 +1,13 @@
-import { Controller, Get, Query, Post, Body } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
+import { JwtAuthGuard } from '@infrastructure/http/auth/guards/jwt-auth.guard';
 import { ApiBearerAuth, ApiBody, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { ProductDTO } from '@infrastructure/http/product/dto/product.dto';
 import { GetProductsUseCase } from '@application/product/use-cases/get-products.use-case';
@@ -28,13 +37,13 @@ export class ProductController {
     return this.getProductsUseCase.execute(pageNumber, limitNumber);
   }
 
-  @ApiBearerAuth()
   @Get('/:id')
-  async getByID(@Query('id') id: string) {
+  async getByID(@Param('id') id: string) {
     return this.getProductByIdUseCase.execute(id);
   }
 
   @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @Post('/')
   @ApiBody({ type: ProductDTO })
   async addProduct(@Body() product: ProductDTO) {

@@ -11,6 +11,8 @@ import { GetUserByIdUseCase } from '@application/user/use-cases/get-user-by-id.u
 import { GetUserByEmailUseCase } from '@application/user/use-cases/get-user-by-email.use-case';
 import { UpdateUserUseCase } from '@application/user/use-cases/update-user.use-case';
 import { DeleteUserUseCase } from '@application/user/use-cases/delete-user.use-case';
+import { PASSWORD_HASHER } from '@application/auth/password-hasher.interface';
+import { BcryptPasswordHasher } from '@infrastructure/security/bcrypt-password-hasher';
 import { UpdateUserShoppingCartUseCase } from '@application/user/use-cases/update-user-shopping-cart.use-case';
 
 const userUseCases = [
@@ -31,8 +33,9 @@ const userUseCases = [
   controllers: [UserController],
   providers: [
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
+    { provide: PASSWORD_HASHER, useClass: BcryptPasswordHasher },
     ...userUseCases,
   ],
-  exports: [USER_REPOSITORY, ...userUseCases],
+  exports: [USER_REPOSITORY, PASSWORD_HASHER, ...userUseCases],
 })
 export class UserModule {}

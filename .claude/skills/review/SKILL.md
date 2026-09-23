@@ -22,7 +22,7 @@ Larger: launch these angles **in one message** as parallel `code-reviewer` agent
 | --- | --- |
 | Correctness | logic errors, wrong async/await, unhandled rejections, null/undefined paths, off-by-one in pagination |
 | Architecture | domain importing NestJS/Mongoose, business logic in controllers or repositories, use case skipping the repository interface, missing module wiring (`providers`/`exports`/`app.module.ts`) |
-| Security & data | a route that needs auth without `@UseGuards(AuthGuard('jwt'))`, DTO without validation decorators, secrets or URIs hardcoded instead of env, leaking `password` in a response (use `toPublicProfile()`), Mongo query built from raw input |
+| Security & data | a route that needs auth without `@UseGuards(JwtAuthGuard)`, a mutation that doesn't check the caller owns the resource, DTO without validation decorators, secrets or URIs hardcoded instead of env, leaking `password` in a response (use `toPublicProfile()`), Mongo query built from raw input |
 | Tests | changed behaviour without a spec in `__tests__/`, mocks that no longer match the interface |
 
 Each agent returns candidates with `file`, `line`, `severity` (high/medium/low), `summary`, `failure_scenario`. Pass half-sure ones on; the verify step judges them.

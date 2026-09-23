@@ -56,7 +56,7 @@ export class EmailingService implements IEmailService {
         to: email,
         subject: 'Testing Nest MailerModule',
         text: 'welcome',
-        html: `<b>${message}</b>`,
+        html: `<b>${Handlebars.escapeExpression(message)}</b>`,
       });
     } catch (e) {
       console.log('error', e);

@@ -10,8 +10,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBody, ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { JwtAuthGuard } from '@infrastructure/http/auth/guards/jwt-auth.guard';
+import { CurrentUserEmail } from '@infrastructure/http/auth/auth-user.decorator';
 import { UserHttpDto } from '@infrastructure/http/user/dto/user.dto';
+import { UpdateUserHttpDto } from '@infrastructure/http/user/dto/update-user.dto';
 import { GetUsersUseCase } from '@application/user/use-cases/get-users.use-case';
 import { CreateUserUseCase } from '@application/user/use-cases/create-user.use-case';
 import { GetUserByIdUseCase } from '@application/user/use-cases/get-user-by-id.use-case';
@@ -29,7 +31,7 @@ export class UserController {
     private readonly deleteUserUseCase: DeleteUserUseCase,
   ) {}
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('/')
   getUsers() {
@@ -42,25 +44,30 @@ export class UserController {
     return this.createUserUseCase.execute(dto);
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('/:id')
   getUserById(@Param('id') id: string) {
     return this.getUserByIdUseCase.execute(id);
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Patch('/:id')
-  patchUser(@Param('id') id: string, @Body() dto: UserHttpDto) {
-    return this.updateUserUseCase.execute(id, dto);
+  @ApiBody({ type: UpdateUserHttpDto })
+  patchUser(
+    @CurrentUserEmail() email: string,
+    @Param('id') id: string,
+    @Body() dto: UpdateUserHttpDto,
+  ) {
+    return this.updateUserUseCase.execute(email, id, dto);
   }
 
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Delete('/:id')
   @HttpCode(204)
-  delete(@Param('id') id: string) {
-    return this.deleteUserUseCase.execute(id);
+  async delete(@CurrentUserEmail() email: string, @Param('id') id: string) {
+    await this.deleteUserUseCase.execute(email, id);
   }
 }

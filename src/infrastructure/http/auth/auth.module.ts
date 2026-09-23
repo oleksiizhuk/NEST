@@ -3,10 +3,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from '@infrastructure/http/auth/auth.controller';
 import { JwtStrategy } from '@infrastructure/http/auth/strategies/jwt.strategy';
-import { LocalStrategy } from '@infrastructure/http/auth/strategies/local.strategy';
-import { jwtConstants } from '@infrastructure/http/auth/constants/constants';
-import { JWTGenerator } from '@infrastructure/http/auth/utils/jwt-generator';
+import { getJwtSecret } from '@infrastructure/http/auth/constants/constants';
+import { JwtTokenService } from '@infrastructure/http/auth/utils/jwt-token.service';
 import { UserModule } from '@infrastructure/http/user/user.module';
+import { TOKEN_SERVICE } from '@application/auth/token-service.interface';
 import { LoginUseCase } from '@application/auth/use-cases/login.use-case';
 import { RegisterUseCase } from '@application/auth/use-cases/register.use-case';
 import { RefreshTokenUseCase } from '@application/auth/use-cases/refresh-token.use-case';
@@ -16,16 +16,14 @@ import { GetProfileUseCase } from '@application/auth/use-cases/get-profile.use-c
   imports: [
     UserModule,
     PassportModule,
-    JwtModule.register({
-      secret: jwtConstants.secret,
-      signOptions: { expiresIn: '24h' },
+    JwtModule.registerAsync({
+      useFactory: () => ({ secret: getJwtSecret() }),
     }),
   ],
   controllers: [AuthController],
   providers: [
-    JWTGenerator,
+    { provide: TOKEN_SERVICE, useClass: JwtTokenService },
     JwtStrategy,
-    LocalStrategy,
     LoginUseCase,
     RegisterUseCase,
     RefreshTokenUseCase,

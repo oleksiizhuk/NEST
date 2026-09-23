@@ -32,7 +32,11 @@ export async function bootstrapServer(): Promise<express.Express> {
   app.use(express.urlencoded({ extended: true }));
 
   app.use(helmet(helmetConfig));
-  app.useGlobalPipes(new ValidationPipe());
+  // whitelist + forbidNonWhitelisted: a body field the DTO doesn't declare
+  // is rejected, so clients can't set internal fields such as shoppingCartId.
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }),
+  );
 
   // Open by default; set CORS_ORIGIN (comma-separated) to restrict the
   // browser-facing API to known front-ends.
