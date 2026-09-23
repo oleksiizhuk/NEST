@@ -12,7 +12,7 @@ import {
 // The short names an IDE picks from, resolved to Anthropic model ids.
 // Bump the ids here when a new generation ships.
 const MODEL_IDS: Record<AssistantModel, string> = {
-  opus: 'claude-opus-5',
+  opus: 'claude-opus-5-5',
   sonnet: 'claude-sonnet-5',
   fable: 'claude-fable-5-1',
 };

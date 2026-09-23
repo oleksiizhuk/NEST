@@ -49,7 +49,7 @@ describe('AnthropicCodeAssistantService', () => {
 
     expect(answer).toBe('use optional chaining');
     const request = mockStream.mock.calls[0][0] as any;
-    expect(request.model).toBe('claude-opus-5');
+    expect(request.model).toBe('claude-opus-5-5');
     expect(request.output_config).toEqual({ effort: 'high' });
     expect(request.messages).toEqual([
       {
@@ -94,7 +94,7 @@ describe('AnthropicCodeAssistantService', () => {
 
     expect(mockStream.mock.calls.map((c) => (c[0] as any).model)).toEqual([
       'claude-fable-5-1',
-      'claude-opus-5',
+      'claude-opus-5-5',
       'claude-sonnet-5',
     ]);
   });
