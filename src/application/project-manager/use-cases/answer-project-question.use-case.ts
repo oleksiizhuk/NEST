@@ -51,6 +51,8 @@ const ANSWER_BUDGET_MS = 240_000;
 export interface PmAnswer {
   text: string;
   proposal: PendingAction | null;
+  // Button labels to attach; ignored when there is a proposal
+  choices: string[];
 }
 
 export const renderKnowledge = async (
@@ -116,7 +118,11 @@ export class AnswerProjectQuestionUseCase {
       },
       deadline: until,
     });
-    return { text, proposal: ctx.proposal };
+    return {
+      text,
+      proposal: ctx.proposal,
+      choices: ctx.proposal ? [] : ctx.choices ?? [],
+    };
   }
 
   // Crons keep it fresh. A stale snapshot is still used (its date is in the

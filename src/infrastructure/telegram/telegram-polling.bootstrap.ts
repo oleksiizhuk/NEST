@@ -5,7 +5,10 @@ import {
 } from '@application/telegram/telegram.config.interface';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
 import { TelegramBotService } from '@infrastructure/telegram/telegram-bot.service';
-import { mapToIncoming } from '@infrastructure/telegram/incoming-message.mapper';
+import {
+  mapCallbackToIncoming,
+  mapToIncoming,
+} from '@infrastructure/telegram/incoming-message.mapper';
 
 @Injectable()
 export class TelegramPollingBootstrap implements OnModuleInit {
@@ -22,6 +25,14 @@ export class TelegramPollingBootstrap implements OnModuleInit {
 
     this.botService.onMessage((msg) => {
       const incoming = mapToIncoming(msg);
+      if (!incoming) return;
+      this.handleTelegramMessage
+        .execute(incoming)
+        .catch((error) => this.logger.error(error));
+    });
+
+    this.botService.onCallback((query) => {
+      const incoming = mapCallbackToIncoming(query);
       if (!incoming) return;
       this.handleTelegramMessage
         .execute(incoming)

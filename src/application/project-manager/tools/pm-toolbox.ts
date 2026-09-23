@@ -46,7 +46,13 @@ export interface ToolContext {
   // Set when the turn gave up on its tools (timeout or final answer); a
   // proposal finishing after that is discarded, never left pending unseen
   closed?: boolean;
+  // Button labels offered with the reply (offer_choices); a press comes
+  // back as the next message
+  choices?: string[];
 }
+
+const MAX_CHOICES = 6;
+const CHOICE_LABEL_MAX = 60;
 
 const ACTION_TTL_MS = 10 * 60_000;
 // Under the model loop's per-tool limit (15 s)
@@ -429,6 +435,28 @@ export class PmToolbox {
             },
           ]
         : []),
+      {
+        name: 'offer_choices',
+        description:
+          'Attach 2-6 buttons to your reply so the person can pick with one tap instead of typing. Use it whenever you would otherwise ask them to choose (which brand, which mall, which of several ways to do something, which environment). Describe each option in your reply text in the same order; the labels are short. A tap comes back as the next message "Выбираю вариант: <label>" — then act on it right away (e.g. call the propose_* tool). Not in the same message as a proposal: a proposal already gets Confirm/Cancel buttons.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            options: {
+              type: 'array',
+              items: {
+                type: 'string',
+                minLength: 1,
+                maxLength: CHOICE_LABEL_MAX,
+              },
+              minItems: 2,
+              maxItems: MAX_CHOICES,
+            },
+          },
+          required: ['options'],
+          additionalProperties: false,
+        },
+      },
     ];
   }
 
@@ -440,6 +468,8 @@ export class PmToolbox {
     ctx: ToolContext,
   ): Promise<string> {
     switch (name) {
+      case 'offer_choices':
+        return this.offerChoices(input, ctx);
       case 'search_code': {
         this.requireCode();
         const repo = str(input.repo);
@@ -717,6 +747,34 @@ export class PmToolbox {
       );
     }
     return stored;
+  }
+
+  private offerChoices(
+    input: Record<string, unknown>,
+    ctx: ToolContext,
+  ): string {
+    if (ctx.closed) throw new Error('This turn is over.');
+    if (ctx.proposal || ctx.reserved) {
+      throw new Error(
+        'A proposal is in this message; it has its own Confirm/Cancel buttons.',
+      );
+    }
+    const raw = Array.isArray(input.options) ? input.options : [];
+    const options = [
+      ...new Set(
+        raw
+          .filter((o): o is string => typeof o === 'string')
+          .map((o) => o.replace(/\s+/g, ' ').trim())
+          .filter(Boolean)
+          .map((o) => o.slice(0, CHOICE_LABEL_MAX)),
+      ),
+    ].slice(0, MAX_CHOICES);
+    if (options.length < 2) throw new Error('Give 2 to 6 distinct options.');
+    ctx.choices = options;
+    return (
+      `${options.length} buttons will be attached to your reply. ` +
+      'Describe the options in the reply text in the same order; do not ask the person to type their choice.'
+    );
   }
 
   private reserve(ctx: ToolContext): void {

@@ -17,7 +17,7 @@ The bot answers in PM chats only (`TELEGRAM_PM_CHAT_IDS` or a group switched on 
 
 **Design** — Figma pages and frames (with node ids), recent versions and who edited, open comments, plus the design map in `<knowledge>`; compares design vs tickets vs code.
 
-**Test-environment actions** (dev or staging only, each needs `/confirm`)
+**Test-environment actions** (dev or staging only, each needs the Confirm button, «да» or `/confirm`; when there is a choice the bot sends option buttons first)
 - Look up malls/outlets/plazas, categories, brands (`staging_lookup`); show a brand with its stores and status (`staging_get_brand`).
 - Create a brand with one store in a mall (`propose_create_brand`); publish / unpublish all its stores or delete the brand (`propose_brand_action`).
 - Edit one store of a brand — name, floor, wing, gate, daily hours, category; the brand's other stores stay untouched (`propose_update_store`).

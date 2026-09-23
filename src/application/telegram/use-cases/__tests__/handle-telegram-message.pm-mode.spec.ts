@@ -20,6 +20,8 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     sendMessage: jest.fn(),
     sendTyping: jest.fn().mockResolvedValue(undefined),
     getBotInfo: jest.fn().mockResolvedValue(BOT),
+    answerCallback: jest.fn().mockResolvedValue(undefined),
+    clearButtons: jest.fn().mockResolvedValue(undefined),
   };
   const persona = {
     generateReply: jest.fn().mockResolvedValue('persona reply'),
@@ -205,6 +207,92 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     const reply = telegram.sendMessage.mock.calls[0][1];
     expect(reply).toContain('Создать на STAGING бренд "X"');
     expect(reply).toContain('/confirm K7Q2A');
+  });
+
+  it('puts Confirm and Cancel buttons under a proposal', async () => {
+    pmAnswer.execute.mockResolvedValueOnce({
+      text: 'Предлагаю.',
+      proposal: { id: 'K7Q2A', summary: 'Создать бренд' },
+      choices: ['ignored'],
+    });
+    await useCase.execute(group(PM_GROUP, '@nest_bot создай бренд X'));
+    expect(telegram.sendMessage.mock.calls[0][2]).toEqual([
+      [
+        { text: '✅ Подтвердить', data: 'c:K7Q2A' },
+        { text: '❌ Отменить', data: 'x:K7Q2A' },
+      ],
+    ]);
+  });
+
+  it('sends offered choices as buttons and remembers them in the log', async () => {
+    pmAnswer.execute.mockResolvedValueOnce({
+      text: 'Какой молл? 1) Galleria 2) Park Avenue',
+      proposal: null,
+      choices: ['Galleria', 'Park Avenue'],
+    });
+    await useCase.execute(group(PM_GROUP, '@nest_bot создай бренд X'));
+    expect(telegram.sendMessage.mock.calls[0][2]).toEqual([
+      [{ text: 'Galleria', data: 'o:0' }],
+      [{ text: 'Park Avenue', data: 'o:1' }],
+    ]);
+    expect(repo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        botResponse: expect.stringContaining(
+          '[Кнопки: Galleria | Park Avenue]',
+        ),
+      }),
+    );
+  });
+
+  const press = (
+    kind: 'confirm' | 'cancel' | 'option',
+    text: string,
+    fromId: number,
+    chatId = PM_GROUP,
+  ) => ({
+    ...group(chatId, text, fromId),
+    callback: { id: 'cb1', messageId: 99, kind },
+  });
+
+  it('acts on a picked option without a mention and clears the buttons', async () => {
+    await useCase.execute(press('option', 'Выбираю вариант: Galleria', 7));
+    expect(telegram.answerCallback).toHaveBeenCalledWith('cb1', 'Принято');
+    expect(telegram.clearButtons).toHaveBeenCalledWith(PM_GROUP, 99);
+    expect(pmAnswer.execute).toHaveBeenCalledWith(
+      'Dev @dev: Выбираю вариант: Galleria',
+      [],
+      { chatId: PM_GROUP, requesterId: 7 },
+    );
+  });
+
+  it('confirms from the button only for someone allowed to', async () => {
+    await useCase.execute(press('confirm', '/confirm K7Q2A', 7));
+    expect(telegram.answerCallback).toHaveBeenCalledWith(
+      'cb1',
+      'Нет прав на это действие',
+    );
+    expect(telegram.clearButtons).not.toHaveBeenCalled();
+    expect(confirm.confirm).not.toHaveBeenCalled();
+
+    await useCase.execute(press('confirm', '/confirm K7Q2A', OWNER));
+    expect(telegram.clearButtons).toHaveBeenCalledWith(PM_GROUP, 99);
+    expect(confirm.confirm).toHaveBeenCalledWith(
+      'K7Q2A',
+      PM_GROUP,
+      OWNER,
+      true,
+    );
+    expect(telegram.sendMessage).toHaveBeenCalledWith(PM_GROUP, 'Готово');
+  });
+
+  it('ignores button presses in a chat without PM mode', async () => {
+    registry.isEnabled.mockResolvedValue(false);
+    await useCase.execute(
+      press('option', 'Выбираю вариант: X', OWNER, OTHER_GROUP),
+    );
+    expect(telegram.answerCallback).toHaveBeenCalledWith('cb1');
+    expect(pmAnswer.execute).not.toHaveBeenCalled();
+    expect(persona.generateReply).not.toHaveBeenCalled();
   });
 
   it('routes /confirm with the caller’s rights and never through the model', async () => {

@@ -158,6 +158,7 @@ describe('AnswerProjectQuestionUseCase', () => {
       'propose_update_store',
       'propose_create_property',
       'propose_property_action',
+      'offer_choices',
     ]);
     expect(request.question).toBe(
       'Today is Wednesday 2026-09-23. Release date 2026-09-30: 5 working days left.\n\nA: how are we doing?',
@@ -229,6 +230,8 @@ describe('PostDailyDigestUseCase', () => {
     sendMessage: jest.fn(),
     sendTyping: jest.fn(),
     getBotInfo: jest.fn(),
+    answerCallback: jest.fn().mockResolvedValue(undefined),
+    clearButtons: jest.fn().mockResolvedValue(undefined),
   };
   const refresh = {
     execute: jest.fn().mockResolvedValue(new ProjectSnapshot('r', now, [])),

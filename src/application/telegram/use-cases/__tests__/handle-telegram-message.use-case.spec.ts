@@ -45,6 +45,8 @@ describe('HandleTelegramMessageUseCase', () => {
     sendMessage: jest.fn(),
     sendTyping: jest.fn(),
     getBotInfo: jest.fn(),
+    answerCallback: jest.fn().mockResolvedValue(undefined),
+    clearButtons: jest.fn().mockResolvedValue(undefined),
   };
   const mockAiReply = { generateReply: jest.fn() };
   const mockRepository = { save: jest.fn(), findByChatId: jest.fn() };
