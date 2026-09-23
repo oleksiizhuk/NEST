@@ -14,6 +14,7 @@ import { MongoTelegramMessageRepository } from '@infrastructure/database/reposit
 import { TelegramBotService } from '@infrastructure/telegram/telegram-bot.service';
 import { AnthropicReplyService } from '@infrastructure/telegram/anthropic-reply.service';
 import { TelegramPollingBootstrap } from '@infrastructure/telegram/telegram-polling.bootstrap';
+import { TelegramWebhookBootstrap } from '@infrastructure/telegram/telegram-webhook.bootstrap';
 import { telegramConfig } from '@infrastructure/telegram/telegram.config';
 
 @Module({
@@ -49,6 +50,7 @@ import { telegramConfig } from '@infrastructure/telegram/telegram.config';
     },
     HandleTelegramMessageUseCase,
     TelegramPollingBootstrap,
+    TelegramWebhookBootstrap,
   ],
   exports: [TELEGRAM_GATEWAY, TELEGRAM_CONFIG, HandleTelegramMessageUseCase],
 })
