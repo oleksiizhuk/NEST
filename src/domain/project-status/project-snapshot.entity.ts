@@ -1,4 +1,4 @@
-export type SnapshotSource = 'issues' | 'docs' | 'code';
+export type SnapshotSource = 'issues' | 'docs' | 'code' | 'design';
 
 export interface SnapshotSection {
   source: SnapshotSource;
