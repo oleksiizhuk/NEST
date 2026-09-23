@@ -25,6 +25,8 @@ import {
 } from '@application/project-manager/pm.config.interface';
 import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
+import { ConfirmPendingActionUseCase } from '@application/project-manager/use-cases/confirm-pending-action.use-case';
+import { PendingAction } from '@application/project-manager/pending-action.interface';
 import {
   IPmChatRegistry,
   PM_CHAT_REGISTRY,
@@ -45,7 +47,18 @@ const authorLabel = (from: {
 const FALLBACK_MESSAGE = 'Что-то пошло не так 😢';
 const PM_MODE = 'pm';
 // Commands the bot answers in a group even without an @mention
-const BOT_COMMANDS = ['/pm_on', '/pm_off', '/status', '/refresh'];
+const BOT_COMMANDS = [
+  '/pm_on',
+  '/pm_off',
+  '/status',
+  '/refresh',
+  '/confirm',
+  '/cancel',
+];
+const CONFIRM_WORDS = /^(да|ага|yes|ok|ок|подтверждаю|confirm)[.!]*$/i;
+
+const proposalFooter = (action: PendingAction): string =>
+  `\n\n${action.summary}\nПодтвердить: /confirm ${action.id} (или ответьте «да»). Отменить: /cancel ${action.id}. Действует 10 минут.`;
 
 // "/status@my_bot args" → "/status" when addressed to this bot or to nobody
 const commandOf = (text: string, botUsername: string): string | null => {
@@ -80,7 +93,15 @@ export class HandleTelegramMessageUseCase {
     @Optional()
     @Inject(PM_CHAT_REGISTRY)
     private readonly pmChats?: IPmChatRegistry,
+    @Optional() private readonly pmConfirm?: ConfirmPendingActionUseCase,
   ) {}
+
+  private canRunActions(userId: number): boolean {
+    return (
+      userId === this.config.ownerId ||
+      Boolean(this.pmConfig?.actionUserIds.includes(userId))
+    );
+  }
 
   // Project data only ever reaches chats the owner listed; any other group
   // gets the persona, which has no access to it.
@@ -194,7 +215,9 @@ export class HandleTelegramMessageUseCase {
     const { chatId } = msg;
     const { pmAnswer, pmRefresh } = this;
     if (!pmAnswer || !pmRefresh) return;
-    const command = text.trim().split(/\s+/)[0].toLowerCase().split('@')[0];
+    const first = text.trim().split(/\s+/)[0].toLowerCase();
+    // Only "/word" is a command; "да" or a question is not
+    const command = first.startsWith('/') ? first.split('@')[0] : null;
     // Opus can think for a minute or two; keep the "typing…" indicator alive
     const typing = setInterval(
       () => void this.telegram.sendTyping(chatId).catch(() => undefined),
@@ -203,6 +226,8 @@ export class HandleTelegramMessageUseCase {
     try {
       await this.telegram.sendTyping(chatId);
       let reply: string;
+      const [, arg] = text.trim().split(/\s+/);
+      const authorised = this.canRunActions(msg.from.id);
       if (command === '/refresh') {
         if (msg.from.id !== this.config.ownerId) return;
         const snapshot = await pmRefresh.execute();
@@ -211,16 +236,35 @@ export class HandleTelegramMessageUseCase {
           snapshot.sections
             .map((s) => `${s.source} ${s.ok ? 'ok' : `ошибка (${s.error})`}`)
             .join(', ');
+      } else if (
+        this.pmConfirm &&
+        (command === '/confirm' ||
+          (!command && CONFIRM_WORDS.test(text.trim())))
+      ) {
+        reply = await this.pmConfirm.confirm(
+          command === '/confirm' && arg ? arg : null,
+          chatId,
+          msg.from.id,
+          authorised,
+        );
+      } else if (this.pmConfirm && command === '/cancel') {
+        reply = arg
+          ? await this.pmConfirm.cancel(arg, chatId, authorised)
+          : 'Укажите id: /cancel ABCDE';
       } else {
         const question =
           command === '/status' || command === '/start'
             ? STATUS_QUESTION
             : text;
         const history = await this.loadPmHistory(chatId);
-        reply = await pmAnswer.execute(
+        const answer = await pmAnswer.execute(
           `${authorLabel(msg.from)}: ${question}`,
           history,
+          { chatId, requesterId: msg.from.id },
         );
+        reply = answer.proposal
+          ? answer.text + proposalFooter(answer.proposal)
+          : answer.text;
       }
       await this.telegram.sendMessage(chatId, reply);
       await this.saveLog(msg, reply, PM_MODE);

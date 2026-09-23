@@ -10,6 +10,7 @@ const config = {
   releaseDate: '2026-09-30',
   projectBrief: 'Team: A (mobile)',
   maxSnapshotAgeHours: 30,
+  actionUserIds: [] as number[],
 };
 const source = (
   name: 'issues' | 'docs' | 'code',
@@ -72,6 +73,30 @@ describe('RefreshProjectSnapshotUseCase', () => {
   });
 });
 
+const knowledge = {
+  all: jest
+    .fn()
+    .mockResolvedValue([{ key: 'map:api', text: 'API map', updatedAt: now }]),
+  upsert: jest.fn(),
+  remove: jest.fn(),
+};
+const code = {
+  isConfigured: () => true,
+  repos: () => ['api'],
+  searchCode: jest.fn(),
+  readFile: jest.fn(),
+  listDir: jest.fn(),
+  pullRequest: jest.fn(),
+};
+const staging = { tiers: () => [], target: jest.fn() };
+const actions = {
+  create: jest.fn(),
+  claim: jest.fn(),
+  latestPending: jest.fn(),
+  finish: jest.fn(),
+  cancel: jest.fn(),
+};
+
 describe('AnswerProjectQuestionUseCase', () => {
   const ai = {
     answer: jest.fn().mockResolvedValue('ON TRACK'),
@@ -90,13 +115,31 @@ describe('AnswerProjectQuestionUseCase', () => {
       refresh as any,
       ai as any,
       config,
+      knowledge as any,
+      code as any,
+      staging as any,
+      actions as any,
     );
 
-    await useCase.execute('A: how are we doing?', [], now);
+    await useCase.execute(
+      'A: how are we doing?',
+      [],
+      { chatId: 1, requesterId: 1 },
+      now,
+    );
 
     expect(refresh.execute).not.toHaveBeenCalled();
     const request = ai.answer.mock.calls[0][0];
     expect(request.brief).toBe('Team: A (mobile)');
+    expect(request.knowledge).toBe('<doc key="map:api">\nAPI map\n</doc>');
+    expect(request.tools.specs.map((t: { name: string }) => t.name)).toEqual([
+      'search_code',
+      'read_file',
+      'list_dir',
+      'get_pull_request',
+      'staging_lookup',
+      'propose_create_brand',
+    ]);
     expect(request.question).toBe(
       'Today is Wednesday 2026-09-23. Release date 2026-09-30: 5 working days left.\n\nA: how are we doing?',
     );
@@ -111,9 +154,13 @@ describe('AnswerProjectQuestionUseCase', () => {
       refresh as any,
       ai as any,
       config,
+      knowledge as any,
+      code as any,
+      staging as any,
+      actions as any,
     );
 
-    await useCase.execute('q', [], now);
+    await useCase.execute('q', [], { chatId: 1, requesterId: 1 }, now);
 
     expect(refresh.execute).toHaveBeenCalledWith(now);
   });
@@ -148,6 +195,7 @@ describe('PostDailyDigestUseCase', () => {
       telegram,
       config,
       chats([]),
+      knowledge as any,
     );
     await expect(useCase.execute(now)).resolves.toEqual({ posted: true });
     expect(refresh.execute).toHaveBeenCalled();
@@ -164,6 +212,7 @@ describe('PostDailyDigestUseCase', () => {
         digestChatId: null,
       },
       chats([]),
+      knowledge as any,
     );
     await expect(useCase.execute(now)).resolves.toEqual({ posted: false });
     expect(ai.digest).not.toHaveBeenCalled();
@@ -177,6 +226,7 @@ describe('PostDailyDigestUseCase', () => {
       telegram,
       config,
       chats([-100, -300]),
+      knowledge as any,
     );
     await useCase.execute(now);
     expect(

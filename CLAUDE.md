@@ -133,6 +133,11 @@ PM_JIRA_PROJECTS=       # e.g. ABC,XYZ (uses JIRA_BASE_URL / JIRA_EMAIL / JIRA_A
 PM_CONFLUENCE_PAGE_IDS= # Comma-separated page ids re-read on every refresh
 PM_GITHUB_TOKEN=        # Fine-grained, read-only; with PM_GITHUB_ORG, PM_GITHUB_REPOS, PM_GITHUB_COMPARES (repo:base...head)
 CRON_SECRET=            # Bearer secret Vercel Cron sends to /cron/pm/*
+PM_CODE_REPOS=          # Repos the bot may read code from (defaults to PM_GITHUB_REPOS)
+PM_ACTION_USER_IDS=     # Telegram user ids besides the owner who may /confirm staging actions
+STAGING_API_BASE_URL=   # Staging admin API; with STAGING_ALLOWED_HOSTS (exact hosts) and STAGING_FORBIDDEN_HOSTS (e.g. the prod domain)
+STAGING_ADMIN_EMAIL=    # Dedicated least-privilege staging account for the bot, with STAGING_ADMIN_PASSWORD
+DEV_API_BASE_URL=       # Same four settings for the dev environment (DEV_ALLOWED_HOSTS, DEV_ADMIN_EMAIL, DEV_ADMIN_PASSWORD); STAGING_FORBIDDEN_HOSTS applies to both
 ENV=
 PORT=3000
 ```
@@ -149,6 +154,9 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 - Commands: `/status` (verdict, focus per person, risks), `/refresh` (owner only). In a group the owner sends `/pm_on` to switch that chat to PM mode and add it to the digest (stored in Mongo `pmchats`), `/pm_off` to switch it back; nobody else can.
 - `PostDailyDigestUseCase` runs from Vercel Cron on weekdays and posts to `PM_DIGEST_CHAT_ID`.
 - The webhook claims each `update_id` in Mongo first, so Telegram's retry of a slow answer is ignored.
+- Tools (`PmToolbox`, application layer): `search_code`, `read_file`, `list_dir`, `get_pull_request` over the allowlisted repos (read-only; `.env`/key files refused, secrets masked, output wrapped as `<tool_data>`), `staging_lookup`, and `propose_create_brand`. The loop in `AnthropicProjectManagerService` is bounded (8 iterations, 16 calls, deadline) and forces a final answer with `tool_choice: none`.
+- Actions target a test environment (`dev` or `staging`, `AdminTargets` builds one client per configured `DEV_*` / `STAGING_*` prefix) and are never executed by the model: `propose_create_brand` stores a `PendingAction` (Mongo `pmactions`, 10 min) and the reply gets a `/confirm <id>` line. `ConfirmPendingActionUseCase` runs it only for the owner or `PM_ACTION_USER_IDS`, claims it atomically, re-checks for a duplicate, and records the outcome (`done` / `failed` / `unknown`, no automatic retry). `HttpStagingAdmin` fails closed unless the base URL is HTTPS on an allowlisted host.
+- `PUT /cron/pm/knowledge/:key` (CRON_SECRET) stores reference text such as codebase maps in Mongo `pmknowledges`; it is loaded into the cached prompt. `GET` lists keys and sizes only.
 
 ---
 
