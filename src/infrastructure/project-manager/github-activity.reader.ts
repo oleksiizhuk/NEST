@@ -51,6 +51,7 @@ interface RepoActivity {
   text: string;
   pulls: PullFact[];
   runs: RunFact[];
+  failed?: boolean;
 }
 
 // Review state is not in the REST pull list; one GraphQL call per repo
@@ -61,7 +62,13 @@ const REVIEWS_QUERY = `query($owner: String!, $name: String!) {
       nodes {
         number
         reviewDecision
-        reviews(states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) { totalCount }
+        author { login }
+        reviews(first: 30, states: [APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED]) {
+          nodes { author { __typename login } }
+        }
+        timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) {
+          nodes { ... on ReadyForReviewEvent { createdAt } }
+        }
       }
     }
   }
@@ -70,13 +77,26 @@ const REVIEWS_QUERY = `query($owner: String!, $name: String!) {
 interface ReviewNode {
   number: number;
   reviewDecision: string | null;
-  reviews: { totalCount: number };
+  author?: { login?: string } | null;
+  reviews?: {
+    nodes?: Array<{ author?: { __typename?: string; login?: string } | null }>;
+  };
+  timelineItems?: { nodes?: Array<{ createdAt?: string }> };
 }
+
+// Reviews that count as "someone looked": not by the author, not by a bot
+export const humanReviews = (node: ReviewNode): number =>
+  (node.reviews?.nodes ?? []).filter((r) => {
+    const who = r.author;
+    if (!who?.login) return false;
+    if (who.__typename === 'Bot' || who.login.endsWith('[bot]')) return false;
+    return who.login !== node.author?.login;
+  }).length;
 
 const reviewLabel = (review?: ReviewNode): string => {
   if (!review) return '';
   if (review.reviewDecision) return `${review.reviewDecision} | `;
-  return review.reviews.totalCount ? 'reviewed | ' : 'no review yet | ';
+  return humanReviews(review) ? 'reviewed | ' : 'no review yet | ';
 };
 
 const daysSince = (iso: string, now: Date): number =>
@@ -117,15 +137,19 @@ export class GitHubActivityReader implements IProjectSource {
             text: `## ${repo}: could not read (${(error as Error).message})`,
             pulls: [],
             runs: [],
+            failed: true,
           }),
         ),
       ),
     );
     const repoParts = [
-      `## Computed metrics (exact)\n${codeMetrics(
+      `## Computed metrics (exact; computed ${now
+        .toISOString()
+        .slice(0, 16)} UTC)\n${codeMetrics(
         activity.flatMap((a) => a.pulls),
         activity.flatMap((a) => a.runs),
         now,
+        this.repos.filter((_, i) => activity[i].failed),
       )}`,
       ...activity.map((a) => a.text),
     ];
@@ -203,7 +227,8 @@ export class GitHubActivityReader implements IProjectSource {
         ...(review
           ? {
               reviewDecision: review.reviewDecision,
-              reviews: review.reviews.totalCount,
+              reviews: humanReviews(review),
+              readyAt: review.timelineItems?.nodes?.[0]?.createdAt ?? null,
             }
           : {}),
       };

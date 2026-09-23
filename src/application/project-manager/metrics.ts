@@ -28,8 +28,9 @@ export interface IssueMetricsOptions {
   releaseDate: string | null;
   // Jira fixVersion that is the release scope; null = all open issues
   releaseVersion: string | null;
-  // True when a query hit its cap: counts are lower bounds
-  capped: boolean;
+  // True when that list hit its cap: its counts are lower bounds
+  openCapped: boolean;
+  doneCapped: boolean;
 }
 
 const THROUGHPUT_WINDOW_DAYS = 14;
@@ -81,7 +82,11 @@ export const issueMetrics = (
     (i) => i.doneAt && new Date(i.doneAt) >= since,
   );
   const lines: string[] = [];
-  const lower = options.capped ? ' (lower bound: list capped)' : '';
+  const lower = options.openCapped ? ' (lower bound: list capped)' : '';
+  const paceLower = options.doneCapped
+    ? ' (lower bound: done list capped, so the pace is understated)'
+    : '';
+  const asOf = now.toISOString().slice(0, 10);
 
   const inProgress = open.filter((i) => i.category === 'indeterminate');
   lines.push(
@@ -101,16 +106,26 @@ export const issueMetrics = (
   lines.push(
     `Finished in the last 14 days: ${recentDone.length} (${perDay.toFixed(
       1,
-    )} per working day).`,
+    )} per working day)${paceLower}.`,
   );
   if (options.releaseDate) {
     const left = workingDaysLeft(now, options.releaseDate);
-    const needed = perDay > 0 ? Math.ceil(scope.length / perDay) : null;
+    const needed =
+      scope.length === 0
+        ? 0
+        : perDay > 0
+        ? Math.ceil(scope.length / perDay)
+        : null;
     lines.push(
       `Release scope (${scopeName}): ${scope.length} open${lower}. ` +
         `At the current pace that needs ${
           needed === null ? '?' : needed
-        } working days; ${left} left. Hint: ${verdictHint(needed, left)}.`,
+        } working days; ${left} left as of ${asOf}. Hint: ${verdictHint(
+          needed,
+          left,
+        )}${
+          options.openCapped || options.doneCapped ? ' (from capped lists)' : ''
+        }.`,
     );
   } else {
     lines.push(`Release scope (${scopeName}): ${scope.length} open${lower}.`);
@@ -219,10 +234,12 @@ export interface PullFact {
   author: string;
   draft: boolean;
   createdAt: string;
+  // When it left draft; the review wait starts here (else createdAt)
+  readyAt?: string | null;
   updatedAt: string;
   // APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | null; undefined = unknown
   reviewDecision?: string | null;
-  // Number of submitted reviews; undefined = unknown
+  // Reviews by people other than the author (bots excluded); undefined = unknown
   reviews?: number;
 }
 
@@ -235,25 +252,47 @@ export interface RunFact {
 }
 
 const REVIEW_WAIT_DAYS = 2;
+// A run with one of these did not pass
+const FAILED = new Set(['failure', 'timed_out', 'startup_failure']);
+// Neither pass nor fail (still running, cancelled, skipped, waiting for an
+// approval): look past them to the previous run
+const NEUTRAL = new Set([
+  'cancelled',
+  'skipped',
+  'neutral',
+  'stale',
+  'action_required',
+]);
+
+const waitStart = (p: PullFact): Date => new Date(p.readyAt || p.createdAt);
 
 export const codeMetrics = (
   pulls: PullFact[],
   runs: RunFact[],
   now: Date,
+  // Repos that could not be read; their PRs and runs are not in the numbers
+  missing: string[] = [],
 ): string => {
   const lines: string[] = [];
+  if (missing.length) {
+    lines.push(
+      `NOT READ this time: ${missing.join(
+        ', ',
+      )}. Their PRs and pipelines are missing from every number below.`,
+    );
+  }
   const ready = pulls.filter((p) => !p.draft);
   const known = ready.filter((p) => p.reviews !== undefined);
   const waiting = known
     .filter(
       (p) =>
         p.reviews === 0 &&
-        workingDaysBetween(new Date(p.createdAt), now) > REVIEW_WAIT_DAYS,
+        workingDaysBetween(waitStart(p), now) > REVIEW_WAIT_DAYS,
     )
     .map(
       (p) =>
         `${p.repo}#${p.number} ${p.author} ${workingDaysBetween(
-          new Date(p.createdAt),
+          waitStart(p),
           now,
         )}d`,
     );
@@ -291,15 +330,14 @@ export const codeMetrics = (
   >();
   for (const run of runs) {
     const key = `${run.repo}:${run.workflow}@${run.branch}`;
-    const failed =
-      run.conclusion === 'failure' || run.conclusion === 'timed_out';
+    if (run.conclusion === null || NEUTRAL.has(run.conclusion)) continue;
+    const failed = FAILED.has(run.conclusion);
     const streak = streaks.get(key);
     if (!streak) {
-      if (run.conclusion === null) continue; // still running: look further
       streaks.set(key, { red: failed, since: run.createdAt, done: !failed });
     } else if (!streak.done) {
       if (failed) streak.since = run.createdAt;
-      else if (run.conclusion !== null) streak.done = true;
+      else streak.done = true;
     }
   }
   const red = [...streaks]

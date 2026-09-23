@@ -204,12 +204,12 @@ export class JiraIssueReader implements IProjectSource {
   async fetch(now = new Date()): Promise<string> {
     const parts: string[] = [];
     const results: JiraIssue[][] = [];
-    let capped = false;
+    const caps: boolean[] = [];
     for (const query of this.queries) {
       const issues = await this.search(query);
       results.push(issues);
       const hitCap = issues.length >= query.limit;
-      capped = capped || hitCap;
+      caps.push(hitCap);
       const more = hitCap ? ` (capped at ${query.limit})` : '';
       parts.push(
         `## ${query.title}: ${issues.length}${more}\n` +
@@ -221,10 +221,13 @@ export class JiraIssueReader implements IProjectSource {
     const metrics = issueMetrics(open.map(toFact), done.map(toFact), now, {
       releaseDate: this.releaseDate,
       releaseVersion: this.releaseVersion,
-      capped,
+      openCapped: caps[0] ?? false,
+      doneCapped: caps[1] ?? false,
     });
     return [
-      `## Computed metrics (exact, from the lists below)\n${metrics}`,
+      `## Computed metrics (exact, from the lists below; computed ${now
+        .toISOString()
+        .slice(0, 16)} UTC)\n${metrics}`,
       ...parts,
     ].join('\n\n');
   }

@@ -229,7 +229,15 @@ describe('GitHub reader', () => {
                   {
                     number: 9,
                     reviewDecision: null,
-                    reviews: { totalCount: 0 },
+                    author: { login: 'dev' },
+                    // The author's own reply and a bot do not count
+                    reviews: {
+                      nodes: [
+                        { author: { __typename: 'User', login: 'dev' } },
+                        { author: { __typename: 'Bot', login: 'coderabbit' } },
+                      ],
+                    },
+                    timelineItems: { nodes: [] },
                   },
                 ],
               },

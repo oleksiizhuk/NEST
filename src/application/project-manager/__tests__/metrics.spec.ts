@@ -84,14 +84,15 @@ describe('issueMetrics', () => {
     const text = issueMetrics(open, done, NOW, {
       releaseDate: '2026-09-30',
       releaseVersion: '1.0',
-      capped: false,
+      openCapped: false,
+      doneCapped: false,
     });
     expect(text).toContain('Open work items: 4 — to do 1, in progress 3.');
     expect(text).toContain(
       'Finished in the last 14 days: 2 (0.2 per working day).',
     );
     expect(text).toContain(
-      'Release scope (fixVersion 1.0): 3 open. At the current pace that needs 15 working days; 5 left. Hint: OFF TRACK.',
+      'Release scope (fixVersion 1.0): 3 open. At the current pace that needs 15 working days; 5 left as of 2026-09-23. Hint: OFF TRACK.',
     );
     expect(text).toContain('Unassigned: 1, of them high priority 1: A-1.');
     expect(text).toContain(
@@ -105,11 +106,44 @@ describe('issueMetrics', () => {
     expect(text).not.toContain('A-4');
   });
 
+  it('labels the pace, not the open counts, when only the done list is capped', () => {
+    const text = issueMetrics(open, done, NOW, {
+      releaseDate: '2026-09-30',
+      releaseVersion: null,
+      openCapped: false,
+      doneCapped: true,
+    });
+    expect(text).toContain('Open work items: 4 —');
+    expect(text).toContain(
+      '(0.2 per working day) (lower bound: done list capped, so the pace is understated).',
+    );
+    expect(text).toContain('(from capped lists).');
+  });
+
+  it('reads an empty release scope as on track, not as missing data', () => {
+    const text = issueMetrics(
+      [issue('B-1', { fixVersions: ['2.0'] })],
+      [],
+      NOW,
+      {
+        releaseDate: '2026-09-30',
+        releaseVersion: '1.0',
+        openCapped: false,
+        doneCapped: false,
+      },
+    );
+    expect(text).toContain(
+      'Release scope (fixVersion 1.0): 0 open. At the current pace that needs 0 working days',
+    );
+    expect(text).toContain('Hint: ON TRACK.');
+  });
+
   it('shows the fixVersion split and marks capped counts as lower bounds', () => {
     const text = issueMetrics(open, done, NOW, {
       releaseDate: null,
       releaseVersion: null,
-      capped: true,
+      openCapped: true,
+      doneCapped: false,
     });
     expect(text).toContain('Open work items: 4 (lower bound: list capped)');
     expect(text).toContain('Open by fixVersion: 1.0 3; none 1.');
@@ -170,6 +204,46 @@ describe('codeMetrics', () => {
       'Red pipelines: api:Deploy@main since 2026-09-21 (2 working days).',
     );
     expect(text).not.toContain('unavailable');
+  });
+
+  it('counts the review wait from ready-for-review and names unread repos', () => {
+    const text = codeMetrics(
+      [
+        pr(1, {
+          createdAt: '2026-09-01T00:00:00Z',
+          readyAt: '2026-09-22T00:00:00Z',
+        }),
+      ],
+      [],
+      NOW,
+      ['web'],
+    );
+    expect(text.split('\n')[0]).toBe(
+      'NOT READ this time: web. Their PRs and pipelines are missing from every number below.',
+    );
+    expect(text).toContain(
+      'Waiting for a first review more than 2 working days: none.',
+    );
+  });
+
+  it('treats startup failures as red and looks past cancelled runs', () => {
+    const text = codeMetrics(
+      [],
+      [
+        run({ conclusion: 'cancelled', createdAt: '2026-09-23T00:00:00Z' }),
+        run({
+          conclusion: 'startup_failure',
+          createdAt: '2026-09-22T00:00:00Z',
+        }),
+        run({ conclusion: 'skipped', createdAt: '2026-09-21T12:00:00Z' }),
+        run({ conclusion: 'failure', createdAt: '2026-09-21T00:00:00Z' }),
+        run({ conclusion: 'success', createdAt: '2026-09-18T00:00:00Z' }),
+      ],
+      NOW,
+    );
+    expect(text).toContain(
+      'Red pipelines: api:Deploy@main since 2026-09-21 (2 working days).',
+    );
   });
 
   it('says when review state is unknown instead of reporting no waits', () => {
