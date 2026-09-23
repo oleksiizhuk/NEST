@@ -28,8 +28,8 @@ export const parseGolden = (input: unknown[]): GoldenInput[] => {
     if (!question || question.length > 500)
       throw new Error(`case ${id}: question of 1-500 chars`);
     const maxSeconds = c.maxSeconds === undefined ? 120 : Number(c.maxSeconds);
-    if (!Number.isFinite(maxSeconds) || maxSeconds < 10 || maxSeconds > 240)
-      throw new Error(`case ${id}: maxSeconds 10-240`);
+    if (!Number.isFinite(maxSeconds) || maxSeconds < 10 || maxSeconds > 200)
+      throw new Error(`case ${id}: maxSeconds 10-200`);
     return {
       id,
       question,

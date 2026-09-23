@@ -20,8 +20,6 @@ import {
 import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
 
 const DAY_MS = 86_400_000;
-// A case is due again after six days, so a weekly run always picks it up
-const RERUN_AFTER_MS = 6 * DAY_MS;
 // Inside the 300 s function limit, with room to save and report
 const RUN_BUDGET_MS = 230_000;
 const MARGIN_MS = 10_000;
@@ -90,17 +88,18 @@ export class RunGoldenEvalUseCase {
   ): Promise<{ ran: string[]; remaining: number; reported: boolean }> {
     const started = Date.now();
     const cases = await this.golden.all();
+    // Due = not run yet this ISO week; the week's slots share the work
+    const week = weekOf(now);
     const due = cases
-      .filter(
-        (c) => !c.last || now.getTime() - c.last.at.getTime() > RERUN_AFTER_MS,
-      )
+      .filter((c) => !c.last || weekOf(c.last.at) !== week)
       .sort(
         (a, b) => (a.last?.at.getTime() ?? 0) - (b.last?.at.getTime() ?? 0),
       );
     const ran: string[] = [];
     for (const c of due) {
       const left = started + budgetMs - Date.now();
-      if (left < c.maxSeconds * 1000 + MARGIN_MS) break;
+      // A shorter case later in the list may still fit
+      if (left < c.maxSeconds * 1000 + MARGIN_MS) continue;
       const t0 = Date.now();
       let result: GoldenResult;
       try {
@@ -158,14 +157,15 @@ export class RunGoldenEvalUseCase {
       ),
     ].join('\n');
     let sent = false;
+    const key = `eval:${weekOf(now)}`;
     for (const chatId of this.config.alertChatIds ?? []) {
-      if (!(await this.alerts.claim(chatId, `eval:${weekOf(now)}`, now)))
-        continue;
+      if (!(await this.alerts.claim(chatId, key, now))) continue;
       try {
         await this.telegram.sendMessage(chatId, text);
         sent = true;
       } catch (error) {
         this.logger.error(`eval report to ${chatId}: ${error}`);
+        await this.alerts.release(chatId, [key]).catch(() => undefined);
       }
     }
     return sent;

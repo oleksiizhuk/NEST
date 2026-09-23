@@ -41,7 +41,8 @@ const STALE_WORKING_DAYS = 5;
 const WIP_LIMIT = 2;
 const MAX_KEYS = 8;
 const HIGH_PRIORITIES = new Set(['highest', 'high', 'critical', 'blocker']);
-const BLOCKER_PRIORITIES = new Set(['highest', 'critical', 'blocker']);
+// Only an explicit Blocker priority; Highest/Critical is urgent, not blocked
+const BLOCKER_PRIORITIES = new Set(['blocker']);
 // Branches whose red pipeline is worth an alert
 const RELEASE_BRANCHES = new Set([
   'main',
@@ -220,6 +221,11 @@ export const issueMetrics = (
   out.openBugs = openBugs.length;
   out.openHighBugs = openBugs.filter(isHigh).length;
   out.blockers = scope.filter(isBlocker).length;
+  // Release gates count only the release scope
+  out.scopeHighBugs = scope.filter((i) => isBug(i) && isHigh(i)).length;
+  out.scopeUnassignedHigh = scope.filter(
+    (i) => !i.assignee && isHigh(i),
+  ).length;
   if (openBugs.length || done.some(isBug)) {
     const byPriority = new Map<string, number>();
     openBugs.forEach((b) => {
@@ -492,8 +498,10 @@ export const codeSignals = (
     ) {
       signals.push({
         rule: 'red-pipeline',
-        // A new red streak is a new event
-        subject: `${key}:${s.since}`,
+        // One alert per red episode: the watch re-arms the key once the
+        // pipeline is green again ("since" moves as old runs leave the
+        // fetched window, so it cannot be part of the key)
+        subject: key,
         text: `${key} красный с ${s.since.slice(0, 16).replace('T', ' ')} UTC`,
       });
     }

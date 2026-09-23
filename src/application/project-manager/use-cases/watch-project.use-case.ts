@@ -41,6 +41,7 @@ import {
 } from '@application/project-manager/release-clock';
 import {
   isAnswered,
+  isTeamMember,
   looksLikeQuestion,
 } from '@application/project-manager/tools/open-questions';
 import { readinessChecklist } from '@application/project-manager/readiness';
@@ -60,24 +61,27 @@ const QUESTION_WAIT_DAYS = 2;
 const READINESS_DAYS = [5, 2, 1];
 const SOURCE_BUDGET_MS = 12_000;
 
-const withTimeout = <T>(work: Promise<T>, ms: number): Promise<T> =>
-  Promise.race([
+const withTimeout = <T>(work: Promise<T>, ms: number): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
     work,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('too slow')), ms),
-    ),
-  ]);
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('too slow')), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+};
 
-export const formatAlerts = (signals: Signal[]): string => {
+const keyOf = (s: Signal): string => `${s.rule}:${s.subject}`;
+
+export const formatAlerts = (signals: Signal[], waiting = 0): string => {
   const parts = RULES.map(([rule, title]) => {
     const items = signals.filter((s) => s.rule === rule);
     if (!items.length) return '';
-    const lines = items.slice(0, PER_RULE).map((s) => `- ${s.text}`);
-    if (items.length > PER_RULE)
-      lines.push(`…и ещё ${items.length - PER_RULE}`);
-    return `${title}:\n${lines.join('\n')}`;
+    return `${title}:\n${items.map((s) => `- ${s.text}`).join('\n')}`;
   }).filter(Boolean);
-  return `🔔 Новое по проекту\n\n${parts.join('\n\n')}`;
+  return `🔔 Новое по проекту\n\n${parts.join('\n\n')}${
+    waiting ? `\n\nЕщё ${waiting} — в следующих уведомлениях.` : ''
+  }`;
 };
 
 // Proactive alerts: rules checked in code on fresh data, each event sent
@@ -120,25 +124,42 @@ export class WatchProjectUseCase {
     const sent: Record<string, number> = {};
     if (dry) return { signals, sent };
 
+    const codeFresh = Boolean(snapshot.section('code')?.ok);
     for (const chatId of this.config.alertChatIds ?? []) {
-      const fresh: Signal[] = [];
-      for (const signal of signals) {
-        if (
-          await this.alerts.claim(
+      // A pipeline that is green again may alert again when it next breaks
+      if (codeFresh) {
+        await this.alerts
+          .releaseStale(
             chatId,
-            `${signal.rule}:${signal.subject}`,
-            now,
+            'red-pipeline:',
+            signals.filter((s) => s.rule === 'red-pipeline').map(keyOf),
           )
-        ) {
+          .catch((error) => this.logger.error(`release stale: ${error}`));
+      }
+      const fresh: Signal[] = [];
+      let waiting = 0;
+      const perRule = new Map<string, number>();
+      for (const signal of signals) {
+        const shown = perRule.get(signal.rule) ?? 0;
+        if (shown >= PER_RULE) {
+          waiting += 1;
+          continue;
+        }
+        if (await this.alerts.claim(chatId, keyOf(signal), now)) {
           fresh.push(signal);
+          perRule.set(signal.rule, shown + 1);
         }
       }
       if (!fresh.length) continue;
       try {
-        await this.telegram.sendMessage(chatId, formatAlerts(fresh));
+        await this.telegram.sendMessage(chatId, formatAlerts(fresh, waiting));
         sent[chatId] = fresh.length;
       } catch (error) {
         this.logger.error(`alerts to ${chatId}: ${error}`);
+        // Not delivered: let the next run try again
+        await this.alerts
+          .release(chatId, fresh.map(keyOf))
+          .catch(() => undefined);
       }
     }
     return { signals, sent };
@@ -185,13 +206,11 @@ export class WatchProjectUseCase {
         ),
       ),
     );
-    const inTeam = (name: string) =>
-      team.some((m) => name.toLowerCase().includes(m.toLowerCase()));
     return results
       .flat()
       .filter(
         (r) =>
-          !inTeam(r.author) &&
+          !isTeamMember(r.author, team) &&
           looksLikeQuestion(r.text) &&
           !isAnswered(r, team) &&
           workingDaysBetween(r.createdAt, now) > QUESTION_WAIT_DAYS,

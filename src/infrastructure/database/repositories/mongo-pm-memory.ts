@@ -34,8 +34,19 @@ export class MongoPmMemory implements IPmMemory {
   async add(
     record: Omit<MemoryRecord, 'id' | 'createdAt'>,
   ): Promise<MemoryRecord> {
-    const doc = await this.model.create({ ...record, memoryId: newMemoryId() });
-    return toRecord(doc);
+    // Short ids can collide; a few retries make that practically impossible
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const doc = await this.model.create({
+          ...record,
+          memoryId: newMemoryId(),
+        });
+        return toRecord(doc);
+      } catch (error) {
+        if ((error as { code?: number }).code !== 11000 || attempt >= 3)
+          throw error;
+      }
+    }
   }
 
   async active(now: Date): Promise<MemoryRecord[]> {

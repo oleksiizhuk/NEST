@@ -40,11 +40,11 @@
     },
     {
       "path": "/cron/pm/eval?slot=2",
-      "schedule": "20 2 * * 1"
+      "schedule": "0 3 * * 1"
     },
     {
       "path": "/cron/pm/eval?slot=3",
-      "schedule": "40 2 * * 1"
+      "schedule": "0 4 * * 1"
     }
   ]
 }

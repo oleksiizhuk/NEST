@@ -57,8 +57,13 @@ export class JiraIssueDetails implements IIssueDetails {
       `${this.baseUrl}/rest/agile/1.0/board/${this.boardId}/sprint?state=active`,
       headers,
     );
-    const sprint = (sprints.values ?? [])[0];
+    const active = sprints.values ?? [];
+    const sprint = active[0];
     if (!sprint) return 'No active sprint on the board.';
+    const others = active
+      .slice(1)
+      .map((s: any) => `"${s.name}"`)
+      .join(', ');
     const issues: any[] = [];
     for (let startAt = 0; startAt < 300; startAt += 100) {
       const { data } = await getJson<any>(
@@ -93,6 +98,9 @@ export class JiraIssueDetails implements IIssueDetails {
         sprint.endDate,
       )}${daysLeft !== null ? `, ${daysLeft} calendar days left` : ''})`,
       `Goal: ${sprint.goal || '(none set)'}`,
+      ...(others
+        ? [`Also active on this board: ${others} (not summarised)`]
+        : []),
       `Issues: ${issues.length} — done ${done.length}, in progress ${
         inProgress.length
       }, to do ${open.length - inProgress.length}`,

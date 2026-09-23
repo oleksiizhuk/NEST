@@ -17,6 +17,14 @@ export const looksLikeQuestion = (text: string): boolean => {
 const same = (a: string, b: string) =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
 
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// "Ann" matches "Ann Lee" or "ann", not "Joanna": whole words only
+export const isTeamMember = (name: string, team: string[]): boolean =>
+  team.some((m) =>
+    new RegExp(`(^|[\\s,.(])${escape(m.trim())}($|[\\s,.)])`, 'iu').test(name),
+  );
+
 // Answered = the thread is resolved/done, or someone other than the asker
 // wrote after it (a team member, when a roster is given).
 // The first later reply from someone other than the asker (a team member,
@@ -26,8 +34,7 @@ export const answerer = (remark: Remark, team: string[]): string | null =>
     (r) =>
       r.createdAt >= remark.createdAt &&
       !same(r.author, remark.author) &&
-      (!team.length ||
-        team.some((m) => r.author.toLowerCase().includes(m.toLowerCase()))),
+      (!team.length || isTeamMember(r.author, team)),
   )?.author ?? null;
 
 // Answered = the thread is resolved/done, or it has an answerer

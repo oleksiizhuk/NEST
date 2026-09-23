@@ -942,8 +942,19 @@ export class PmToolbox {
     const text = str(input.text, 300).replace(/\s+/g, ' ').trim();
     if (text.length < 3) throw new Error('Say what to remember.');
     const due = input.due ? str(input.due, 10) : '';
-    if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due))
-      throw new Error('due must be YYYY-MM-DD');
+    if (due) {
+      const date = new Date(`${due}T23:59:59Z`);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(due) ||
+        Number.isNaN(date.getTime()) ||
+        date.toISOString().slice(0, 10) !== due
+      ) {
+        throw new Error('due must be a real date, YYYY-MM-DD');
+      }
+      if (date.getTime() < Date.now()) {
+        return 'NOT PROPOSED — that due date is already past; ask for the new date.';
+      }
+    }
     if (kind === 'commitment' && !due)
       return 'NOT PROPOSED — a commitment needs a due date; ask when it is due.';
     const payload: MemoryProposal = {

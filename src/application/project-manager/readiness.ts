@@ -17,19 +17,24 @@ export const readinessChecklist = (
   snapshot: ProjectSnapshot,
   definitionOfDone: string | null,
 ): string => {
-  const issues = snapshot.section('issues')?.metrics;
-  const code = snapshot.section('code')?.metrics;
+  // Numbers of a failed source are yesterday's: show them as no data
+  const fresh = (source: 'issues' | 'code') => {
+    const section = snapshot.section(source);
+    return section?.ok ? section.metrics : undefined;
+  };
+  const issues = fresh('issues');
+  const code = fresh('code');
   const zero = (n: number) => n === 0;
   const checks: Check[] = [
     { label: 'Блокеры в объёме релиза', value: issues?.blockers, ok: zero },
     {
-      label: 'Открытые баги высокого приоритета',
-      value: issues?.openHighBugs,
+      label: 'Открытые баги высокого приоритета в релизе',
+      value: issues?.scopeHighBugs,
       ok: zero,
     },
     {
-      label: 'Задачи высокого приоритета без исполнителя',
-      value: issues?.unassignedHigh,
+      label: 'Задачи релиза высокого приоритета без исполнителя',
+      value: issues?.scopeUnassignedHigh,
       ok: zero,
     },
     { label: 'Красные пайплайны', value: code?.redPipelines, ok: zero },

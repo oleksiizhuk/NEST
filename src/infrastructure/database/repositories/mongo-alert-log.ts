@@ -26,4 +26,24 @@ export class MongoAlertLog implements IAlertLog {
       throw error;
     }
   }
+
+  async release(chatId: number, keys: string[]): Promise<void> {
+    if (!keys.length) return;
+    await this.model.deleteMany({
+      chatId,
+      key: { $in: keys.map((k) => k.slice(0, 300)) },
+    });
+  }
+
+  async releaseStale(
+    chatId: number,
+    prefix: string,
+    active: string[],
+  ): Promise<void> {
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await this.model.deleteMany({
+      chatId,
+      key: { $regex: `^${escaped}`, $nin: active.map((k) => k.slice(0, 300)) },
+    });
+  }
 }

@@ -44,6 +44,7 @@ describe('issueSignals', () => {
     const signals = issueSignals(
       [
         fact('A-1', { priority: 'Blocker' }),
+        fact('A-7', { priority: 'Highest' }),
         fact('A-2', { blockedBy: ['B-9'] }),
         fact('A-3', { priority: 'High', assignee: null }),
         fact('A-4', { priority: 'High', assignee: null, fixVersions: ['2.0'] }),
@@ -93,7 +94,7 @@ describe('codeSignals', () => {
     );
     expect(signals.map((s) => `${s.rule}:${s.subject}`)).toEqual([
       'review-wait:api#1',
-      'red-pipeline:api:Deploy@main:2026-09-23T06:00:00Z',
+      'red-pipeline:api:Deploy@main',
     ]);
   });
 });
@@ -162,18 +163,33 @@ describe('readinessChecklist', () => {
   it('marks each gate yes, no or no data', () => {
     const text = readinessChecklist(
       snapshotWith(
-        { blockers: 0, openHighBugs: 2, unassignedHigh: 0, scope: 9 },
+        {
+          blockers: 0,
+          scopeHighBugs: 2,
+          scopeUnassignedHigh: 0,
+          openHighBugs: 5,
+          scope: 9,
+        },
         { redPipelines: 0, waitingReview: 1 },
       ),
       'QA sign-off in the ticket',
     );
     expect(text).toContain('НЕ ГОТОВ: 2 пункт(а) не выполнено');
     expect(text).toContain('✅ Блокеры в объёме релиза: 0');
-    expect(text).toContain('❌ Открытые баги высокого приоритета: 2');
+    expect(text).toContain('❌ Открытые баги высокого приоритета в релизе: 2');
     expect(text).toContain(
       '❔ Недоставленные коммиты между ветками (макс.): нет данных',
     );
     expect(text).toContain('QA sign-off in the ticket');
+  });
+
+  it("shows a failed source as no data, not as yesterday's pass", () => {
+    const text = readinessChecklist(
+      snapshotWith({ blockers: 0, scopeHighBugs: 0 }, {}, { ok: false }),
+      null,
+    );
+    expect(text).toContain('❔ Блокеры в объёме релиза: нет данных');
+    expect(text).not.toContain('ГОТОВ по данным');
   });
 });
 
@@ -200,7 +216,11 @@ describe('WatchProjectUseCase', () => {
         releaseDate: '2026-09-30',
         team: ['Ann'],
       },
-      alerts: { claim: jest.fn().mockResolvedValue(true) },
+      alerts: {
+        claim: jest.fn().mockResolvedValue(true),
+        release: jest.fn().mockResolvedValue(undefined),
+        releaseStale: jest.fn().mockResolvedValue(undefined),
+      },
       knowledge: { all: jest.fn().mockResolvedValue([]) },
       memory: {
         active: jest.fn().mockResolvedValue([
@@ -302,17 +322,73 @@ describe('WatchProjectUseCase', () => {
     expect(deps.telegram.sendMessage).not.toHaveBeenCalled();
   });
 
-  it('caps each group', () => {
-    const text = formatAlerts(
-      Array.from({ length: 10 }, (_, i) => ({
-        rule: 'review-wait',
-        subject: String(i),
-        text: `PR ${i}`,
-      })),
-    );
+  it('shows at most 8 per rule and leaves the rest unclaimed for later', async () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({
+      rule: 'review-wait',
+      subject: `api#${i}`,
+      text: `PR ${i}`,
+    }));
+    const { useCase, deps } = build({
+      refresh: {
+        execute: jest
+          .fn()
+          .mockResolvedValue(snapshotWith({}, {}, { signals: many })),
+      },
+      config: { alertChatIds: [1], releaseDate: null, team: [] },
+      memory: { active: jest.fn().mockResolvedValue([]) },
+    });
+    await useCase.execute(NOW);
+    expect(deps.alerts.claim).toHaveBeenCalledTimes(8);
+    const text = deps.telegram.sendMessage.mock.calls[0][1];
     expect(text).toContain('- PR 7');
     expect(text).not.toContain('- PR 8');
-    expect(text).toContain('…и ещё 2');
+    expect(text).toContain('Ещё 2 — в следующих уведомлениях.');
+  });
+
+  it('releases the claims when the message fails, and re-arms green pipelines', async () => {
+    const { useCase, deps } = build();
+    deps.telegram.sendMessage.mockRejectedValueOnce(new Error('429'));
+    await useCase.execute(NOW);
+    expect(deps.alerts.release).toHaveBeenCalledWith(
+      1,
+      expect.arrayContaining(['blocker:A-1', 'readiness:2026-09-30:T-5']),
+    );
+    expect(deps.alerts.releaseStale).toHaveBeenCalledWith(
+      1,
+      'red-pipeline:',
+      [],
+    );
+  });
+
+  it('does not take a client named like a team member for the team', async () => {
+    const { useCase } = build({
+      config: { alertChatIds: [1], releaseDate: null, team: ['Ann'] },
+      issues: {
+        isConfigured: () => true,
+        recentComments: jest.fn().mockResolvedValue([
+          {
+            source: 'jira',
+            where: 'ABC-3',
+            link: null,
+            author: 'Joanna Client',
+            createdAt: new Date('2026-09-17T10:00:00Z'),
+            text: 'Any update?',
+            replies: [],
+            resolved: false,
+          },
+        ]),
+      },
+    });
+    const { signals } = await useCase.execute(NOW, true);
+    expect(signals.some((s) => s.rule === 'client-question')).toBe(false);
+  });
+
+  it('formats groups in a fixed order', () => {
+    const text = formatAlerts([
+      { rule: 'review-wait', subject: '1', text: 'PR 1' },
+      { rule: 'blocker', subject: 'A-1', text: 'A-1' },
+    ]);
+    expect(text.indexOf('Блокеры')).toBeLessThan(text.indexOf('PR ждут ревью'));
   });
 });
 
@@ -362,7 +438,11 @@ describe('golden eval', () => {
     };
     const answer = { execute: jest.fn().mockResolvedValue({ text: 'all ok' }) };
     const telegram = { sendMessage: jest.fn().mockResolvedValue(undefined) };
-    const alerts = { claim: jest.fn().mockResolvedValue(true) };
+    const alerts = {
+      claim: jest.fn().mockResolvedValue(true),
+      release: jest.fn(),
+      releaseStale: jest.fn(),
+    };
     const useCase = new RunGoldenEvalUseCase(
       golden,
       answer as any,
@@ -379,6 +459,51 @@ describe('golden eval', () => {
     });
     expect(telegram.sendMessage.mock.calls[0][1]).toContain('2/2 пройдено');
     expect(alerts.claim).toHaveBeenCalledWith(1, 'eval:2026-W39', NOW);
+  });
+
+  it('skips a long case and still runs a short one after it', async () => {
+    const golden = {
+      all: jest.fn().mockResolvedValue([
+        {
+          id: 'long',
+          question: 'q1',
+          mustContain: [],
+          mustNotContain: [],
+          maxSeconds: 200,
+          last: null,
+        },
+        {
+          id: 'short',
+          question: 'q2',
+          mustContain: [],
+          mustNotContain: [],
+          maxSeconds: 30,
+          // run last week: due again this week
+          last: {
+            at: new Date('2026-09-16T02:00:00Z'),
+            pass: true,
+            seconds: 5,
+            failures: [],
+            answer: '',
+          },
+        },
+      ]),
+      replaceAll: jest.fn(),
+      saveResult: jest.fn(),
+    };
+    const answer = { execute: jest.fn().mockResolvedValue({ text: 'x' }) };
+    const useCase = new RunGoldenEvalUseCase(
+      golden,
+      answer as any,
+      { sendMessage: jest.fn() } as any,
+      { alertChatIds: [1] } as any,
+      { claim: jest.fn(), release: jest.fn(), releaseStale: jest.fn() },
+    );
+    expect(await useCase.execute(NOW, 100_000)).toEqual({
+      ran: ['short'],
+      remaining: 1,
+      reported: false,
+    });
   });
 
   it('stops before a case that would not fit in the budget', async () => {
@@ -402,7 +527,7 @@ describe('golden eval', () => {
       answer as any,
       { sendMessage: jest.fn() } as any,
       { alertChatIds: [1] } as any,
-      { claim: jest.fn() },
+      { claim: jest.fn(), release: jest.fn(), releaseStale: jest.fn() },
     );
     expect(await useCase.execute(NOW, 60_000)).toEqual({
       ran: [],

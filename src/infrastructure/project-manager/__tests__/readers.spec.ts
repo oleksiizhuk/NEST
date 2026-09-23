@@ -1,6 +1,7 @@
 import {
   formatIssue,
   JiraIssueReader,
+  toFact,
 } from '@infrastructure/project-manager/jira-issue.reader';
 import { GitHubActivityReader } from '@infrastructure/project-manager/github-activity.reader';
 import { ConfluencePageReader } from '@infrastructure/project-manager/confluence-page.reader';
@@ -51,6 +52,27 @@ describe('Jira reader', () => {
     ).toBe(
       'ABC-242 | Backlog | Sub-task | Normal | UNASSIGNED | parent ABC-212 | created 09-21 | updated 09-22 | is blocked by ABC-236(In Review) | [QA] Release regression',
     );
+  });
+
+  it('counts a blocking link only while its issue is not done, by category', () => {
+    const link = (key: string, cat: string, name: string) => ({
+      type: { inward: 'is blocked by' },
+      inwardIssue: {
+        key,
+        fields: { status: { name, statusCategory: { key: cat } } },
+      },
+    });
+    const fact = toFact({
+      key: 'ABC-1',
+      fields: {
+        status: { name: 'Open' },
+        issuelinks: [
+          link('ABC-2', 'done', 'Готово'),
+          link('ABC-3', 'indeterminate', 'В работе'),
+        ],
+      },
+    });
+    expect(fact.blockedBy).toEqual(['ABC-3']);
   });
 
   it('adds fixVersion, component and active sprint to the line', () => {

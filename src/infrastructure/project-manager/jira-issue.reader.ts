@@ -50,7 +50,12 @@ interface JiraIssue {
     parent?: { key?: string } | null;
     issuelinks?: Array<{
       type?: { inward?: string; outward?: string };
-      inwardIssue?: { key: string; fields?: { status?: { name?: string } } };
+      inwardIssue?: {
+        key: string;
+        fields?: {
+          status?: { name?: string; statusCategory?: { key?: string } };
+        };
+      };
       outwardIssue?: { key: string; fields?: { status?: { name?: string } } };
     }>;
     created?: string;
@@ -86,9 +91,8 @@ export const toFact = (issue: JiraIssue): IssueFact => {
       (l) =>
         /blocked by/i.test(l.type?.inward ?? '') &&
         l.inwardIssue &&
-        !/done|closed|resolved|released/i.test(
-          l.inwardIssue.fields?.status?.name ?? '',
-        ),
+        // Status category, not the name: names are localized and custom
+        l.inwardIssue.fields?.status?.statusCategory?.key !== 'done',
     )
     .map((l) => l.inwardIssue?.key ?? '')
     .filter(Boolean);

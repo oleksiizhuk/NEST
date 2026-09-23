@@ -207,6 +207,20 @@ describe('PmToolbox', () => {
       }),
     );
     expect(c.proposal?.id).toBe('K7Q2A');
+    await expect(
+      withMemory.run(
+        'propose_remember',
+        { kind: 'commitment', text: 'x merges', due: '2026-13-05' },
+        ctx(),
+      ),
+    ).rejects.toThrow('real date');
+    expect(
+      await withMemory.run(
+        'propose_remember',
+        { kind: 'commitment', text: 'x merges', due: '2020-01-01' },
+        ctx(),
+      ),
+    ).toContain('already past');
   });
 
   it('allows one proposal per message', async () => {

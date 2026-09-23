@@ -210,7 +210,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager 
 | POST | `/email/convert` | JWT | OCR an uploaded image (`file`, ≤ 5 MB) |
 | POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_advice { prompt, context?, model? }` |
 | GET | `/cron/pm/actions`, `/cron/pm/ask?q=`, `/cron/pm/targets`, `/cron/pm/feedback` | Bearer `CRON_SECRET` | Diagnostics: recent actions with outcome, one question through the PM pipeline, dev/staging sign-in check, 👍/👎 and time/tokens of recent answers |
-| GET | `/cron/pm/watch?dry=1`, `/cron/pm/eval`, `/cron/pm/memory`, `/cron/pm/golden` · PUT `/cron/pm/golden` | Bearer `CRON_SECRET` | Alerts (Vercel Cron 08/11/14 UTC weekdays; `dry=1` lists without sending), weekly golden eval (Mon 02:00–02:40), memory records, golden questions |
+| GET | `/cron/pm/watch?dry=1`, `/cron/pm/eval`, `/cron/pm/memory`, `/cron/pm/golden` · PUT `/cron/pm/golden` | Bearer `CRON_SECRET` | Alerts (Vercel Cron 08/11/14 UTC weekdays; `dry=1` lists without sending), weekly golden eval (Mon 02:00, 03:00, 04:00 UTC), memory records, golden questions |
 | GET | `/cron/pm/refresh`, `/cron/pm/daily` | Bearer `CRON_SECRET` | Rebuild the project snapshot; daily also posts the digest (Vercel Cron, weekdays 05:00 UTC) |
 | GET | `/api/docs` | — | Swagger UI |
 
