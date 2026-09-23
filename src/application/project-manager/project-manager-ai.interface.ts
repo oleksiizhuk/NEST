@@ -2,6 +2,10 @@ import { ToolSpec } from '@application/project-manager/tools/pm-toolbox';
 
 export const PM_AI_SERVICE = 'PM_AI_SERVICE';
 
+// What the model service returns when it could not produce an answer
+export const PM_UNAVAILABLE_REPLY =
+  'Не получилось подготовить ответ — попробуйте ещё раз чуть позже.';
+
 export interface PmTurn {
   userText: string;
   botResponse: string;

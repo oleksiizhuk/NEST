@@ -284,14 +284,12 @@ export class HandleTelegramMessageUseCase {
           ? callback.vote > 0
             ? 'Спасибо!'
             : 'Спасибо, учту. Напишите, что было не так, — это поможет.'
-          : 'Не нашёл этот ответ',
+          : 'Этот ответ уже оценён',
       )
       .catch(() => undefined);
-    if (saved) {
-      await this.telegram
-        .clearButtons(msg.chatId, callback.messageId)
-        .catch(() => undefined);
-    }
+    await this.telegram
+      .clearButtons(msg.chatId, callback.messageId)
+      .catch(() => undefined);
   }
 
   // Only the owner can open project data to a chat. Anyone else asking gets

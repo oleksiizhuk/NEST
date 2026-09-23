@@ -16,7 +16,12 @@ export const SENSITIVE_TITLE =
   /(credential|password|passwd|secret|\baccess\b|\btokens?\b|api[ _-]?keys?|доступ|парол|секрет)/i;
 
 interface SearchResult {
-  content?: { id?: string; title?: string; type?: string };
+  content?: {
+    id?: string;
+    title?: string;
+    type?: string;
+    ancestors?: Array<{ id?: string; title?: string }>;
+  };
   excerpt?: string;
   lastModified?: string;
   resultGlobalContainer?: { title?: string };
@@ -40,6 +45,7 @@ const list = (value: string | undefined): string[] =>
 export class ConfluenceSearch implements IDocSearch {
   private readonly baseUrl: string;
   private readonly auth: string;
+  private readonly hasCredentials: boolean;
   private readonly spaces: string[];
   private readonly snapshotPages: Set<string>;
   private readonly excluded: Set<string>;
@@ -51,6 +57,9 @@ export class ConfluenceSearch implements IDocSearch {
       config.get<string>('JIRA_BASE_URL') ||
       ''
     ).replace(/\/$/, '');
+    this.hasCredentials = Boolean(
+      config.get<string>('JIRA_EMAIL') && config.get<string>('JIRA_API_TOKEN'),
+    );
     this.auth = basicAuth(
       config.get<string>('JIRA_EMAIL') ?? '',
       config.get<string>('JIRA_API_TOKEN') ?? '',
@@ -67,7 +76,7 @@ export class ConfluenceSearch implements IDocSearch {
   }
 
   isConfigured(): boolean {
-    return Boolean(this.baseUrl && this.spaces.length);
+    return Boolean(this.baseUrl && this.hasCredentials && this.spaces.length);
   }
 
   private get headers() {
@@ -85,15 +94,27 @@ export class ConfluenceSearch implements IDocSearch {
     const term = query.replace(/["\\]/g, ' ').trim().slice(0, 100);
     if (!term) throw new Error('empty query');
     const spaces = this.spaces.map((k) => `"${k}"`).join(',');
-    const cql = `type=page AND space in (${spaces}) AND (title ~ "${term}" OR text ~ "${term}") ORDER BY lastmodified DESC`;
+    // Excluded pages close their whole subtree
+    const notUnder = this.excluded.size
+      ? ` AND ancestor NOT IN (${[...this.excluded]
+          .filter((id) => /^\d+$/.test(id))
+          .join(',')})`
+      : '';
+    const cql = `type=page AND space in (${spaces})${notUnder} AND (title ~ "${term}" OR text ~ "${term}") ORDER BY lastmodified DESC`;
     const { data } = await getJson<{ results?: SearchResult[] }>(
       `${this.baseUrl}/wiki/rest/api/search?cql=${encodeURIComponent(
         cql,
-      )}&limit=${MAX_RESULTS * 2}`,
+      )}&limit=${MAX_RESULTS * 2}&expand=content.ancestors`,
       this.headers,
     );
     const rows = (data.results ?? [])
-      .filter((r) => !this.hidden(r.content?.id, r.content?.title))
+      .filter(
+        (r) =>
+          !this.hidden(r.content?.id, r.content?.title) &&
+          // Ancestors missing = cannot vouch for the subtree: leave it out
+          Array.isArray(r.content?.ancestors) &&
+          !r.content?.ancestors?.some((a) => this.hidden(a.id, a.title)),
+      )
       .slice(0, MAX_RESULTS)
       .map(
         (r) =>
@@ -128,6 +149,12 @@ export class ConfluenceSearch implements IDocSearch {
     ) {
       throw new Error('This page is outside the allowed spaces.');
     }
+    // A harmless-looking page under an access page is still closed
+    if (await this.underHiddenPage(id)) {
+      throw new Error(
+        'This page sits under a page that is closed to the bot; it is not readable here.',
+      );
+    }
     const children = await getJson<{
       results?: Array<{ id: string; title: string }>;
     }>(
@@ -147,6 +174,27 @@ export class ConfluenceSearch implements IDocSearch {
       storageToText(data.body?.storage?.value ?? '', MAX_CHARS_PER_PAGE) +
       (children.length ? `\n\nChild pages: ${children.join('; ')}` : '')
     );
+  }
+
+  private async underHiddenPage(id: string): Promise<boolean> {
+    const { data } = await getJson<{ results?: Array<{ id?: string }> }>(
+      `${this.baseUrl}/wiki/api/v2/pages/${id}/ancestors?limit=25`,
+      this.headers,
+    );
+    const ids = (data.results ?? [])
+      .map((a) => String(a.id ?? ''))
+      .filter(Boolean);
+    if (ids.some((a) => this.excluded.has(a))) return true;
+    // v2 ancestors carry ids only; titles need one small read each
+    const titles = await Promise.all(
+      ids.map((a) =>
+        getJson<{ title?: string }>(
+          `${this.baseUrl}/wiki/api/v2/pages/${a}`,
+          this.headers,
+        ).then(({ data: page }) => page.title ?? ''),
+      ),
+    );
+    return titles.some((t) => SENSITIVE_TITLE.test(t));
   }
 
   // Space keys → ids once per instance; a failed lookup is retried next time

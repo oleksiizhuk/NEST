@@ -6,6 +6,7 @@ import {
   PmRequest,
   PmTurn,
   PmUsage,
+  PM_UNAVAILABLE_REPLY,
 } from '@application/project-manager/project-manager-ai.interface';
 import { PROJECT_MANAGER_SYSTEM_PROMPT } from '@infrastructure/anthropic/project-manager.system-prompt';
 
@@ -22,8 +23,7 @@ const MAX_TOOL_CALLS = 16;
 const TOOL_TIMEOUT_MS = 15_000;
 const MAX_TOOL_CHARS_PER_TURN = 150_000;
 
-export const PM_UNAVAILABLE_REPLY =
-  'Не получилось подготовить ответ — попробуйте ещё раз чуть позже.';
+export { PM_UNAVAILABLE_REPLY };
 
 const WRAP_UP =
   'Tool budget or time is used up. Answer now from what you already have, and say briefly what you could not check.';

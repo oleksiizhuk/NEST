@@ -25,7 +25,8 @@ export interface AnswerRecord {
 export interface ITelegramMessageRepository {
   save(data: TelegramMessageLog): Promise<TelegramMessage>;
   findByChatId(chatId: number, limit: number): Promise<TelegramMessage[]>;
-  // False when no answer in that chat carries the token
+  // False when no answer in that chat carries the token, or it was already
+  // rated (the first vote sticks)
   setFeedback(
     token: string,
     chatId: number,

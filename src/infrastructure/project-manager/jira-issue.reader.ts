@@ -240,7 +240,9 @@ export class JiraIssueReader implements IProjectSource {
         .slice(0, 16)} UTC)\n${metrics}`,
       ...parts,
     ].join('\n\n');
-    return { text, metrics: numbers };
+    // Counts from a capped list are lower bounds; as a trend they would read
+    // as "no change" while scope grows
+    return caps.some(Boolean) ? { text } : { text, metrics: numbers };
   }
 
   private async search(query: Query): Promise<JiraIssue[]> {

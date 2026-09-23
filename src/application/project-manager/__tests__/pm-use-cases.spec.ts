@@ -2,6 +2,7 @@ import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity'
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { AnswerProjectQuestionUseCase } from '@application/project-manager/use-cases/answer-project-question.use-case';
 import { PostDailyDigestUseCase } from '@application/project-manager/use-cases/post-daily-digest.use-case';
+import { PM_UNAVAILABLE_REPLY } from '@application/project-manager/project-manager-ai.interface';
 
 const now = new Date('2026-09-23T06:00:00Z');
 const config = {
@@ -321,6 +322,25 @@ describe('PostDailyDigestUseCase', () => {
       },
     ]);
     expect(snapshots.saveDigest).toHaveBeenCalledWith('r', 'digest text');
+  });
+
+  it('does not remember a digest nobody received or an error reply', async () => {
+    const snapshots = repo();
+    const build = () =>
+      new PostDailyDigestUseCase(
+        refresh as any,
+        ai as any,
+        telegram,
+        config,
+        chats([]),
+        knowledge as any,
+        snapshots as any,
+      );
+    telegram.sendMessage.mockRejectedValueOnce(new Error('bot removed'));
+    await build().execute(now);
+    ai.digest.mockResolvedValueOnce(PM_UNAVAILABLE_REPLY);
+    await build().execute(now);
+    expect(snapshots.saveDigest).not.toHaveBeenCalled();
   });
 
   it('only refreshes when no digest chat is configured', async () => {

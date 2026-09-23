@@ -125,6 +125,22 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     await useCase.execute(group(PM_GROUP, 'просто болтаем'));
     expect(pmAnswer.execute).not.toHaveBeenCalled();
     expect(telegram.sendMessage).not.toHaveBeenCalled();
+
+    repo.setFeedback.mockResolvedValueOnce(false);
+    await useCase.execute({
+      ...group(PM_GROUP, '👍', 8),
+      callback: {
+        id: 'cb2',
+        messageId: 99,
+        kind: 'feedback',
+        vote: 1,
+        token: 'abc123def456',
+      },
+    });
+    expect(telegram.answerCallback).toHaveBeenLastCalledWith(
+      'cb2',
+      'Этот ответ уже оценён',
+    );
   });
 
   it('turns /status into the status question', async () => {

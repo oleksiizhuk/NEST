@@ -20,7 +20,7 @@ export interface IPmConfig {
   dmUsernames: string[];
   // Team members' display names (any tool); their reply answers a question
   team: string[];
-  // Knowledge docs up to this many characters go into every prompt; larger
-  // ones are listed and read on demand
+  // Total characters of knowledge inlined in every prompt; above it the
+  // largest docs are listed and read on demand
   knowledgeInlineChars?: number;
 }

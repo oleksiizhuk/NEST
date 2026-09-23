@@ -121,6 +121,33 @@ describe('Jira reader', () => {
   });
 });
 
+describe('Jira reader caps', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('keeps no trend numbers when a list hit its cap', async () => {
+    let n = 0;
+    global.fetch = jest.fn(() =>
+      json({
+        issues: Array.from({ length: 100 }, () => ({
+          key: `ABC-${++n}`,
+          fields: { status: { name: 'Open' } },
+        })),
+        nextPageToken: 'next',
+        isLast: false,
+      }),
+    ) as any;
+    const result = await new JiraIssueReader(
+      env({
+        JIRA_BASE_URL: 'https://x.atlassian.net',
+        PM_JIRA_PROJECTS: 'ABC',
+      }),
+    ).fetch();
+    expect(result.text).toContain('(capped at 400)');
+    expect(result.metrics).toBeUndefined();
+  });
+});
+
 describe('Confluence reader', () => {
   const realFetch = global.fetch;
   afterEach(() => (global.fetch = realFetch));

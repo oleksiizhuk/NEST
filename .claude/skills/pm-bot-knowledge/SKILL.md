@@ -12,7 +12,7 @@ The repo is **public**. Nothing project-specific goes into git, this file, commi
 | Layer | Where | Size | Refresh when |
 |---|---|---|---|
 | Brief | knowledge key `core:brief` (preferred, no redeploy) or Vercel env `PM_PROJECT_BRIEF` (fallback) | ~5 KB | team, roles, process, critical path or deadline change |
-| Knowledge docs | Mongo `pmknowledges`, keys like `map:mobile`, `map:backend`, `map:dashboard`, `map:design`, `note:staging-api` | ≤ 20 000 chars each | structure, modules, API or design changed noticeably; the bot answers "where is X" wrongly |
+| Knowledge docs | Mongo `pmknowledges`, keys like `map:mobile`, `map:backend`, `map:dashboard`, `map:design`, `note:staging-api` | ≤ 20 000 chars each (`ref:*` up to 60 000, always on demand) | structure, modules, API or design changed noticeably; the bot answers "where is X" wrongly |
 | Snapshot | Mongo, built by `RefreshProjectSnapshotUseCase` from Jira/Confluence/GitHub/Figma | automatic | never by hand — daily cron, `/refresh` (owner), or on demand when older than `PM_SNAPSHOT_MAX_AGE_HOURS` |
 
 Prompt order (`AnthropicProjectManagerService.system`): instructions → `<knowledge>` (`loadKnowledge` in `application/project-manager/knowledge-loader.ts`, 1 h cache breakpoint) → `<brief>` + snapshot (second 1 h breakpoint).

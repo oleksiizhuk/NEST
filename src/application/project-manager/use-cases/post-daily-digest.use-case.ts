@@ -10,6 +10,7 @@ import {
 import {
   IProjectManagerAiService,
   PM_AI_SERVICE,
+  PM_UNAVAILABLE_REPLY,
 } from '@application/project-manager/project-manager-ai.interface';
 import {
   ITelegramGateway,
@@ -88,16 +89,22 @@ export class PostDailyDigestUseCase {
       )}\n\n${DIGEST_REQUEST}`,
       deadline,
     });
-    await this.snapshots
-      ?.saveDigest(snapshot.id, text)
-      .catch((error) => this.logger.error(`digest not saved: ${error}`));
+    let delivered = 0;
     for (const chatId of targets) {
       // One unreachable chat (bot removed) must not stop the others
       try {
         await this.telegram.sendMessage(chatId, text);
+        delivered += 1;
       } catch (error) {
         this.logger.error(`digest to ${chatId}: ${error}`);
       }
+    }
+    // Tomorrow's digest builds on this one: keep it only if it is a real
+    // digest that someone actually received
+    if (delivered && text !== PM_UNAVAILABLE_REPLY) {
+      await this.snapshots
+        ?.saveDigest(snapshot.id, text)
+        .catch((error) => this.logger.error(`digest not saved: ${error}`));
     }
     return { posted: true };
   }

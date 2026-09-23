@@ -44,7 +44,9 @@ export class MongoTelegramMessageRepository
     userId: number,
   ): Promise<boolean> {
     const result = await this.telegramMessageModel.updateOne(
-      { feedbackToken: token, chatId },
+      // The first vote sticks: a late press (buttons not yet removed) must
+      // not turn a 👎 into a 👍
+      { feedbackToken: token, chatId, feedback: null },
       { $set: { feedback: { vote, userId, at: new Date() } } },
     );
     return result.matchedCount > 0;

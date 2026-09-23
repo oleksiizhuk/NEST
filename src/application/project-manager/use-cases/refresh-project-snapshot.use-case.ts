@@ -85,6 +85,9 @@ export class RefreshProjectSnapshotUseCase {
         ok: false,
         fetchedAt: old?.fetchedAt ?? now,
         text: old?.text ?? '',
+        // The old numbers describe the old text; keeping them lets tomorrow's
+        // trend compare against the last real reading
+        ...(old?.metrics ? { metrics: old.metrics } : {}),
         error,
       };
     });
