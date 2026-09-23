@@ -1,3 +1,5 @@
+import { ToolSpec } from '@application/project-manager/tools/pm-toolbox';
+
 export const PM_AI_SERVICE = 'PM_AI_SERVICE';
 
 export interface PmTurn {
@@ -5,16 +7,27 @@ export interface PmTurn {
   botResponse: string;
 }
 
+export interface PmTools {
+  specs: ToolSpec[];
+  run(name: string, input: Record<string, unknown>): Promise<string>;
+}
+
 export interface PmRequest {
   brief: string;
+  // Codebase maps and other long-lived reference text
+  knowledge: string;
   snapshot: string;
   history: PmTurn[];
   // Date, release countdown and the question; kept out of the cached prefix
   // so the cache survives from one day to the next
   question: string;
+  // Absent: a single call with no tools (the digest)
+  tools?: PmTools;
+  // Epoch ms by which the final answer must exist
+  deadline?: number;
 }
 
 export interface IProjectManagerAiService {
   answer(request: PmRequest): Promise<string>;
-  digest(request: Omit<PmRequest, 'history'>): Promise<string>;
+  digest(request: Omit<PmRequest, 'history' | 'tools'>): Promise<string>;
 }

@@ -25,7 +25,11 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     generateReply: jest.fn().mockResolvedValue('persona reply'),
   };
   const repo = { save: jest.fn(), findByChatId: jest.fn() };
-  const pmAnswer = { execute: jest.fn().mockResolvedValue('AT RISK: …') };
+  const pmAnswer = {
+    execute: jest
+      .fn()
+      .mockResolvedValue({ text: 'AT RISK: …', proposal: null }),
+  };
   const pmRefresh = {
     execute: jest.fn().mockResolvedValue(
       new ProjectSnapshot('s', new Date(), [
@@ -44,6 +48,10 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     enable: jest.fn(),
     disable: jest.fn(),
     digestChats: jest.fn(),
+  };
+  const confirm = {
+    confirm: jest.fn().mockResolvedValue('Готово'),
+    cancel: jest.fn().mockResolvedValue('Отменено'),
   };
   let useCase: HandleTelegramMessageUseCase;
 
@@ -66,16 +74,21 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
         releaseDate: '2026-09-30',
         projectBrief: '',
         maxSnapshotAgeHours: 30,
+        actionUserIds: [],
       },
       pmAnswer as any,
       pmRefresh as any,
       registry,
+      confirm as any,
     );
   });
 
   it('answers as project manager in a listed group and logs the turn as pm', async () => {
     await useCase.execute(group(PM_GROUP, '@nest_bot как дела?'));
-    expect(pmAnswer.execute).toHaveBeenCalledWith('Dev @dev: как дела?', []);
+    expect(pmAnswer.execute).toHaveBeenCalledWith('Dev @dev: как дела?', [], {
+      chatId: PM_GROUP,
+      requesterId: 7,
+    });
     expect(persona.generateReply).not.toHaveBeenCalled();
     expect(telegram.sendMessage).toHaveBeenCalledWith(PM_GROUP, 'AT RISK: …');
     expect(repo.save).toHaveBeenCalledWith(
@@ -178,5 +191,42 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
   it('switches a group off with /pm_off', async () => {
     await useCase.execute(group(OTHER_GROUP, '/pm_off', OWNER));
     expect(registry.disable).toHaveBeenCalledWith(OTHER_GROUP);
+  });
+
+  it('appends the confirmation footer when the answer stored a proposal', async () => {
+    pmAnswer.execute.mockResolvedValueOnce({
+      text: 'Предлагаю создать бренд.',
+      proposal: { id: 'K7Q2A', summary: 'Создать на STAGING бренд "X"' },
+    });
+    await useCase.execute(group(PM_GROUP, '@nest_bot создай бренд X'));
+    const reply = telegram.sendMessage.mock.calls[0][1];
+    expect(reply).toContain('Создать на STAGING бренд "X"');
+    expect(reply).toContain('/confirm K7Q2A');
+  });
+
+  it('routes /confirm with the caller’s rights and never through the model', async () => {
+    await useCase.execute(group(PM_GROUP, '/confirm K7Q2A', 7));
+    expect(confirm.confirm).toHaveBeenCalledWith('K7Q2A', PM_GROUP, 7, false);
+    await useCase.execute(group(PM_GROUP, '/confirm K7Q2A', OWNER));
+    expect(confirm.confirm).toHaveBeenLastCalledWith(
+      'K7Q2A',
+      PM_GROUP,
+      OWNER,
+      true,
+    );
+    expect(pmAnswer.execute).not.toHaveBeenCalled();
+  });
+
+  it('treats a reply "да" to the bot as confirming the latest proposal', async () => {
+    await useCase.execute({
+      ...group(PM_GROUP, 'да', OWNER),
+      replyToBotId: BOT.id,
+    });
+    expect(confirm.confirm).toHaveBeenCalledWith(null, PM_GROUP, OWNER, true);
+  });
+
+  it('routes /cancel', async () => {
+    await useCase.execute(group(PM_GROUP, '/cancel K7Q2A', OWNER));
+    expect(confirm.cancel).toHaveBeenCalledWith('K7Q2A', PM_GROUP, true);
   });
 });

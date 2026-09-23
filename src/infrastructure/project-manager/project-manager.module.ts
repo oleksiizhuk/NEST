@@ -14,6 +14,17 @@ import { JiraIssueReader } from '@infrastructure/project-manager/jira-issue.read
 import { ConfluencePageReader } from '@infrastructure/project-manager/confluence-page.reader';
 import { GitHubActivityReader } from '@infrastructure/project-manager/github-activity.reader';
 import { pmConfig } from '@infrastructure/project-manager/pm.config';
+import { PM_KNOWLEDGE } from '@application/project-manager/knowledge.interface';
+import { CODE_HOST } from '@application/project-manager/code-host.interface';
+import { STAGING_ADMIN } from '@application/project-manager/staging-admin.interface';
+import { PENDING_ACTIONS } from '@application/project-manager/pending-action.interface';
+import { ConfirmPendingActionUseCase } from '@application/project-manager/use-cases/confirm-pending-action.use-case';
+import { PmKnowledgeSchema } from '@infrastructure/database/schemas/pm-knowledge.schema';
+import { MongoPmKnowledgeStore } from '@infrastructure/database/repositories/mongo-pm-knowledge.store';
+import { PmActionSchema } from '@infrastructure/database/schemas/pm-action.schema';
+import { MongoPendingActions } from '@infrastructure/database/repositories/mongo-pending-actions';
+import { GitHubCodeHost } from '@infrastructure/project-manager/github-code.host';
+import { HttpStagingAdmin } from '@infrastructure/staging-admin/http-staging-admin';
 import { PM_CHAT_REGISTRY } from '@application/project-manager/pm-chat-registry.interface';
 import { PmChatSchema } from '@infrastructure/database/schemas/pm-chat.schema';
 import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo-pm-chat.registry';
@@ -24,6 +35,8 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     MongooseModule.forFeature([
       { name: 'ProjectSnapshot', schema: ProjectSnapshotSchema },
       { name: 'PmChat', schema: PmChatSchema },
+      { name: 'PmKnowledge', schema: PmKnowledgeSchema },
+      { name: 'PmAction', schema: PmActionSchema },
     ]),
   ],
   providers: [
@@ -46,11 +59,18 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     },
     { provide: PM_AI_SERVICE, useClass: AnthropicProjectManagerService },
     { provide: PM_CHAT_REGISTRY, useClass: MongoPmChatRegistry },
+    { provide: PM_KNOWLEDGE, useClass: MongoPmKnowledgeStore },
+    { provide: CODE_HOST, useClass: GitHubCodeHost },
+    { provide: STAGING_ADMIN, useClass: HttpStagingAdmin },
+    { provide: PENDING_ACTIONS, useClass: MongoPendingActions },
+    ConfirmPendingActionUseCase,
     RefreshProjectSnapshotUseCase,
     AnswerProjectQuestionUseCase,
   ],
   exports: [
     PM_CONFIG,
+    PM_KNOWLEDGE,
+    ConfirmPendingActionUseCase,
     PM_CHAT_REGISTRY,
     PM_AI_SERVICE,
     RefreshProjectSnapshotUseCase,

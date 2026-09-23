@@ -15,6 +15,11 @@ import {
   IPmChatRegistry,
   PM_CHAT_REGISTRY,
 } from '@application/project-manager/pm-chat-registry.interface';
+import {
+  IKnowledgeStore,
+  PM_KNOWLEDGE,
+} from '@application/project-manager/knowledge.interface';
+import { renderKnowledge } from '@application/project-manager/use-cases/answer-project-question.use-case';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { todayLine } from '@application/project-manager/release-clock';
 
@@ -32,6 +37,7 @@ export class PostDailyDigestUseCase {
     @Inject(TELEGRAM_GATEWAY) private readonly telegram: ITelegramGateway,
     @Inject(PM_CONFIG) private readonly config: IPmConfig,
     @Inject(PM_CHAT_REGISTRY) private readonly chats: IPmChatRegistry,
+    @Inject(PM_KNOWLEDGE) private readonly knowledge: IKnowledgeStore,
   ) {}
 
   // Always rebuilds the snapshot first: the digest is the morning's source
@@ -47,6 +53,7 @@ export class PostDailyDigestUseCase {
     }
     const text = await this.ai.digest({
       brief: this.config.projectBrief,
+      knowledge: await renderKnowledge(this.knowledge),
       snapshot: snapshot.render(),
       question: `${todayLine(
         now,

@@ -36,6 +36,7 @@ describe('AnthropicProjectManagerService request', () => {
     const params = service.buildParams(
       {
         brief: 'Team brief',
+        knowledge: '<doc key="m">map</doc>',
         snapshot: '<snapshot generated_at="x">…</snapshot>',
         history: [{ userText: 'A: q1', botResponse: 'a1' }],
         question: 'Today is Wednesday 2026-09-23.\n\nA: q2',
@@ -51,7 +52,11 @@ describe('AnthropicProjectManagerService request', () => {
     const system = params.system as any[];
     expect(system[0].cache_control).toBeUndefined();
     expect(system[1].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
-    expect(system[1].text).toContain('<brief>\nTeam brief\n</brief>');
+    expect(system[1].text).toContain(
+      '<knowledge>\n<doc key="m">map</doc>\n</knowledge>',
+    );
+    expect(system[2].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
+    expect(system[2].text).toContain('<brief>\nTeam brief\n</brief>');
     // The date lives in the last user turn so the cached prefix survives the day change
     expect(system.map((b) => b.text).join('')).not.toContain('2026-09-23');
     expect(params.messages).toEqual([

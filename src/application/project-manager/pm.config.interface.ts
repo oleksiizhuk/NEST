@@ -13,4 +13,6 @@ export interface IPmConfig {
   projectBrief: string;
   // Rebuild the snapshot before answering when it is older than this
   maxSnapshotAgeHours: number;
+  // Besides the owner, who may confirm actions on staging
+  actionUserIds: number[];
 }
