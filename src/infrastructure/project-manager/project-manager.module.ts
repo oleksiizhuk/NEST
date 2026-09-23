@@ -26,6 +26,14 @@ import { PmActionSchema } from '@infrastructure/database/schemas/pm-action.schem
 import { MongoPendingActions } from '@infrastructure/database/repositories/mongo-pending-actions';
 import { GitHubCodeHost } from '@infrastructure/project-manager/github-code.host';
 import { AdminTargets } from '@infrastructure/staging-admin/http-staging-admin';
+import {
+  DESIGN_HOST,
+  DOC_COMMENTS,
+  ISSUE_DETAILS,
+} from '@application/project-manager/collaboration.interface';
+import { JiraIssueDetails } from '@infrastructure/project-manager/jira-issue-details';
+import { ConfluenceCommentsReader } from '@infrastructure/project-manager/confluence-comments.reader';
+import { FigmaDesignHost } from '@infrastructure/project-manager/figma-design.host';
 import { PM_CHAT_REGISTRY } from '@application/project-manager/pm-chat-registry.interface';
 import { PmChatSchema } from '@infrastructure/database/schemas/pm-chat.schema';
 import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo-pm-chat.registry';
@@ -75,6 +83,9 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
       inject: [ConfigService],
     },
     { provide: PENDING_ACTIONS, useClass: MongoPendingActions },
+    { provide: ISSUE_DETAILS, useClass: JiraIssueDetails },
+    { provide: DOC_COMMENTS, useClass: ConfluenceCommentsReader },
+    { provide: DESIGN_HOST, useClass: FigmaDesignHost },
     ConfirmPendingActionUseCase,
     RefreshProjectSnapshotUseCase,
     AnswerProjectQuestionUseCase,

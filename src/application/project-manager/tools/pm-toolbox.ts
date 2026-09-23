@@ -11,6 +11,13 @@ import {
   PendingAction,
 } from '@application/project-manager/pending-action.interface';
 import {
+  IDesignHost,
+  IDocComments,
+  IIssueDetails,
+  Remark,
+} from '@application/project-manager/collaboration.interface';
+import { openQuestions } from '@application/project-manager/tools/open-questions';
+import {
   assertReadablePath,
   wrapUntrusted,
 } from '@application/project-manager/tools/untrusted';
@@ -34,6 +41,8 @@ export interface ToolContext {
   // Taken synchronously by the first propose_* call of the turn, so tool
   // calls running in parallel cannot both store a proposal
   reserved?: boolean;
+  // Images rendered this turn (rate-limited)
+  images?: number;
   // Set when the turn gave up on its tools (timeout or final answer); a
   // proposal finishing after that is discarded, never left pending unseen
   closed?: boolean;
@@ -78,6 +87,13 @@ export class PmToolbox {
     private readonly code: ICodeHost,
     private readonly targets: IAdminTargets,
     private readonly actions: IPendingActions,
+    private readonly collab: {
+      issues?: IIssueDetails;
+      docs?: IDocComments;
+      design?: IDesignHost;
+      // Display names of the team; a reply from one of them answers a question
+      team?: string[];
+    } = {},
   ) {}
 
   // Same order and content on every call, so the cached prompt prefix
@@ -309,6 +325,86 @@ export class PmToolbox {
           additionalProperties: false,
         },
       },
+      ...(this.collab.issues?.isConfigured()
+        ? [
+            {
+              name: 'jira_get_issue',
+              description:
+                'Read one ticket in full: description (acceptance criteria), status, assignee, reporter, links, subtasks, attachments by name, recent status changes and the latest comments. Use it whenever a question is about what a ticket requires or what was said on it.',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  key: { type: 'string', description: 'e.g. ABC-123' },
+                },
+                required: ['key'],
+                additionalProperties: false,
+              },
+            },
+          ]
+        : []),
+      {
+        name: 'find_open_questions',
+        description:
+          'Find questions people left in ticket comments, on the doc pages and in design comments, and whether the team answered them. Filter by author (e.g. the client), by a mentioned name, by source and period. Use for "what did X ask", "what questions are open", "did we answer X".',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            author: {
+              type: 'string',
+              description: "Part of the asker's display name",
+            },
+            mentioned: {
+              type: 'string',
+              description: 'A name the question mentions',
+            },
+            sources: {
+              type: 'array',
+              items: { type: 'string', enum: ['jira', 'confluence', 'figma'] },
+            },
+            since_days: { type: 'integer', minimum: 1, maximum: 60 },
+            include_answered: { type: 'boolean' },
+          },
+          additionalProperties: false,
+        },
+      },
+      ...(this.collab.design?.isConfigured()
+        ? [
+            {
+              name: 'figma_get_node',
+              description:
+                'Read 1–5 design frames or layers: sizes, colours (hex), text and fonts, spacing (auto-layout), corner radius and component instances, plus a link to open each. Use node ids from the design section or the design map. Compare with the app by reading its constants/components via the code tools.',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  file: { type: 'string', enum: this.collab.design.fileKeys() },
+                  ids: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    minItems: 1,
+                    maxItems: 5,
+                  },
+                  depth: { type: 'integer', minimum: 1, maximum: 4 },
+                },
+                required: ['ids'],
+                additionalProperties: false,
+              },
+            },
+            {
+              name: 'figma_image_link',
+              description:
+                'Render one frame to a PNG and return a temporary image link (Telegram shows a preview) plus the Figma link. At most 3 per message.',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  file: { type: 'string', enum: this.collab.design.fileKeys() },
+                  id: { type: 'string' },
+                },
+                required: ['id'],
+                additionalProperties: false,
+              },
+            },
+          ]
+        : []),
     ];
   }
 
@@ -420,6 +516,42 @@ export class PmToolbox {
         return this.proposing(ctx, () =>
           this.proposePropertyAction(input, ctx),
         );
+      case 'jira_get_issue': {
+        if (!this.collab.issues?.isConfigured())
+          throw new Error('Ticket access is not configured.');
+        const key = str(input.key, 30).toUpperCase();
+        return wrapUntrusted(
+          `jira:${key}`,
+          await this.collab.issues.getIssue(key),
+        );
+      }
+      case 'find_open_questions':
+        return this.findQuestions(input);
+      case 'figma_get_node': {
+        if (!this.collab.design?.isConfigured())
+          throw new Error('Design access is not configured.');
+        const ids = Array.isArray(input.ids)
+          ? input.ids.map((i) => str(i, 20))
+          : [];
+        const depth = typeof input.depth === 'number' ? input.depth : 2;
+        return wrapUntrusted(
+          'figma:nodes',
+          await this.collab.design.getNodes(str(input.file, 40), ids, depth),
+        );
+      }
+      case 'figma_image_link': {
+        if (!this.collab.design?.isConfigured())
+          throw new Error('Design access is not configured.');
+        ctx.images = (ctx.images ?? 0) + 1;
+        if (ctx.images > 3) throw new Error('At most 3 images per message.');
+        return wrapUntrusted(
+          'figma:image',
+          await this.collab.design.imageLink(
+            str(input.file, 40),
+            str(input.id, 20),
+          ),
+        );
+      }
       default:
         throw new Error(`Unknown tool ${name}`);
     }
@@ -445,6 +577,62 @@ export class PmToolbox {
     }
     const role = str(roleValue, 10) || 'client';
     return { name, role, admin: this.targets.target(name, role) };
+  }
+
+  private async findQuestions(input: Record<string, unknown>): Promise<string> {
+    const days =
+      typeof input.since_days === 'number'
+        ? Math.max(1, Math.min(60, input.since_days))
+        : 30;
+    const sources = Array.isArray(input.sources)
+      ? (input.sources.map((x) => str(x, 12)) as Array<Remark['source']>)
+      : [];
+    const want = (s: Remark['source']) =>
+      !sources.length || sources.includes(s);
+    const readers: Array<
+      [
+        Remark['source'],
+        (
+          | {
+              isConfigured(): boolean;
+              recentComments(d: number): Promise<Remark[]>;
+            }
+          | undefined
+        ),
+      ]
+    > = [
+      ['jira', this.collab.issues],
+      ['confluence', this.collab.docs],
+      ['figma', this.collab.design],
+    ];
+    const results = await Promise.allSettled(
+      readers
+        .filter(([s, r]) => want(s) && r?.isConfigured())
+        .map(([, r]) =>
+          (
+            r as { recentComments(d: number): Promise<Remark[]> }
+          ).recentComments(days),
+        ),
+    );
+    const remarks = results.flatMap((r) =>
+      r.status === 'fulfilled' ? r.value : [],
+    );
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    const text = openQuestions(
+      remarks,
+      {
+        author: input.author ? str(input.author, 60) : undefined,
+        mentioned: input.mentioned ? str(input.mentioned, 60) : undefined,
+        sources,
+        includeAnswered: input.include_answered === true,
+      },
+      this.collab.team ?? [],
+      new Date(),
+    );
+    return wrapUntrusted(
+      'questions',
+      `${text}${failed ? `\n(${failed} source(s) could not be read)` : ''}`,
+    );
   }
 
   private async store(

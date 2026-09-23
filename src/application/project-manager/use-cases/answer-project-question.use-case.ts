@@ -31,6 +31,14 @@ import {
   PendingAction,
 } from '@application/project-manager/pending-action.interface';
 import {
+  DESIGN_HOST,
+  DOC_COMMENTS,
+  IDesignHost,
+  IDocComments,
+  IIssueDetails,
+  ISSUE_DETAILS,
+} from '@application/project-manager/collaboration.interface';
+import {
   PmToolbox,
   ToolContext,
 } from '@application/project-manager/tools/pm-toolbox';
@@ -64,6 +72,9 @@ export class AnswerProjectQuestionUseCase {
     @Inject(CODE_HOST) private readonly code: ICodeHost,
     @Inject(ADMIN_TARGETS) private readonly targets: IAdminTargets,
     @Inject(PENDING_ACTIONS) private readonly actions: IPendingActions,
+    @Inject(ISSUE_DETAILS) private readonly issues: IIssueDetails,
+    @Inject(DOC_COMMENTS) private readonly docs: IDocComments,
+    @Inject(DESIGN_HOST) private readonly design: IDesignHost,
   ) {}
 
   async execute(
@@ -83,7 +94,12 @@ export class AnswerProjectQuestionUseCase {
       this.currentSnapshot(now),
       renderKnowledge(this.knowledge),
     ]);
-    const toolbox = new PmToolbox(this.code, this.targets, this.actions);
+    const toolbox = new PmToolbox(this.code, this.targets, this.actions, {
+      issues: this.issues,
+      docs: this.docs,
+      design: this.design,
+      team: this.config.team,
+    });
     const ctx: ToolContext = { ...chat, proposal: null };
     const text = await this.ai.answer({
       brief: this.config.projectBrief,

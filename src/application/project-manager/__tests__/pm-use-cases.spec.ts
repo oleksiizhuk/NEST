@@ -11,6 +11,7 @@ const config = {
   projectBrief: 'Team: A (mobile)',
   maxSnapshotAgeHours: 30,
   actionUserIds: [] as number[],
+  team: [] as string[],
   dmUsernames: [] as string[],
 };
 const source = (
@@ -90,6 +91,14 @@ const code = {
   pullRequest: jest.fn(),
 };
 const staging = { tiers: () => [], roles: () => [], target: jest.fn() };
+const collab = {
+  isConfigured: () => false,
+  fileKeys: () => [],
+  recentComments: jest.fn(),
+  getIssue: jest.fn(),
+  getNodes: jest.fn(),
+  imageLink: jest.fn(),
+};
 const actions = {
   create: jest.fn(),
   claim: jest.fn(),
@@ -121,6 +130,9 @@ describe('AnswerProjectQuestionUseCase', () => {
       code as any,
       staging as any,
       actions as any,
+      collab as any,
+      collab as any,
+      collab as any,
     );
 
     await useCase.execute(
@@ -146,6 +158,7 @@ describe('AnswerProjectQuestionUseCase', () => {
       'propose_update_store',
       'propose_create_property',
       'propose_property_action',
+      'find_open_questions',
     ]);
     expect(request.question).toBe(
       'Today is Wednesday 2026-09-23. Release date 2026-09-30: 5 working days left.\n\nA: how are we doing?',
@@ -165,6 +178,9 @@ describe('AnswerProjectQuestionUseCase', () => {
       code as any,
       staging as any,
       actions as any,
+      collab as any,
+      collab as any,
+      collab as any,
     );
     await useCase.execute('q', [], { chatId: 1, requesterId: 1 }, now);
     expect(refresh.execute).toHaveBeenCalledWith(now);
@@ -184,6 +200,9 @@ describe('AnswerProjectQuestionUseCase', () => {
       code as any,
       staging as any,
       actions as any,
+      collab as any,
+      collab as any,
+      collab as any,
     );
     const started = Date.now();
     await useCase.execute('q', [], { chatId: 1, requesterId: 1 }, now);
