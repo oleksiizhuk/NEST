@@ -9,6 +9,7 @@ import {
   issueMetrics,
   issueSignals,
 } from '@application/project-manager/metrics';
+import { teamIssues } from '@application/project-manager/team';
 import {
   basicAuth,
   getJson,
@@ -264,9 +265,16 @@ export class JiraIssueReader implements IProjectSource {
     // Counts from a capped list are lower bounds; as a trend they would read
     // as "no change" while scope grows
     const signals = issueSignals(open.map(toFact), this.releaseVersion);
+    const details = teamIssues(
+      open.map(toFact),
+      done.map(toFact),
+      now,
+      this.releaseVersion,
+      caps.some(Boolean),
+    ) as unknown as Record<string, unknown>;
     return caps.some(Boolean)
-      ? { text, signals }
-      : { text, metrics: numbers, signals };
+      ? { text, signals, details }
+      : { text, metrics: numbers, signals, details };
   }
 
   private async search(query: Query): Promise<JiraIssue[]> {

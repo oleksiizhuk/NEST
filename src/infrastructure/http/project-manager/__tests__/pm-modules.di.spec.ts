@@ -32,6 +32,7 @@ const MODELS = [
   'PmAdminLogin',
   'PmAdminAttempt',
   'PmAdminApproval',
+  'PmTeamReview',
 ];
 
 describe('project-manager module wiring', () => {

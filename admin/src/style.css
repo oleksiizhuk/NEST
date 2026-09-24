@@ -267,6 +267,151 @@ tr:last-child td {
   flex-wrap: wrap;
 }
 
+/* ---------- team ---------- */
+.review-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.review-text {
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
+.team-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 12px;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.check input {
+  width: auto;
+}
+.people {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+.people .card {
+  margin-bottom: 0;
+}
+.person.has-warn {
+  border-left: 3px solid #e0a400;
+}
+.person-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.person-head h2 {
+  margin-bottom: 2px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+}
+.chip {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.signals {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.signals li {
+  padding-left: 16px;
+  position: relative;
+  font-size: 14px;
+}
+.signals li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.signals li.warn::before {
+  background: #e0a400;
+}
+.signals li.info::before {
+  background: var(--accent);
+}
+.signals li.ok::before {
+  background: var(--ok);
+}
+.person-details h3 {
+  margin-top: 14px;
+}
+.issues {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+.key {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tags {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 6px;
+  flex-wrap: wrap;
+  vertical-align: middle;
+}
+.tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.tag.warn {
+  color: #b77a00;
+  border-color: #e0a400;
+}
+.inline-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.inline-form input {
+  max-width: 180px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+.inline-form button {
+  min-height: 32px;
+  padding: 4px 10px;
+}
+
 /* ---------- forms ---------- */
 .field {
   padding: 12px;

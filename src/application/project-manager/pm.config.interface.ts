@@ -34,4 +34,6 @@ export interface IPmConfig {
   aiEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   // Groups the owner is a member of are PM chats without /pm_on
   pmInOwnerGroups?: boolean;
+  // Jira name → GitHub login (admin page)
+  githubLogins?: Record<string, string>;
 }

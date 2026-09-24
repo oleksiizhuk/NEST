@@ -4,18 +4,20 @@ import { SettingsForm } from './SettingsForm';
 import { UsagePanel } from './UsagePanel';
 import { LoginCard } from './LoginCard';
 import { ChatsPanel } from './ChatsPanel';
+import { TeamPage } from './TeamPage';
 import {
   IconChats,
   IconClose,
   IconLogout,
   IconMenu,
   IconOverview,
+  IconTeam,
   IconRefresh,
   IconSettings,
 } from './icons';
 
 type State = 'loading' | 'login' | 'ready';
-type PageId = 'overview' | 'chats' | 'settings';
+type PageId = 'overview' | 'team' | 'chats' | 'settings';
 
 const PAGES: Array<{
   id: PageId;
@@ -28,6 +30,12 @@ const PAGES: Array<{
     title: 'Обзор',
     icon: <IconOverview />,
     lead: 'Вопросы за сегодня, оценки ответов и расход.',
+  },
+  {
+    id: 'team',
+    title: 'Сотрудники',
+    icon: <IconTeam />,
+    lead: 'Кто над чем работает, идёт ли в нужную сторону и что сказать на митинге.',
   },
   {
     id: 'chats',
@@ -256,6 +264,9 @@ export function App() {
           {error && <p className="error">{error}</p>}
 
           {page === 'overview' && usage && <UsagePanel usage={usage} />}
+          {page === 'team' && (
+            <TeamPage refreshKey={refreshKey} onUnauthorized={logout} />
+          )}
           {page === 'chats' && (
             <ChatsPanel key={refreshKey} onUnauthorized={logout} />
           )}

@@ -100,6 +100,46 @@ export interface Chat {
   alerts: boolean;
 }
 
+export interface TeamIssue {
+  key: string;
+  summary: string;
+  status: string;
+  priority: string | null;
+  inScope: boolean;
+  due: string | null;
+  blocked: boolean;
+  days?: number | null;
+}
+
+export interface Person {
+  name: string;
+  github: string | null;
+  inProgress: TeamIssue[];
+  queue: TeamIssue[];
+  done14: Array<{ key: string; summary: string; doneAt: string | null }>;
+  pulls: Array<{
+    repo: string;
+    number: number;
+    title: string;
+    waitingDays: number;
+    review: string;
+    draft: boolean;
+  }>;
+  merged14: string[];
+  signals: Array<{ level: 'warn' | 'info' | 'ok'; text: string }>;
+}
+
+export interface TeamView {
+  team: {
+    asOf: string;
+    releaseVersion: string | null;
+    capped: boolean;
+    people: Person[];
+    unmatchedGithub: string[];
+  } | null;
+  review: { text: string; at: string } | null;
+}
+
 export const api = {
   login: (token: string) =>
     call<{ session: string }>('POST', 'login', { token }),
@@ -120,6 +160,11 @@ export const api = {
   usage: () => call<Usage>('GET', 'usage'),
   logoutAll: () => call<{ ok: boolean }>('POST', 'logout-all'),
   chats: () => call<Chat[]>('GET', 'chats'),
+  team: () => call<TeamView>('GET', 'team'),
+  teamReview: (force: boolean) =>
+    call<{ text: string; at: string }>('POST', 'team/review', { force }),
+  setGithub: (name: string, login: string | null) =>
+    call<TeamView>('PUT', 'team/github', { name, login }),
   setChat: (chatId: number, on: boolean | 'auto') =>
     call<Chat[]>('PUT', 'chats', { chatId, on }),
   setChatAlerts: (chatId: number, alerts: boolean) =>

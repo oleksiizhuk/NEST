@@ -4,6 +4,8 @@ import {
   IProjectSource,
   SourceResult,
 } from '@application/project-manager/project-source.interface';
+import { TeamCode } from '@application/project-manager/team';
+import { workingDaysBetween } from '@application/project-manager/release-clock';
 import {
   codeMetrics,
   codeSignals,
@@ -56,6 +58,8 @@ interface RepoActivity {
   pulls: PullFact[];
   runs: RunFact[];
   failed?: boolean;
+  // Per author: open PRs and titles of work merged in 14 days
+  authors?: TeamCode['authors'];
 }
 
 // Review state is not in the REST pull list; one GraphQL call per repo
@@ -184,14 +188,27 @@ export class GitHubActivityReader implements IProjectSource {
       .filter(Boolean)
       .join('\n\n');
     // Partial numbers would read as a trend (PRs "dropped"); keep none
+    // Merge per-author work across repos for the admin page
+    const allAuthors: TeamCode['authors'] = {};
+    for (const a of activity) {
+      for (const [login, w] of Object.entries(a.authors ?? {})) {
+        const t = (allAuthors[login] ??= { open: [], merged14: [] });
+        t.open.push(...w.open);
+        t.merged14.push(...w.merged14);
+      }
+    }
+    const details = { authors: allAuthors } as unknown as Record<
+      string,
+      unknown
+    >;
     const signals = codeSignals(
       activity.flatMap((a) => a.pulls),
       activity.flatMap((a) => a.runs),
       now,
     );
     return missing.length
-      ? { text, signals }
-      : { text, metrics: numbers, signals };
+      ? { text, signals, details }
+      : { text, metrics: numbers, signals, details };
   }
 
   private get headers(): Record<string, string> {
@@ -281,10 +298,39 @@ export class GitHubActivityReader implements IProjectSource {
     );
     const work = merged.filter((pr) => !PROMOTION_HEADS.has(pr.head.ref));
     const promotions = merged.filter((pr) => PROMOTION_HEADS.has(pr.head.ref));
+    const authors: TeamCode['authors'] = {};
+    const author = (login: string) =>
+      (authors[login] ??= { open: [], merged14: [] });
+    for (const pr of open.data) {
+      const review = reviews?.get(pr.number);
+      const decision = review?.reviewDecision;
+      author(pr.user?.login ?? '?').open.push({
+        repo,
+        number: pr.number,
+        title: oneLine(pr.title, 120),
+        draft: Boolean(pr.draft),
+        waitingDays: workingDaysBetween(
+          new Date(
+            review?.timelineItems?.nodes?.[0]?.createdAt || pr.created_at,
+          ),
+          now,
+        ),
+        review: !review
+          ? 'unknown'
+          : decision
+          ? decision
+          : humanReviews(review)
+          ? 'reviewed'
+          : 'no review yet',
+      });
+    }
     const byAuthor = new Map<string, number>();
     work.forEach((pr) => {
       const who = pr.user?.login ?? '?';
       byAuthor.set(who, (byAuthor.get(who) ?? 0) + 1);
+      author(who).merged14.push(
+        `${repo}#${pr.number} ${oneLine(pr.title, 100)}`,
+      );
     });
 
     // Latest run per workflow+branch, outside pull requests
@@ -328,7 +374,7 @@ export class GitHubActivityReader implements IProjectSource {
       'Latest CI/CD runs (non-PR):',
       ...(runLines.length ? runLines : ['none']),
     ].join('\n');
-    return { text, pulls, runs: runFacts };
+    return { text, pulls, runs: runFacts, authors };
   }
 
   private async compare(

@@ -48,3 +48,9 @@ export const IconLogout = () => (
     <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4" />
   </svg>
 );
+export const IconTeam = () => (
+  <svg {...base}>
+    <circle cx="9" cy="8" r="3.2" />
+    <path d="M3 19c.7-3.2 3-5 6-5s5.3 1.8 6 5M16 5.2a3 3 0 0 1 0 5.6M18 14.2c1.6.6 2.6 2.2 3 4.8" />
+  </svg>
+);

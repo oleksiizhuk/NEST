@@ -54,6 +54,9 @@ import { MongoPmSettings } from '@infrastructure/database/repositories/mongo-pm-
 import { MongoAdminLinks } from '@infrastructure/project-manager/admin-links';
 import { PM_ADMIN_APPROVALS } from '@application/project-manager/admin-approvals.interface';
 import { MongoAdminApprovals } from '@infrastructure/project-manager/admin-approvals';
+import { PM_TEAM_REVIEWS } from '@application/project-manager/team-reviews.interface';
+import { MongoTeamReviews } from '@infrastructure/database/repositories/mongo-team-reviews';
+import { PmTeamReviewSchema } from '@infrastructure/database/schemas/pm-team-review.schema';
 import { PmAdminApprovalSchema } from '@infrastructure/database/schemas/pm-admin-approval.schema';
 import { PmSettingsSchema } from '@infrastructure/database/schemas/pm-settings.schema';
 import { PmAdminLoginSchema } from '@infrastructure/database/schemas/pm-admin-login.schema';
@@ -77,6 +80,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
       { name: 'PmSettings', schema: PmSettingsSchema },
       { name: 'PmAdminLogin', schema: PmAdminLoginSchema },
       { name: 'PmAdminApproval', schema: PmAdminApprovalSchema },
+      { name: 'PmTeamReview', schema: PmTeamReviewSchema },
     ]),
   ],
   providers: [
@@ -125,6 +129,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     { provide: PM_SETTINGS, useClass: MongoPmSettings },
     { provide: PM_ADMIN_LINKS, useClass: MongoAdminLinks },
     { provide: PM_ADMIN_APPROVALS, useClass: MongoAdminApprovals },
+    { provide: PM_TEAM_REVIEWS, useClass: MongoTeamReviews },
     PmRuntimeConfig,
     ConfirmPendingActionUseCase,
     RefreshProjectSnapshotUseCase,
@@ -140,6 +145,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     PM_SETTINGS,
     PM_ADMIN_LINKS,
     PM_ADMIN_APPROVALS,
+    PM_TEAM_REVIEWS,
     PmRuntimeConfig,
     ISSUE_DETAILS,
     DOC_COMMENTS,
