@@ -14,8 +14,10 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsObject,
+  IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
@@ -53,8 +55,15 @@ export class AdminChatBody {
   @IsInt()
   chatId: number;
 
+  // PM mode: true / false, or "auto" to go back to the default
+  @IsOptional()
+  @IsIn([true, false, 'auto'])
+  on?: boolean | 'auto';
+
+  // Proactive alerts to this chat
+  @IsOptional()
   @IsBoolean()
-  on: boolean;
+  alerts?: boolean;
 }
 
 export class AdminSettingsBody {
@@ -158,8 +167,15 @@ export class PmAdminController {
 
   @Put('chats')
   @UseGuards(PmAdminGuard)
-  async setChat(@Body() body: AdminChatBody) {
+  async setChat(@Body() body: AdminChatBody, @Req() req: { pmAdmin: number }) {
     try {
+      if (body.alerts !== undefined)
+        return await this.admin.setAlerts(
+          body.chatId,
+          body.alerts,
+          req.pmAdmin,
+        );
+      if (body.on === undefined) throw new SettingsError('on or alerts');
       return await this.admin.setGroup(body.chatId, body.on);
     } catch (error) {
       if (error instanceof SettingsError)

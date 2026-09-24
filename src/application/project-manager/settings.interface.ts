@@ -14,6 +14,8 @@ export interface PmSettings {
   actionUserIds?: number[] | null;
   alertChatIds?: number[] | null;
   aiEffort?: AiEffort | null;
+  // Every group the owner is in gets PM mode without /pm_on
+  pmInOwnerGroups?: boolean | null;
 }
 
 export const SETTING_KEYS: Array<keyof PmSettings> = [
@@ -23,6 +25,7 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
   'actionUserIds',
   'alertChatIds',
   'aiEffort',
+  'pmInOwnerGroups',
 ];
 
 export interface IPmSettingsStore {
@@ -93,6 +96,12 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       throw new SettingsError(`aiEffort: one of ${AI_EFFORTS.join(', ')}`);
     else out.aiEffort = input.aiEffort as AiEffort;
   }
+  if (has('pmInOwnerGroups')) {
+    if (nil('pmInOwnerGroups')) out.pmInOwnerGroups = null;
+    else if (typeof input.pmInOwnerGroups !== 'boolean')
+      throw new SettingsError('pmInOwnerGroups: true or false');
+    else out.pmInOwnerGroups = input.pmInOwnerGroups;
+  }
   return out;
 };
 
@@ -109,4 +118,5 @@ export const resolveConfig = (base: IPmConfig, s: PmSettings): IPmConfig => ({
   ...(s.actionUserIds != null ? { actionUserIds: s.actionUserIds } : {}),
   ...(s.alertChatIds != null ? { alertChatIds: s.alertChatIds } : {}),
   ...(s.aiEffort != null ? { aiEffort: s.aiEffort } : {}),
+  ...(s.pmInOwnerGroups != null ? { pmInOwnerGroups: s.pmInOwnerGroups } : {}),
 });

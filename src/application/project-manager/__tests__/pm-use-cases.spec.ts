@@ -295,6 +295,8 @@ const chats = (ids: number[]) => ({
   isEnabled: jest.fn(),
   enable: jest.fn(),
   disable: jest.fn(),
+  isDisabled: jest.fn().mockResolvedValue(false),
+  clear: jest.fn(),
   digestChats: jest.fn().mockResolvedValue(ids),
 });
 
@@ -309,6 +311,7 @@ describe('PostDailyDigestUseCase', () => {
     getBotInfo: jest.fn(),
     answerCallback: jest.fn().mockResolvedValue(undefined),
     clearButtons: jest.fn().mockResolvedValue(undefined),
+    isMember: jest.fn().mockResolvedValue(false),
   };
   const refresh = {
     execute: jest.fn().mockResolvedValue(new ProjectSnapshot('r', now, [])),

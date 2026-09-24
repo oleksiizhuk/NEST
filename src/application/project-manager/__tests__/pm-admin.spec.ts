@@ -102,13 +102,19 @@ describe('PmAdminUseCase', () => {
         { chatId: 1, title: 'Fixed', lastAt: new Date() },
         { chatId: -300, title: 'Team', lastAt: new Date() },
         { chatId: -400, title: 'New team chat', lastAt: new Date() },
+        { chatId: -500, title: 'Owner is here', lastAt: new Date() },
       ]),
     };
     const chats = {
       isEnabled: jest.fn(async (id: number) => id === -300),
       enable: jest.fn(),
       disable: jest.fn(),
+      isDisabled: jest.fn().mockResolvedValue(false),
+      clear: jest.fn(),
       digestChats: jest.fn(),
+    };
+    const telegram = {
+      isMember: jest.fn(async (chatId: number) => chatId === -500),
     };
     const admin = new PmAdminUseCase(
       store,
@@ -116,6 +122,8 @@ describe('PmAdminUseCase', () => {
       quota,
       messages as any,
       chats,
+      telegram as any,
+      { ownerId: 42 } as any,
     );
     const settings = await admin.settings();
     expect(settings.defaults.dailyQuestionLimit).toBe(7);
@@ -135,11 +143,30 @@ describe('PmAdminUseCase', () => {
     expect(quota.day).toHaveBeenCalledWith('2026-09-23');
 
     const groups = await admin.groups();
-    expect(groups.map((g) => [g.chatId, g.on, g.fixed])).toEqual([
-      [1, true, true],
+    expect(groups.map((g) => [g.chatId, g.mode, g.on])).toEqual([
+      [1, 'fixed', true],
+      [-300, 'on', true],
+      [-400, 'none', false],
+      [-500, 'auto', true],
+    ]);
+    await admin.setGroup(-500, 'auto');
+    expect(chats.clear).toHaveBeenCalledWith(-500);
+    // base alertChatIds is [1]; digest follows explicit switches
+    chats.digestChats.mockResolvedValue([-300]);
+    const withFlags = await admin.groups();
+    expect(withFlags.map((g) => [g.chatId, g.digest, g.alerts])).toEqual([
+      [1, false, true],
       [-300, true, false],
       [-400, false, false],
+      [-500, false, false],
     ]);
+    store.get.mockResolvedValue({ values: {}, updatedAt: null });
+    runtime.invalidate();
+    await admin.setAlerts(-300, true, 42);
+    expect(store.save).toHaveBeenLastCalledWith(
+      { alertChatIds: [1, -300] },
+      42,
+    );
     await admin.setGroup(-400, true);
     expect(chats.enable).toHaveBeenCalledWith(-400, 'New team chat');
     await expect(admin.setGroup(-999, true)).rejects.toThrow('unknown chat');

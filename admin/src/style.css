@@ -207,3 +207,15 @@ button.link {
 .small {
   font-size: 12px;
 }
+
+.row-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}

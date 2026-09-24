@@ -64,6 +64,7 @@ export interface Settings {
   actionUserIds?: number[] | null;
   alertChatIds?: number[] | null;
   aiEffort?: Effort | null;
+  pmInOwnerGroups?: boolean | null;
 }
 
 export interface SettingsView {
@@ -94,6 +95,9 @@ export interface Chat {
   lastAt: string;
   on: boolean;
   fixed: boolean;
+  mode: 'fixed' | 'on' | 'off' | 'auto' | 'none';
+  digest: boolean;
+  alerts: boolean;
 }
 
 export const api = {
@@ -116,6 +120,8 @@ export const api = {
   usage: () => call<Usage>('GET', 'usage'),
   logoutAll: () => call<{ ok: boolean }>('POST', 'logout-all'),
   chats: () => call<Chat[]>('GET', 'chats'),
-  setChat: (chatId: number, on: boolean) =>
+  setChat: (chatId: number, on: boolean | 'auto') =>
     call<Chat[]>('PUT', 'chats', { chatId, on }),
+  setChatAlerts: (chatId: number, alerts: boolean) =>
+    call<Chat[]>('PUT', 'chats', { chatId, alerts }),
 };

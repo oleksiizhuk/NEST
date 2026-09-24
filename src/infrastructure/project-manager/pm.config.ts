@@ -42,6 +42,8 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
     aiEffort: (['low', 'medium', 'high', 'xhigh', 'max'] as const).find(
       (e) => e === config.get<string>('PM_AI_EFFORT'),
     ),
+    // On unless PM_IN_OWNER_GROUPS=false
+    pmInOwnerGroups: config.get<string>('PM_IN_OWNER_GROUPS') !== 'false',
     dailyQuestionLimit: (() => {
       const raw = config.get<string>('PM_DAILY_QUESTION_LIMIT');
       const n = Number(raw);

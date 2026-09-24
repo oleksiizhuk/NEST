@@ -11,23 +11,39 @@ export class MongoPmChatRegistry implements IPmChatRegistry {
   ) {}
 
   async isEnabled(chatId: number): Promise<boolean> {
-    return Boolean(await this.model.exists({ chatId }));
+    return Boolean(await this.model.exists({ chatId, off: { $ne: true } }));
+  }
+
+  async isDisabled(chatId: number): Promise<boolean> {
+    return Boolean(await this.model.exists({ chatId, off: true }));
   }
 
   async enable(chatId: number, title: string | null): Promise<void> {
     await this.model.updateOne(
       { chatId },
-      { $set: { chatId, title } },
+      { $set: { chatId, title, off: false } },
       { upsert: true },
     );
   }
 
+  // Kept as a record, so /pm_off also beats the automatic mode
   async disable(chatId: number): Promise<void> {
+    await this.model.updateOne(
+      { chatId },
+      { $set: { chatId, off: true } },
+      { upsert: true },
+    );
+  }
+
+  async clear(chatId: number): Promise<void> {
     await this.model.deleteOne({ chatId });
   }
 
   async digestChats(): Promise<number[]> {
-    const docs = await this.model.find().select('chatId').lean();
+    const docs = await this.model
+      .find({ off: { $ne: true } })
+      .select('chatId')
+      .lean();
     return docs.map((d) => d.chatId);
   }
 }

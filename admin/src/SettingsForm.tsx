@@ -9,8 +9,14 @@ const FIELDS: Array<{
   key: Key;
   title: string;
   hint: string;
-  kind: 'number' | 'usernames' | 'ids' | 'effort';
+  kind: 'number' | 'usernames' | 'ids' | 'effort' | 'bool';
 }> = [
+  {
+    key: 'pmInOwnerGroups',
+    title: 'Менеджер во всех группах, где есть вы',
+    hint: 'Без /pm_on. В группах без вас бот не раскрывает данные проекта.',
+    kind: 'bool',
+  },
   {
     key: 'dailyQuestionLimit',
     title: 'Вопросов в день на человека',
@@ -50,7 +56,11 @@ const FIELDS: Array<{
 ];
 
 const show = (value: unknown): string =>
-  Array.isArray(value)
+  value === true
+    ? 'да'
+    : value === false
+    ? 'нет'
+    : Array.isArray(value)
     ? value.join(', ') || '—'
     : value === null || value === undefined || value === ''
     ? '—'
@@ -108,6 +118,8 @@ export function SettingsForm({
         patch[f.key] = Number(text);
       } else if (f.kind === 'effort') {
         patch[f.key] = text;
+      } else if (f.kind === 'bool') {
+        patch[f.key] = text === 'true';
       } else if (f.kind === 'ids') {
         patch[f.key] = split(text).map(Number);
       } else {
@@ -152,7 +164,20 @@ export function SettingsForm({
             key={f.key}
           >
             <label htmlFor={f.key}>{f.title}</label>
-            {f.kind === 'effort' ? (
+            {f.kind === 'bool' ? (
+              <select
+                id={f.key}
+                value={reset.has(f.key) ? '' : draft[f.key] ?? ''}
+                onChange={(e) => {
+                  setReset((r) => new Set([...r].filter((k) => k !== f.key)));
+                  setDraft({ ...draft, [f.key]: e.target.value });
+                }}
+              >
+                <option value="">Из Vercel</option>
+                <option value="true">Да</option>
+                <option value="false">Нет</option>
+              </select>
+            ) : f.kind === 'effort' ? (
               <select
                 id={f.key}
                 value={reset.has(f.key) ? '' : draft[f.key] ?? ''}
