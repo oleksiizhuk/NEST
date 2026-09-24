@@ -90,6 +90,9 @@ export class RefreshProjectSnapshotUseCase {
         // The old numbers describe the old text; keeping them lets tomorrow's
         // trend compare against the last real reading
         ...(old?.metrics ? { metrics: old.metrics } : {}),
+        // Same for per-person data: an empty team page (or "nothing merged"
+        // for everyone) would be worse than yesterday's
+        ...(old?.details ? { details: old.details } : {}),
         error,
       };
     });

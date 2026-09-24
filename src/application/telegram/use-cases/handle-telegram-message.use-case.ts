@@ -242,7 +242,8 @@ export class HandleTelegramMessageUseCase {
       yes = await this.telegram.isMember(chatId, this.config.ownerId);
     } catch (error) {
       this.logger.warn(`membership check failed for ${chatId}: ${error}`);
-      return false;
+      // A Telegram hiccup should not turn a team chat into "outside the team"
+      return cached?.yes ?? false;
     }
     this.memberCache.set(chatId, { at: Date.now(), yes });
     return yes;
@@ -459,6 +460,13 @@ export class HandleTelegramMessageUseCase {
   ): Promise<void> {
     if (!this.pmChats || !this.pmAnswer) return;
     try {
+      // An explicit /pm_off must survive too, or automatic mode would open
+      // project data to a chat the owner closed
+      if (await this.pmChats.isDisabled(fromChatId)) {
+        await this.pmChats.disable(msg.chatId);
+        this.logger.log(`PM off carried over ${fromChatId} → ${msg.chatId}`);
+        return;
+      }
       const wasOn =
         this.pmConfig?.chatIds.includes(fromChatId) ||
         (await this.pmChats.isEnabled(fromChatId));

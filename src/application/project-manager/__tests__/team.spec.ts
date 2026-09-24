@@ -167,7 +167,10 @@ describe('buildTeam', () => {
     expect(() =>
       cleanSettings({ githubLogins: { 'Ann Lee': 'bad login' } }),
     ).toThrow('bad login');
-    expect(() => cleanSettings({ githubLogins: { $where: 'x' } })).toThrow(
+    expect(cleanSettings({ githubLogins: { 'J. Smith': 'jsmith' } })).toEqual({
+      githubLogins: { 'J. Smith': 'jsmith' },
+    });
+    expect(() => cleanSettings({ githubLogins: { ' ': 'x' } })).toThrow(
       'bad name',
     );
   });

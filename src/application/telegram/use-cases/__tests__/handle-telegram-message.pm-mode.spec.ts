@@ -558,6 +558,17 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     });
     expect(registry.enable).not.toHaveBeenCalled();
     registry.isEnabled.mockResolvedValue(false);
+
+    // An explicit /pm_off moves too, so auto mode cannot reopen the chat
+    registry.isDisabled.mockImplementation(async (id: number) => id === -999);
+    await useCase.execute({
+      ...group(-100999, '', 0),
+      text: null,
+      migrateFromChatId: -999,
+    });
+    expect(registry.disable).toHaveBeenCalledWith(-100999);
+    expect(registry.enable).not.toHaveBeenCalled();
+    registry.isDisabled.mockResolvedValue(false);
   });
 
   it('ignores button presses in a chat without PM mode', async () => {

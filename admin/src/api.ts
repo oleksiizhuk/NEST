@@ -95,7 +95,7 @@ export interface Chat {
   lastAt: string;
   on: boolean;
   fixed: boolean;
-  mode: 'fixed' | 'on' | 'off' | 'auto' | 'none';
+  mode: 'fixed' | 'on' | 'off' | 'auto' | 'none' | 'unknown';
   digest: boolean;
   alerts: boolean;
 }

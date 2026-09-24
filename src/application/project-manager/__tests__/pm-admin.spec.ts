@@ -162,6 +162,28 @@ describe('PmAdminUseCase', () => {
     ]);
     store.get.mockResolvedValue({ values: {}, updatedAt: null });
     runtime.invalidate();
+    // Membership Telegram cannot confirm is "unknown", not "off"
+    const member = telegram.isMember.getMockImplementation();
+    telegram.isMember.mockImplementation(async (chatId: number) => {
+      if (chatId === -500) throw new Error('429');
+      return false;
+    });
+    (admin as any).memberCache.clear();
+    const flaky = await admin.groups();
+    expect(flaky.find((g) => g.chatId === -500)?.mode).toBe('unknown');
+    telegram.isMember.mockImplementation(member as any);
+
+    // GitHub links are read from the store, not the 30 s cache
+    store.get.mockResolvedValue({
+      values: { githubLogins: { 'Ann Lee': 'ann' } },
+      updatedAt: null,
+    });
+    await admin.setGithubLogin('J. Smith', 'jsmith', 42);
+    expect(store.save).toHaveBeenLastCalledWith(
+      { githubLogins: { 'Ann Lee': 'ann', 'J. Smith': 'jsmith' } },
+      42,
+    );
+    store.get.mockResolvedValue({ values: {}, updatedAt: null });
     await admin.setAlerts(-300, true, 42);
     expect(store.save).toHaveBeenLastCalledWith(
       { alertChatIds: [1, -300] },
