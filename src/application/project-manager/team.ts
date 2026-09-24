@@ -224,6 +224,8 @@ export const buildTeam = (
   capped: boolean;
   people: PersonView[];
   unmatchedGithub: string[];
+  // False for a snapshot built before per-person data existed
+  hasDetails: boolean;
 } => {
   const issues = snapshot.section('issues')?.details as unknown as
     | TeamIssues
@@ -275,5 +277,6 @@ export const buildTeam = (
     unmatchedGithub: Object.keys(authors)
       .filter((a) => !used.has(a))
       .sort(),
+    hasDetails: Boolean(issues),
   };
 };

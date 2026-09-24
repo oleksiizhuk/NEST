@@ -23,6 +23,7 @@ import {
 } from 'class-validator';
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
 import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
+import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { SettingsError } from '@application/project-manager/settings.interface';
 import {
   PmAdminAuth,
@@ -96,6 +97,7 @@ export class PmAdminController {
     private readonly auth: PmAdminAuth,
     private readonly admin: PmAdminUseCase,
     private readonly team_: TeamReviewUseCase,
+    private readonly refresher: RefreshProjectSnapshotUseCase,
   ) {}
 
   // Exchanges the one-time link from the bot for a 7-day session
@@ -223,6 +225,23 @@ export class PmAdminController {
         throw new BadRequestException(error.message);
       throw error;
     }
+  }
+
+  // Rebuilds the project snapshot now (Jira, docs, GitHub, design), like
+  // /refresh in the bot; takes up to a minute
+  @Post('refresh')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async refresh() {
+    const snapshot = await this.refresher.execute();
+    return {
+      at: snapshot.createdAt,
+      sources: snapshot.sections.map((s) => ({
+        source: s.source,
+        ok: s.ok,
+        error: s.error,
+      })),
+    };
   }
 
   @Get('chats')

@@ -7,6 +7,7 @@ const MODE: Record<Chat['mode'], string> = {
   off: 'Выключен вручную',
   auto: 'Включён: вы в этой группе',
   none: 'Выключен: вас нет в группе',
+  unknown: 'Не удалось проверить в Telegram — обновите позже',
 };
 
 // Groups the bot has seen. PM mode on = project data and the manager;

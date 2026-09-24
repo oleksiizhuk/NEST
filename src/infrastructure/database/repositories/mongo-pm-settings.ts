@@ -18,8 +18,17 @@ export class MongoPmSettings implements IPmSettingsStore {
 
   async get(): Promise<{ values: PmSettings; updatedAt: Date | null }> {
     const doc = await this.model.findOne({ key: KEY }).lean();
+    const values = { ...((doc?.values ?? {}) as Record<string, unknown>) };
+    // Mongo keys cannot hold every display name, so the map is a list
+    if (Array.isArray(values.githubLogins)) {
+      values.githubLogins = Object.fromEntries(
+        (values.githubLogins as Array<{ name: string; login: string }>).map(
+          (p) => [p.name, p.login],
+        ),
+      );
+    }
     return {
-      values: (doc?.values ?? {}) as PmSettings,
+      values: values as PmSettings,
       updatedAt: doc?.updatedAt ? new Date(doc.updatedAt) : null,
     };
   }
@@ -27,7 +36,17 @@ export class MongoPmSettings implements IPmSettingsStore {
   // Merges: fields not in `values` keep their stored override
   async save(values: PmSettings, by: number): Promise<void> {
     const set: Record<string, unknown> = { updatedBy: by };
-    for (const [k, v] of Object.entries(values)) set[`values.${k}`] = v;
+    for (const [k, v] of Object.entries(values)) {
+      set[`values.${k}`] =
+        k === 'githubLogins' && v
+          ? Object.entries(v as Record<string, string>).map(
+              ([name, login]) => ({
+                name,
+                login,
+              }),
+            )
+          : v;
+    }
     await this.model.updateOne({ key: KEY }, { $set: set }, { upsert: true });
   }
 

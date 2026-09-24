@@ -185,6 +185,27 @@ export function TeamPage({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [onlyWarn, setOnlyWarn] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const refreshData = async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const r = await api.refreshData();
+      const failed = r.sources.filter((x) => !x.ok);
+      if (failed.length)
+        setError(
+          `Не прочитались: ${failed
+            .map((x) => `${x.source} (${x.error})`)
+            .join(', ')}`,
+        );
+      setView(await api.team());
+    } catch (e) {
+      handle(e);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handle = (e: unknown) => {
     if (e instanceof Unauthorized) onUnauthorized();
@@ -252,8 +273,26 @@ export function TeamPage({
         </div>
       </section>
 
-      {!team ? (
-        <p className="muted">Нет данных: снимок проекта ещё не собран.</p>
+      {!team || !team.hasDetails ? (
+        <section className="card">
+          <h2>Данных по людям пока нет</h2>
+          <p className="muted">
+            {team
+              ? `Последний снимок проекта (${when(
+                  team.asOf,
+                )}) собран до появления этой вкладки.`
+              : 'Снимок проекта ещё не собран.'}{' '}
+            Обновите данные — это займёт до минуты. Дальше они обновляются сами
+            утром и в 08, 11 и 14 UTC.
+          </p>
+          <div className="actions">
+            <button onClick={refreshData} disabled={refreshing}>
+              {refreshing
+                ? 'Собираю данные из Jira и GitHub…'
+                : 'Обновить данные сейчас'}
+            </button>
+          </div>
+        </section>
       ) : (
         <>
           <div className="team-bar">
@@ -263,6 +302,14 @@ export function TeamPage({
                 ? ` · релиз ${team.releaseVersion}`
                 : ' · версия релиза не задана'}
               {team.capped ? ' · список Jira обрезан' : ''}
+              {' · '}
+              <button
+                className="link small"
+                onClick={refreshData}
+                disabled={refreshing}
+              >
+                {refreshing ? 'обновляю…' : 'обновить сейчас'}
+              </button>
             </span>
             <label className="check">
               <input

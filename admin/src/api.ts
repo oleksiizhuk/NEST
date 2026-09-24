@@ -95,7 +95,7 @@ export interface Chat {
   lastAt: string;
   on: boolean;
   fixed: boolean;
-  mode: 'fixed' | 'on' | 'off' | 'auto' | 'none';
+  mode: 'fixed' | 'on' | 'off' | 'auto' | 'none' | 'unknown';
   digest: boolean;
   alerts: boolean;
 }
@@ -136,6 +136,7 @@ export interface TeamView {
     capped: boolean;
     people: Person[];
     unmatchedGithub: string[];
+    hasDetails: boolean;
   } | null;
   review: { text: string; at: string } | null;
 }
@@ -161,6 +162,11 @@ export const api = {
   logoutAll: () => call<{ ok: boolean }>('POST', 'logout-all'),
   chats: () => call<Chat[]>('GET', 'chats'),
   team: () => call<TeamView>('GET', 'team'),
+  refreshData: () =>
+    call<{
+      at: string;
+      sources: Array<{ source: string; ok: boolean; error: string | null }>;
+    }>('POST', 'refresh'),
   teamReview: (force: boolean) =>
     call<{ text: string; at: string }>('POST', 'team/review', { force }),
   setGithub: (name: string, login: string | null) =>

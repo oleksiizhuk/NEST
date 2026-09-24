@@ -78,6 +78,32 @@ describe('RefreshProjectSnapshotUseCase', () => {
     ]);
   });
 
+  it('keeps per-person data of a failed source', async () => {
+    const snapshots = repo();
+    const old = new Date('2026-09-22T06:00:00Z');
+    snapshots.findLatest.mockResolvedValue(
+      new ProjectSnapshot('old', old, [
+        {
+          source: 'issues',
+          ok: true,
+          fetchedAt: old,
+          text: 'old',
+          error: null,
+          details: { people: { Ann: { open: [], done14: [] } } },
+        },
+      ]),
+    );
+    const useCase = new RefreshProjectSnapshotUseCase(
+      [source('issues', new Error('jira 503'))] as any,
+      snapshots as any,
+    );
+    const [section] = (await useCase.execute(now)).sections;
+    expect(section.ok).toBe(false);
+    expect(section.details).toEqual({
+      people: { Ann: { open: [], done14: [] } },
+    });
+  });
+
   it('puts the change since yesterday and since a week ago on top of a section', async () => {
     const snapshots = repo();
     const at = (iso: string, open: number) =>

@@ -109,12 +109,8 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       for (const [name, login] of Object.entries(
         value as Record<string, unknown>,
       )) {
-        if (
-          !name ||
-          name.length > 100 ||
-          name.startsWith('$') ||
-          name.includes('.')
-        )
+        // Stored as a list of pairs, so any display name works ("J. Smith")
+        if (!name.trim() || name.length > 100)
           throw new SettingsError(`githubLogins: bad name "${name}"`);
         if (typeof login !== 'string' || !/^[A-Za-z0-9-]{1,39}$/.test(login))
           throw new SettingsError(`githubLogins: bad login for ${name}`);

@@ -59,21 +59,17 @@ export class PmAdminUseCase {
     const alertChats = live.alertChatIds ?? [];
     return Promise.all(
       seen.map(async (g) => {
-        let mode: 'fixed' | 'on' | 'off' | 'auto' | 'none';
+        let mode: 'fixed' | 'on' | 'off' | 'auto' | 'none' | 'unknown';
         if (fixed.includes(g.chatId)) mode = 'fixed';
         else if (await this.chats.isEnabled(g.chatId).catch(() => false))
           mode = 'on';
         else if (await this.chats.isDisabled(g.chatId).catch(() => false))
           mode = 'off';
-        else if (
-          live.pmInOwnerGroups !== false &&
-          this.telegramConfig.ownerId &&
-          (await this.telegram
-            .isMember(g.chatId, this.telegramConfig.ownerId)
-            .catch(() => false))
-        )
-          mode = 'auto';
-        else mode = 'none';
+        else if (live.pmInOwnerGroups === false) mode = 'none';
+        else {
+          const member = await this.ownerIn(g.chatId);
+          mode = member === null ? 'unknown' : member ? 'auto' : 'none';
+        }
         const on = mode === 'fixed' || mode === 'on' || mode === 'auto';
         return {
           ...g,
@@ -91,7 +87,9 @@ export class PmAdminUseCase {
 
   // Jira name → GitHub login on the Сотрудники page
   async setGithubLogin(name: string, login: string | null, by: number) {
-    const current = { ...((await this.runtime.current()).githubLogins ?? {}) };
+    // From the store, not the 30 s cache: another instance may have saved a
+    // link a moment ago
+    const current = { ...((await this.store.get()).values.githubLogins ?? {}) };
     if (login) current[name] = login.trim();
     else delete current[name];
     await this.store.save(cleanSettings({ githubLogins: current }), by);
@@ -101,13 +99,35 @@ export class PmAdminUseCase {
   // Adds or removes a chat from the alert recipients (an override of the
   // env list, like the field in the settings form)
   async setAlerts(chatId: number, on: boolean, by: number) {
-    const current = (await this.runtime.current()).alertChatIds ?? [];
+    const stored = (await this.store.get()).values.alertChatIds;
+    const current = stored ?? this.runtime.defaults().alertChatIds ?? [];
     const next = on
       ? [...new Set([...current, chatId])]
       : current.filter((id) => id !== chatId);
     await this.store.save({ alertChatIds: next }, by);
     this.runtime.invalidate();
     return this.groups();
+  }
+
+  // Owner membership per group, cached for 10 minutes; null when Telegram
+  // could not tell (shown as "unknown", never as "off")
+  private readonly memberCache = new Map<
+    number,
+    { at: number; yes: boolean }
+  >();
+
+  private async ownerIn(chatId: number): Promise<boolean | null> {
+    const ownerId = this.telegramConfig.ownerId;
+    if (!ownerId) return false;
+    const cached = this.memberCache.get(chatId);
+    if (cached && Date.now() - cached.at < 10 * 60_000) return cached.yes;
+    try {
+      const yes = await this.telegram.isMember(chatId, ownerId);
+      this.memberCache.set(chatId, { at: Date.now(), yes });
+      return yes;
+    } catch {
+      return cached?.yes ?? null;
+    }
   }
 
   // Same as /pm_on and /pm_off from the admin page ("auto" = back to the

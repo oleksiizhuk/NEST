@@ -102,6 +102,10 @@ export class TeamReviewUseCase {
     if (!snapshot) throw new Error('Нет снимка проекта: обновите данные.');
     const live = await this.runtime.current();
     const team = buildTeam(snapshot, live.githubLogins ?? {}, now);
+    if (!team.hasDetails)
+      throw new Error(
+        'В снимке ещё нет данных по людям: нажмите «Обновить данные сейчас».',
+      );
     if (!team.people.length) throw new Error('В данных Jira нет исполнителей.');
     const knowledge = await loadKnowledge(
       this.knowledge,
