@@ -52,7 +52,6 @@ export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
 
   return (
     <section className="card">
-      <h2>Чаты</h2>
       <p className="muted">
         Группы, где бот видел сообщения, и что для каждой включено. В режиме
         менеджера чату открыты данные проекта; без него бот вежливо отвечает,
@@ -65,7 +64,7 @@ export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
         <p className="muted">Загрузка…</p>
       ) : chats.length ? (
         <div className="table-wrap">
-          <table>
+          <table className="stack">
             <thead>
               <tr>
                 <th>Чат</th>
@@ -78,54 +77,64 @@ export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
             <tbody>
               {chats.map((c) => (
                 <tr key={c.chatId}>
-                  <td>
-                    {c.title || 'Без названия'}
-                    <div className="muted small">id {c.chatId}</div>
-                  </td>
-                  <td className="muted">
-                    {new Date(c.lastAt).toLocaleString('ru-RU')}
-                  </td>
-                  <td>
-                    <div>{MODE[c.mode]}</div>
-                    {c.mode !== 'fixed' && (
-                      <div className="row-actions">
-                        <button
-                          className={c.on ? 'ghost' : ''}
-                          disabled={busy === c.chatId}
-                          onClick={() => set(c, !c.on)}
-                        >
-                          {busy === c.chatId
-                            ? '…'
-                            : c.on
-                            ? 'Выключить'
-                            : 'Включить'}
-                        </button>
-                        {(c.mode === 'on' || c.mode === 'off') && (
-                          <button
-                            className="link"
-                            disabled={busy === c.chatId}
-                            onClick={() => set(c, 'auto')}
-                          >
-                            Как по умолчанию
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    {c.digest ? 'да' : <span className="muted">нет</span>}
-                  </td>
-                  <td>
-                    <div>
-                      {c.alerts ? 'да' : <span className="muted">нет</span>}
+                  <td data-label="Чат">
+                    <div className="cell">
+                      {c.title || 'Без названия'}
+                      <div className="muted small">id {c.chatId}</div>
                     </div>
-                    <button
-                      className="link"
-                      disabled={busy === c.chatId}
-                      onClick={() => setAlerts(c)}
-                    >
-                      {c.alerts ? 'Отключить' : 'Присылать сюда'}
-                    </button>
+                  </td>
+                  <td data-label="Последнее сообщение" className="muted">
+                    <div className="cell">
+                      {new Date(c.lastAt).toLocaleString('ru-RU')}
+                    </div>
+                  </td>
+                  <td data-label="Режим менеджера">
+                    <div className="cell">
+                      <div>{MODE[c.mode]}</div>
+                      {c.mode !== 'fixed' && (
+                        <div className="row-actions">
+                          <button
+                            className={c.on ? 'ghost' : ''}
+                            disabled={busy === c.chatId}
+                            onClick={() => set(c, !c.on)}
+                          >
+                            {busy === c.chatId
+                              ? '…'
+                              : c.on
+                              ? 'Выключить'
+                              : 'Включить'}
+                          </button>
+                          {(c.mode === 'on' || c.mode === 'off') && (
+                            <button
+                              className="link"
+                              disabled={busy === c.chatId}
+                              onClick={() => set(c, 'auto')}
+                            >
+                              Как по умолчанию
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td data-label="Сводка по утрам">
+                    <div className="cell">
+                      {c.digest ? 'да' : <span className="muted">нет</span>}
+                    </div>
+                  </td>
+                  <td data-label="Уведомления">
+                    <div className="cell">
+                      <div>
+                        {c.alerts ? 'да' : <span className="muted">нет</span>}
+                      </div>
+                      <button
+                        className="link"
+                        disabled={busy === c.chatId}
+                        onClick={() => setAlerts(c)}
+                      >
+                        {c.alerts ? 'Отключить' : 'Присылать сюда'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

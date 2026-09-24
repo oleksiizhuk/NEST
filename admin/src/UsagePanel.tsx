@@ -34,7 +34,7 @@ export function UsagePanel({ usage }: { usage: Usage }) {
 
       <h3>Вопросы по людям</h3>
       {usage.questions.length ? (
-        <table>
+        <table className="stack">
           <thead>
             <tr>
               <th>Кто</th>
@@ -44,13 +44,19 @@ export function UsagePanel({ usage }: { usage: Usage }) {
           <tbody>
             {usage.questions.map((q) => (
               <tr key={q.userId}>
-                <td>{q.username ? `@${q.username}` : `id ${q.userId}`}</td>
-                <td>
-                  {q.count}
-                  {usage.limit ? ` из ${usage.limit}` : ''}
-                  {usage.limit && q.count > usage.limit
-                    ? ' · упёрся в лимит'
-                    : ''}
+                <td data-label="Кто">
+                  <div className="cell">
+                    {q.username ? `@${q.username}` : `id ${q.userId}`}
+                  </div>
+                </td>
+                <td data-label="Вопросов">
+                  <div className="cell">
+                    {q.count}
+                    {usage.limit ? ` из ${usage.limit}` : ''}
+                    {usage.limit && q.count > usage.limit
+                      ? ' · упёрся в лимит'
+                      : ''}
+                  </div>
                 </td>
               </tr>
             ))}
