@@ -38,11 +38,6 @@ export const IconClose = () => (
     <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 );
-export const IconRefresh = () => (
-  <svg {...base}>
-    <path d="M20 11a8 8 0 0 0-14.3-4.9L4 8M4 4v4h4M4 13a8 8 0 0 0 14.3 4.9L20 16M20 20v-4h-4" />
-  </svg>
-);
 export const IconLogout = () => (
   <svg {...base}>
     <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4" />

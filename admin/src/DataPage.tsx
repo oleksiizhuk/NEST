@@ -22,13 +22,7 @@ const when = (iso: string | null) =>
       })
     : '—';
 
-export function DataPage({
-  refreshKey,
-  onUnauthorized,
-}: {
-  refreshKey: number;
-  onUnauthorized: () => void;
-}) {
+export function DataPage({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [status, setStatus] = useState<IndexStatus | null>(null);
   const [running, setRunning] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -46,7 +40,7 @@ export function DataPage({
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, []);
 
   // Only leaving the page stops a running collection, not a refresh
   useEffect(

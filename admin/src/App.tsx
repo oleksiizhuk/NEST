@@ -14,7 +14,6 @@ import {
   IconOverview,
   IconData,
   IconTeam,
-  IconRefresh,
   IconSettings,
 } from './icons';
 
@@ -81,7 +80,6 @@ export function App() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [page, setPage] = useState<PageId>(pageFromHash);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -146,6 +144,9 @@ export function App() {
     setPage(id);
     setMenuOpen(false);
     window.scrollTo(0, 0);
+    // Fresh numbers on every section switch (pages with their own data load
+    // them when they open)
+    load();
   };
 
   const logout = () => {
@@ -154,11 +155,6 @@ export function App() {
     setUsage(null);
     setMenuOpen(false);
     setState('login');
-  };
-
-  const refresh = () => {
-    setRefreshKey((k) => k + 1);
-    load();
   };
 
   if (state !== 'ready') {
@@ -253,9 +249,6 @@ export function App() {
             <IconMenu />
           </button>
           <span className="topbar-title">{current.title}</span>
-          <button className="icon-btn" aria-label="Обновить" onClick={refresh}>
-            <IconRefresh />
-          </button>
         </header>
 
         <main className="content">
@@ -264,23 +257,14 @@ export function App() {
               <h1>{current.title}</h1>
               <p className="muted">{current.lead}</p>
             </div>
-            <button className="ghost only-desktop" onClick={refresh}>
-              <IconRefresh /> Обновить
-            </button>
           </div>
 
           {error && <p className="error">{error}</p>}
 
           {page === 'overview' && usage && <UsagePanel usage={usage} />}
-          {page === 'team' && (
-            <TeamPage refreshKey={refreshKey} onUnauthorized={logout} />
-          )}
-          {page === 'data' && (
-            <DataPage refreshKey={refreshKey} onUnauthorized={logout} />
-          )}
-          {page === 'chats' && (
-            <ChatsPanel key={refreshKey} onUnauthorized={logout} />
-          )}
+          {page === 'team' && <TeamPage onUnauthorized={logout} />}
+          {page === 'data' && <DataPage onUnauthorized={logout} />}
+          {page === 'chats' && <ChatsPanel onUnauthorized={logout} />}
           {page === 'settings' && settings && (
             <SettingsForm
               view={settings}

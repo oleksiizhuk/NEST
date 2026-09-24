@@ -174,13 +174,7 @@ function PersonCard({
   );
 }
 
-export function TeamPage({
-  refreshKey,
-  onUnauthorized,
-}: {
-  refreshKey: number;
-  onUnauthorized: () => void;
-}) {
+export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [view, setView] = useState<TeamView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -216,7 +210,7 @@ export function TeamPage({
     setError(null);
     api.team().then(setView).catch(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, []);
 
   const review = async (force: boolean) => {
     setBusy(true);
