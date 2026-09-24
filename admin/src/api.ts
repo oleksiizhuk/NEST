@@ -96,6 +96,8 @@ export interface Chat {
   on: boolean;
   fixed: boolean;
   mode: 'fixed' | 'on' | 'off' | 'auto' | 'none';
+  digest: boolean;
+  alerts: boolean;
 }
 
 export const api = {
@@ -120,4 +122,6 @@ export const api = {
   chats: () => call<Chat[]>('GET', 'chats'),
   setChat: (chatId: number, on: boolean | 'auto') =>
     call<Chat[]>('PUT', 'chats', { chatId, on }),
+  setChatAlerts: (chatId: number, alerts: boolean) =>
+    call<Chat[]>('PUT', 'chats', { chatId, alerts }),
 };

@@ -48,6 +48,15 @@ export class PmAdminUseCase {
     const live = await this.runtime.current();
     const fixed = this.runtime.defaults().chatIds;
     const seen = await this.messages.recentGroups(30);
+    let digestList: number[] = [];
+    try {
+      digestList = (await this.chats.digestChats()) ?? [];
+    } catch {
+      // shown as "no digest"; the rest of the page still loads
+    }
+    const digestChats = new Set(digestList);
+    const base = this.runtime.defaults();
+    const alertChats = live.alertChatIds ?? [];
     return Promise.all(
       seen.map(async (g) => {
         let mode: 'fixed' | 'on' | 'off' | 'auto' | 'none';
@@ -65,14 +74,31 @@ export class PmAdminUseCase {
         )
           mode = 'auto';
         else mode = 'none';
+        const on = mode === 'fixed' || mode === 'on' || mode === 'auto';
         return {
           ...g,
           mode,
           fixed: mode === 'fixed',
-          on: mode === 'fixed' || mode === 'on' || mode === 'auto',
+          on,
+          // The weekday digest goes to chats switched on explicitly and to
+          // PM_DIGEST_CHAT_ID; automatic mode alone does not subscribe
+          digest: digestChats.has(g.chatId) || base.digestChatId === g.chatId,
+          alerts: alertChats.includes(g.chatId),
         };
       }),
     );
+  }
+
+  // Adds or removes a chat from the alert recipients (an override of the
+  // env list, like the field in the settings form)
+  async setAlerts(chatId: number, on: boolean, by: number) {
+    const current = (await this.runtime.current()).alertChatIds ?? [];
+    const next = on
+      ? [...new Set([...current, chatId])]
+      : current.filter((id) => id !== chatId);
+    await this.store.save({ alertChatIds: next }, by);
+    this.runtime.invalidate();
+    return this.groups();
   }
 
   // Same as /pm_on and /pm_off from the admin page ("auto" = back to the

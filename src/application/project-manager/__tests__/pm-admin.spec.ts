@@ -151,6 +151,22 @@ describe('PmAdminUseCase', () => {
     ]);
     await admin.setGroup(-500, 'auto');
     expect(chats.clear).toHaveBeenCalledWith(-500);
+    // base alertChatIds is [1]; digest follows explicit switches
+    chats.digestChats.mockResolvedValue([-300]);
+    const withFlags = await admin.groups();
+    expect(withFlags.map((g) => [g.chatId, g.digest, g.alerts])).toEqual([
+      [1, false, true],
+      [-300, true, false],
+      [-400, false, false],
+      [-500, false, false],
+    ]);
+    store.get.mockResolvedValue({ values: {}, updatedAt: null });
+    runtime.invalidate();
+    await admin.setAlerts(-300, true, 42);
+    expect(store.save).toHaveBeenLastCalledWith(
+      { alertChatIds: [1, -300] },
+      42,
+    );
     await admin.setGroup(-400, true);
     expect(chats.enable).toHaveBeenCalledWith(-400, 'New team chat');
     await expect(admin.setGroup(-999, true)).rejects.toThrow('unknown chat');

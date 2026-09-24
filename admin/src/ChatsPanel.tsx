@@ -26,6 +26,18 @@ export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const setAlerts = async (chat: Chat) => {
+    setBusy(chat.chatId);
+    setError(null);
+    try {
+      setChats(await api.setChatAlerts(chat.chatId, !chat.alerts));
+    } catch (e) {
+      handle(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const set = async (chat: Chat, on: boolean | 'auto') => {
     setBusy(chat.chatId);
     setError(null);
@@ -42,62 +54,84 @@ export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
     <section className="card">
       <h2>Чаты</h2>
       <p className="muted">
-        Группы, где бот видел сообщения. Включённый режим менеджера открывает
-        чату данные проекта; выключенный — отвечает обычная персона.
+        Группы, где бот видел сообщения, и что для каждой включено. В режиме
+        менеджера чату открыты данные проекта; без него бот вежливо отвечает,
+        что работает только в чатах команды. Сводка по утрам идёт в чаты,
+        включённые вручную или через Vercel; уведомления — в чаты из списка
+        получателей.
       </p>
       {error && <p className="error">{error}</p>}
       {!chats ? (
         <p className="muted">Загрузка…</p>
       ) : chats.length ? (
-        <table>
-          <thead>
-            <tr>
-              <th>Чат</th>
-              <th>Последнее сообщение</th>
-              <th>Режим менеджера</th>
-            </tr>
-          </thead>
-          <tbody>
-            {chats.map((c) => (
-              <tr key={c.chatId}>
-                <td>
-                  {c.title || 'Без названия'}
-                  <div className="muted small">id {c.chatId}</div>
-                </td>
-                <td className="muted">
-                  {new Date(c.lastAt).toLocaleString('ru-RU')}
-                </td>
-                <td>
-                  <div>{MODE[c.mode]}</div>
-                  {c.mode !== 'fixed' && (
-                    <div className="row-actions">
-                      <button
-                        className={c.on ? 'ghost' : ''}
-                        disabled={busy === c.chatId}
-                        onClick={() => set(c, !c.on)}
-                      >
-                        {busy === c.chatId
-                          ? '…'
-                          : c.on
-                          ? 'Выключить'
-                          : 'Включить'}
-                      </button>
-                      {(c.mode === 'on' || c.mode === 'off') && (
-                        <button
-                          className="link"
-                          disabled={busy === c.chatId}
-                          onClick={() => set(c, 'auto')}
-                        >
-                          Как по умолчанию
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </td>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Чат</th>
+                <th>Последнее сообщение</th>
+                <th>Режим менеджера</th>
+                <th>Сводка по утрам</th>
+                <th>Уведомления</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {chats.map((c) => (
+                <tr key={c.chatId}>
+                  <td>
+                    {c.title || 'Без названия'}
+                    <div className="muted small">id {c.chatId}</div>
+                  </td>
+                  <td className="muted">
+                    {new Date(c.lastAt).toLocaleString('ru-RU')}
+                  </td>
+                  <td>
+                    <div>{MODE[c.mode]}</div>
+                    {c.mode !== 'fixed' && (
+                      <div className="row-actions">
+                        <button
+                          className={c.on ? 'ghost' : ''}
+                          disabled={busy === c.chatId}
+                          onClick={() => set(c, !c.on)}
+                        >
+                          {busy === c.chatId
+                            ? '…'
+                            : c.on
+                            ? 'Выключить'
+                            : 'Включить'}
+                        </button>
+                        {(c.mode === 'on' || c.mode === 'off') && (
+                          <button
+                            className="link"
+                            disabled={busy === c.chatId}
+                            onClick={() => set(c, 'auto')}
+                          >
+                            Как по умолчанию
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    {c.digest ? 'да' : <span className="muted">нет</span>}
+                  </td>
+                  <td>
+                    <div>
+                      {c.alerts ? 'да' : <span className="muted">нет</span>}
+                    </div>
+                    <button
+                      className="link"
+                      disabled={busy === c.chatId}
+                      onClick={() => setAlerts(c)}
+                    >
+                      {c.alerts ? 'Отключить' : 'Присылать сюда'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <p className="muted">Бот пока не видел сообщений в группах.</p>
       )}

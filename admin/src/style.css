@@ -215,3 +215,7 @@ button.link {
   margin-top: 6px;
   flex-wrap: wrap;
 }
+
+.table-wrap {
+  overflow-x: auto;
+}
