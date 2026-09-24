@@ -55,6 +55,10 @@ import {
 } from '@application/project-manager/memory.interface';
 import { readinessChecklist } from '@application/project-manager/readiness';
 import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
+import {
+  IProjectIndex,
+  PM_INDEX,
+} from '@application/project-manager/project-index.interface';
 
 const NO_CODE_NOTE =
   'The person asking cannot have code read or PRs reviewed in depth: answer about code and PRs from the snapshot only (PR list, review state, CI), and say the owner can ask for a deep look.';
@@ -93,6 +97,9 @@ export class AnswerProjectQuestionUseCase {
     @Inject(PM_MEMORY)
     private readonly memory?: IPmMemory,
     @Optional() private readonly runtime?: PmRuntimeConfig,
+    @Optional()
+    @Inject(PM_INDEX)
+    private readonly index?: IProjectIndex,
   ) {}
 
   async execute(
@@ -132,6 +139,7 @@ export class AnswerProjectQuestionUseCase {
           knowledge.onDemand.find((d) => d.key === key)?.text ?? null,
       },
       memory: Boolean(this.memory),
+      index: this.index,
       readiness: () => readinessChecklist(snapshot, knowledge.doc('core:dod')),
       team: this.config.team,
     });

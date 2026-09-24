@@ -24,6 +24,7 @@ import {
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
 import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
+import { BuildIndexUseCase } from '@application/project-manager/use-cases/build-index.use-case';
 import { SettingsError } from '@application/project-manager/settings.interface';
 import {
   PmAdminAuth,
@@ -98,6 +99,7 @@ export class PmAdminController {
     private readonly admin: PmAdminUseCase,
     private readonly team_: TeamReviewUseCase,
     private readonly refresher: RefreshProjectSnapshotUseCase,
+    private readonly indexer: BuildIndexUseCase,
   ) {}
 
   // Exchanges the one-time link from the bot for a 7-day session
@@ -242,6 +244,28 @@ export class PmAdminController {
         error: s.error,
       })),
     };
+  }
+
+  // Full collection of tickets, docs, design and PRs into the local index,
+  // in steps (each call ~3 minutes at most); no model tokens
+  @Get('index')
+  @UseGuards(PmAdminGuard)
+  indexStatus() {
+    return this.indexer.status();
+  }
+
+  @Post('index/start')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  indexStart() {
+    return this.indexer.start();
+  }
+
+  @Post('index/step')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  indexStep() {
+    return this.indexer.step();
   }
 
   @Get('chats')

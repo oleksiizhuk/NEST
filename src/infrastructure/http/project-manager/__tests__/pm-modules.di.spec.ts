@@ -33,6 +33,8 @@ const MODELS = [
   'PmAdminAttempt',
   'PmAdminApproval',
   'PmTeamReview',
+  'PmIndex',
+  'PmIndexJob',
 ];
 
 describe('project-manager module wiring', () => {
@@ -68,6 +70,9 @@ describe('project-manager module wiring', () => {
     ).toBeDefined();
     expect(
       optional(moduleRef.get(AnswerProjectQuestionUseCase), 'runtime'),
+    ).toBeDefined();
+    expect(
+      optional(moduleRef.get(AnswerProjectQuestionUseCase), 'index'),
     ).toBeDefined();
     expect(
       optional(moduleRef.get(ConfirmPendingActionUseCase), 'memory'),

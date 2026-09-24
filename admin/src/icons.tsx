@@ -54,3 +54,9 @@ export const IconTeam = () => (
     <path d="M3 19c.7-3.2 3-5 6-5s5.3 1.8 6 5M16 5.2a3 3 0 0 1 0 5.6M18 14.2c1.6.6 2.6 2.2 3 4.8" />
   </svg>
 );
+export const IconData = () => (
+  <svg {...base}>
+    <ellipse cx="12" cy="5.5" rx="7" ry="2.5" />
+    <path d="M5 5.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6M5 11.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6" />
+  </svg>
+);

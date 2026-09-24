@@ -5,19 +5,21 @@ import { UsagePanel } from './UsagePanel';
 import { LoginCard } from './LoginCard';
 import { ChatsPanel } from './ChatsPanel';
 import { TeamPage } from './TeamPage';
+import { DataPage } from './DataPage';
 import {
   IconChats,
   IconClose,
   IconLogout,
   IconMenu,
   IconOverview,
+  IconData,
   IconTeam,
   IconRefresh,
   IconSettings,
 } from './icons';
 
 type State = 'loading' | 'login' | 'ready';
-type PageId = 'overview' | 'team' | 'chats' | 'settings';
+type PageId = 'overview' | 'team' | 'data' | 'chats' | 'settings';
 
 const PAGES: Array<{
   id: PageId;
@@ -36,6 +38,12 @@ const PAGES: Array<{
     title: 'Сотрудники',
     icon: <IconTeam />,
     lead: 'Кто над чем работает, идёт ли в нужную сторону и что сказать на митинге.',
+  },
+  {
+    id: 'data',
+    title: 'Данные',
+    icon: <IconData />,
+    lead: 'Полный сбор задач, документации, дизайна и PR — без затрат на модель.',
   },
   {
     id: 'chats',
@@ -266,6 +274,9 @@ export function App() {
           {page === 'overview' && usage && <UsagePanel usage={usage} />}
           {page === 'team' && (
             <TeamPage refreshKey={refreshKey} onUnauthorized={logout} />
+          )}
+          {page === 'data' && (
+            <DataPage refreshKey={refreshKey} onUnauthorized={logout} />
           )}
           {page === 'chats' && (
             <ChatsPanel key={refreshKey} onUnauthorized={logout} />
