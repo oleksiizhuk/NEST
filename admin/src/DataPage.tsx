@@ -45,11 +45,16 @@ export function DataPage({
 
   useEffect(() => {
     load();
-    return () => {
-      stop.current = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
+
+  // Only leaving the page stops a running collection, not a refresh
+  useEffect(
+    () => () => {
+      stop.current = true;
+    },
+    [],
+  );
 
   // Each step runs up to ~3 minutes on the server; keep calling until done
   const collect = async () => {
@@ -66,6 +71,10 @@ export function DataPage({
       await load();
       if (job.status === 'failed') setError(`Сбор остановился: ${job.error}`);
       else if (job.status === 'done') setMessage('Готово: всё собрано.');
+      else
+        setMessage(
+          'Сбор на паузе. Нажмите «Собрать всё», чтобы продолжить с того же места.',
+        );
     } catch (e) {
       handle(e);
     } finally {

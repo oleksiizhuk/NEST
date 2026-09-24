@@ -644,11 +644,15 @@ export class PmToolbox {
         const source = input.source
           ? (str(input.source, 12) as IndexSource)
           : undefined;
-        const hits = await this.collab.index.search(
-          str(input.query, 200),
-          10,
-          source,
-        );
+        // PR contents are code review material: owner only, like get_pull_request
+        if (source === 'github' && !ctx.canReadCode) {
+          throw new Error(
+            'Pull request contents are reserved for the owner. Use the PR list in the snapshot.',
+          );
+        }
+        const hits = (
+          await this.collab.index.search(str(input.query, 200), 10, source)
+        ).filter((h) => ctx.canReadCode || h.source !== 'github');
         return wrapUntrusted(
           'project:search',
           hits.length
@@ -668,6 +672,11 @@ export class PmToolbox {
       case 'read_indexed': {
         if (!this.collab.index)
           throw new Error('The project copy is not available.');
+        if (str(input.source, 12) === 'github' && !ctx.canReadCode) {
+          throw new Error(
+            'Pull request contents are reserved for the owner. Use the PR list in the snapshot.',
+          );
+        }
         const doc = await this.collab.index.get(
           str(input.source, 12) as IndexSource,
           str(input.key, 120),

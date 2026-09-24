@@ -125,7 +125,12 @@ describe('search tools', () => {
       {} as any,
       { index: index as any },
     );
-    const ctx = { chatId: 1, requesterId: 1, proposal: null };
+    const ctx = {
+      chatId: 1,
+      requesterId: 1,
+      proposal: null,
+      canReadCode: true,
+    };
     const found = await toolbox.run(
       'search_project',
       { query: 'checkout', source: 'jira' },
@@ -136,5 +141,53 @@ describe('search tools', () => {
     await expect(
       toolbox.run('read_indexed', { source: 'jira', key: 'KAN-1' }, ctx),
     ).resolves.toContain('full text');
+  });
+
+  it('keeps PR contents for the owner', async () => {
+    const index = {
+      search: jest.fn().mockResolvedValue([
+        {
+          source: 'github',
+          key: 'api#1',
+          title: 'PR',
+          url: null,
+          meta: '',
+          snippet: 'diff',
+          updatedAt: null,
+        },
+        {
+          source: 'jira',
+          key: 'KAN-1',
+          title: 'T',
+          url: null,
+          meta: '',
+          snippet: 's',
+          updatedAt: null,
+        },
+      ]),
+      get: jest.fn(),
+    };
+    const toolbox = new PmToolbox(
+      { repos: () => [], isConfigured: () => false } as any,
+      { tiers: () => [], roles: () => [] } as any,
+      {} as any,
+      { index: index as any },
+    );
+    const guest = {
+      chatId: 1,
+      requesterId: 2,
+      proposal: null,
+      canReadCode: false,
+    };
+    const found = await toolbox.run('search_project', { query: 'x' }, guest);
+    expect(found).toContain('KAN-1');
+    expect(found).not.toContain('api#1');
+    await expect(
+      toolbox.run('search_project', { query: 'x', source: 'github' }, guest),
+    ).rejects.toThrow('reserved for the owner');
+    await expect(
+      toolbox.run('read_indexed', { source: 'github', key: 'api#1' }, guest),
+    ).rejects.toThrow('reserved for the owner');
+    expect(index.get).not.toHaveBeenCalled();
   });
 });

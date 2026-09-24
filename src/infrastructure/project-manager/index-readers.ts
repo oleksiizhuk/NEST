@@ -189,7 +189,9 @@ export class ConfluenceIndexReader implements IIndexReader {
         };
         this.pages.set(id, page);
       } catch {
-        return false;
+        // Cannot check the ancestor (rate limit, a folder, no access): leave
+        // the page out rather than risk copying an access page's child
+        return true;
       }
     }
     if (SENSITIVE_TITLE.test(page.title)) return true;
@@ -280,7 +282,9 @@ export class FigmaIndexReader implements IIndexReader {
       getJson<any>(
         `https://api.figma.com/v1/files/${key}/comments`,
         headers,
-      ).catch(() => ({ data: { comments: [] } })),
+        // No catch: an empty list here would prune every indexed comment at
+        // the end of the source; a failed run keeps the old copy instead
+      ),
     ]);
     const docs: IndexDoc[] = [];
     const fileName = file.data.name ?? key;
