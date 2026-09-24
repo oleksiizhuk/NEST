@@ -12,7 +12,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { IsObject, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsObject,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
 import { SettingsError } from '@application/project-manager/settings.interface';
 import {
@@ -41,6 +47,14 @@ export class AdminApprovalBody {
   @IsString()
   @MaxLength(64)
   id: string;
+}
+
+export class AdminChatBody {
+  @IsInt()
+  chatId: number;
+
+  @IsBoolean()
+  on: boolean;
 }
 
 export class AdminSettingsBody {
@@ -134,5 +148,23 @@ export class PmAdminController {
   @UseGuards(PmAdminGuard)
   usage() {
     return this.admin.usage();
+  }
+
+  @Get('chats')
+  @UseGuards(PmAdminGuard)
+  chats() {
+    return this.admin.groups();
+  }
+
+  @Put('chats')
+  @UseGuards(PmAdminGuard)
+  async setChat(@Body() body: AdminChatBody) {
+    try {
+      return await this.admin.setGroup(body.chatId, body.on);
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
   }
 }

@@ -98,8 +98,25 @@ describe('PmAdminUseCase', () => {
     };
     const messages = {
       recentAnswers: jest.fn().mockResolvedValue([]),
+      recentGroups: jest.fn().mockResolvedValue([
+        { chatId: 1, title: 'Fixed', lastAt: new Date() },
+        { chatId: -300, title: 'Team', lastAt: new Date() },
+        { chatId: -400, title: 'New team chat', lastAt: new Date() },
+      ]),
     };
-    const admin = new PmAdminUseCase(store, runtime, quota, messages as any);
+    const chats = {
+      isEnabled: jest.fn(async (id: number) => id === -300),
+      enable: jest.fn(),
+      disable: jest.fn(),
+      digestChats: jest.fn(),
+    };
+    const admin = new PmAdminUseCase(
+      store,
+      runtime,
+      quota,
+      messages as any,
+      chats,
+    );
     const settings = await admin.settings();
     expect(settings.defaults.dailyQuestionLimit).toBe(7);
     expect(settings.overrides).toEqual({ dailyQuestionLimit: 3 });
@@ -116,5 +133,15 @@ describe('PmAdminUseCase', () => {
       feedback: { answers: 0 },
     });
     expect(quota.day).toHaveBeenCalledWith('2026-09-23');
+
+    const groups = await admin.groups();
+    expect(groups.map((g) => [g.chatId, g.on, g.fixed])).toEqual([
+      [1, true, true],
+      [-300, true, false],
+      [-400, false, false],
+    ]);
+    await admin.setGroup(-400, true);
+    expect(chats.enable).toHaveBeenCalledWith(-400, 'New team chat');
+    await expect(admin.setGroup(-999, true)).rejects.toThrow('unknown chat');
   });
 });

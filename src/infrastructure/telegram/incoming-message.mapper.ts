@@ -2,7 +2,9 @@ import type { CallbackQuery, Message } from 'grammy/types';
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
 
 export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
-  if (!msg.from) return null;
+  // A migration service message may come without a sender; it still matters
+  if (!msg.from && !msg.migrate_from_chat_id) return null;
+  const from = msg.from ?? { id: 0, first_name: '' };
 
   return {
     chatId: msg.chat.id,
@@ -10,12 +12,15 @@ export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
     chatTitle: msg.chat.title ?? null,
     text: msg.text ?? null,
     from: {
-      id: msg.from.id,
-      username: msg.from.username ?? null,
-      firstName: msg.from.first_name ?? null,
-      lastName: msg.from.last_name ?? null,
+      id: from.id,
+      username: 'username' in from ? from.username ?? null : null,
+      firstName: from.first_name || null,
+      lastName: 'last_name' in from ? from.last_name ?? null : null,
     },
     replyToBotId: msg.reply_to_message?.from?.id,
+    ...(msg.migrate_from_chat_id
+      ? { migrateFromChatId: msg.migrate_from_chat_id }
+      : {}),
   };
 };
 

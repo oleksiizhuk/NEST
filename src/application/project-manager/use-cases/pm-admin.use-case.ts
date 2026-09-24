@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  SettingsError,
   cleanSettings,
   IPmSettingsStore,
   PM_SETTINGS,
@@ -13,6 +14,10 @@ import {
   TELEGRAM_MESSAGE_REPOSITORY,
 } from '@domain/telegram/telegram-message.repository.interface';
 import { summarizeAnswers } from '@application/project-manager/answer-stats';
+import {
+  IPmChatRegistry,
+  PM_CHAT_REGISTRY,
+} from '@application/project-manager/pm-chat-registry.interface';
 
 // What the admin page reads and changes. Only the owner reaches it (guard).
 @Injectable()
@@ -23,7 +28,36 @@ export class PmAdminUseCase {
     @Inject(PM_QUOTA) private readonly quota: IQuota,
     @Inject(TELEGRAM_MESSAGE_REPOSITORY)
     private readonly messages: ITelegramMessageRepository,
+    @Inject(PM_CHAT_REGISTRY) private readonly chats: IPmChatRegistry,
   ) {}
+
+  // Groups the bot has seen and whether PM mode is on there. "fixed" = set
+  // by TELEGRAM_PM_CHAT_IDS and not switchable here.
+  async groups() {
+    const fixed = this.runtime.defaults().chatIds;
+    const seen = await this.messages.recentGroups(30);
+    return Promise.all(
+      seen.map(async (g) => ({
+        ...g,
+        fixed: fixed.includes(g.chatId),
+        on:
+          fixed.includes(g.chatId) ||
+          (await this.chats.isEnabled(g.chatId).catch(() => false)),
+      })),
+    );
+  }
+
+  // Same as /pm_on and /pm_off, from the admin page; only for chats the
+  // bot has actually seen
+  async setGroup(chatId: number, on: boolean) {
+    const seen = (await this.messages.recentGroups(200)).find(
+      (g) => g.chatId === chatId,
+    );
+    if (!seen) throw new SettingsError('unknown chat');
+    if (on) await this.chats.enable(chatId, seen.title);
+    else await this.chats.disable(chatId);
+    return this.groups();
+  }
 
   // Env values, the owner's overrides, and what is in effect
   async settings() {

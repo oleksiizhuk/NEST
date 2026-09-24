@@ -505,6 +505,25 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     expect(pmAnswer.execute).not.toHaveBeenCalled();
   });
 
+  it('keeps PM mode when Telegram turns the group into a supergroup', async () => {
+    registry.isEnabled.mockImplementation(async (id: number) => id === -555);
+    await useCase.execute({
+      ...group(-100777, '', 0),
+      text: null,
+      chatTitle: 'Team',
+      migrateFromChatId: -555,
+    });
+    expect(registry.enable).toHaveBeenCalledWith(-100777, 'Team');
+    registry.enable.mockClear();
+    await useCase.execute({
+      ...group(-100888, '', 0),
+      text: null,
+      migrateFromChatId: -666,
+    });
+    expect(registry.enable).not.toHaveBeenCalled();
+    registry.isEnabled.mockResolvedValue(false);
+  });
+
   it('ignores button presses in a chat without PM mode', async () => {
     registry.isEnabled.mockResolvedValue(false);
     await useCase.execute(
