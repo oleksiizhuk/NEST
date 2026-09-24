@@ -89,6 +89,15 @@ export class PmAdminUseCase {
     );
   }
 
+  // Jira name → GitHub login on the Сотрудники page
+  async setGithubLogin(name: string, login: string | null, by: number) {
+    const current = { ...((await this.runtime.current()).githubLogins ?? {}) };
+    if (login) current[name] = login.trim();
+    else delete current[name];
+    await this.store.save(cleanSettings({ githubLogins: current }), by);
+    this.runtime.invalidate();
+  }
+
   // Adds or removes a chat from the alert recipients (an override of the
   // env list, like the field in the settings form)
   async setAlerts(chatId: number, on: boolean, by: number) {
@@ -125,6 +134,7 @@ export class PmAdminUseCase {
       alertChatIds: base.alertChatIds ?? [],
       aiEffort: base.aiEffort ?? null,
       pmInOwnerGroups: base.pmInOwnerGroups !== false,
+      githubLogins: {},
     };
     const overrides: PmSettings = {};
     for (const key of SETTING_KEYS) {

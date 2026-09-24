@@ -17,6 +17,7 @@ export class ProjectSnapshotMapper {
         error: s.error ?? null,
         ...(s.metrics ? { metrics: s.metrics } : {}),
         ...(s.signals ? { signals: s.signals } : {}),
+        ...(s.details ? { details: s.details } : {}),
       })),
       doc.digest ?? null,
     );

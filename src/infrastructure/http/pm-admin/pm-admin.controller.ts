@@ -22,6 +22,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
+import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
 import { SettingsError } from '@application/project-manager/settings.interface';
 import {
   PmAdminAuth,
@@ -51,6 +52,23 @@ export class AdminApprovalBody {
   id: string;
 }
 
+export class AdminTeamReviewBody {
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
+}
+
+export class AdminGithubBody {
+  @IsString()
+  @MaxLength(100)
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(39)
+  login?: string | null;
+}
+
 export class AdminChatBody {
   @IsInt()
   chatId: number;
@@ -77,6 +95,7 @@ export class PmAdminController {
   constructor(
     private readonly auth: PmAdminAuth,
     private readonly admin: PmAdminUseCase,
+    private readonly team_: TeamReviewUseCase,
   ) {}
 
   // Exchanges the one-time link from the bot for a 7-day session
@@ -157,6 +176,53 @@ export class PmAdminController {
   @UseGuards(PmAdminGuard)
   usage() {
     return this.admin.usage();
+  }
+
+  // Сотрудники: who is on what, computed from the latest snapshot
+  @Get('team')
+  @UseGuards(PmAdminGuard)
+  async team() {
+    const [team, review] = await Promise.all([
+      this.team_.team(),
+      this.team_.latest(),
+    ]);
+    return { team, review };
+  }
+
+  // Meeting notes by the model (cached for the day unless force)
+  @Post('team/review')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async teamReview(@Body() body: AdminTeamReviewBody) {
+    try {
+      return await this.team_.review(Boolean(body.force));
+    } catch (error) {
+      throw new HttpException(
+        (error as Error).message,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  // Links a Jira name to a GitHub login (null removes the link)
+  @Put('team/github')
+  @UseGuards(PmAdminGuard)
+  async teamGithub(
+    @Body() body: AdminGithubBody,
+    @Req() req: { pmAdmin: number },
+  ) {
+    try {
+      await this.admin.setGithubLogin(
+        body.name,
+        body.login ?? null,
+        req.pmAdmin,
+      );
+      return this.team();
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
   }
 
   @Get('chats')

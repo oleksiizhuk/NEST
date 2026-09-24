@@ -1,11 +1,55 @@
-import { useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { api, session, SettingsView, Unauthorized, Usage } from './api';
 import { SettingsForm } from './SettingsForm';
 import { UsagePanel } from './UsagePanel';
 import { LoginCard } from './LoginCard';
 import { ChatsPanel } from './ChatsPanel';
+import { TeamPage } from './TeamPage';
+import {
+  IconChats,
+  IconClose,
+  IconLogout,
+  IconMenu,
+  IconOverview,
+  IconTeam,
+  IconRefresh,
+  IconSettings,
+} from './icons';
 
 type State = 'loading' | 'login' | 'ready';
+type PageId = 'overview' | 'team' | 'chats' | 'settings';
+
+const PAGES: Array<{
+  id: PageId;
+  title: string;
+  icon: ReactNode;
+  lead: string;
+}> = [
+  {
+    id: 'overview',
+    title: 'Обзор',
+    icon: <IconOverview />,
+    lead: 'Вопросы за сегодня, оценки ответов и расход.',
+  },
+  {
+    id: 'team',
+    title: 'Сотрудники',
+    icon: <IconTeam />,
+    lead: 'Кто над чем работает, идёт ли в нужную сторону и что сказать на митинге.',
+  },
+  {
+    id: 'chats',
+    title: 'Чаты',
+    icon: <IconChats />,
+    lead: 'Где бот работает менеджером, куда идут сводка и уведомления.',
+  },
+  {
+    id: 'settings',
+    title: 'Доступы и лимиты',
+    icon: <IconSettings />,
+    lead: 'Кто может писать, подтверждать и сколько спрашивать.',
+  },
+];
 
 // The login link from the bot carries a one-time token in the URL fragment;
 // it is exchanged for a session and removed from the address bar at once
@@ -16,17 +60,27 @@ const takeLoginToken = (): string | null => {
   return match[1];
 };
 
+// Pages live in the fragment (#/chats), so reload and back keep your place
+const pageFromHash = (): PageId => {
+  const id = window.location.hash.match(/^#\/([a-z]+)/)?.[1];
+  return PAGES.find((p) => p.id === id)?.id ?? 'overview';
+};
+
 export function App() {
   const [state, setState] = useState<State>('loading');
   const [error, setError] = useState<string | null>(null);
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
+  const [page, setPage] = useState<PageId>(pageFromHash);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const load = useCallback(async () => {
     try {
       const [s, u] = await Promise.all([api.settings(), api.usage()]);
       setSettings(s);
       setUsage(u);
+      setError(null);
       setState('ready');
     } catch (e) {
       if (e instanceof Unauthorized) {
@@ -62,62 +116,161 @@ export function App() {
     })();
   }, [load]);
 
+  useEffect(() => {
+    const onHash = () => setPage(pageFromHash());
+    const onKey = (e: KeyboardEvent) =>
+      e.key === 'Escape' && setMenuOpen(false);
+    window.addEventListener('hashchange', onHash);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('hashchange', onHash);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
+
+  // No page scroll behind the open mobile menu
+  useEffect(() => {
+    document.body.classList.toggle('no-scroll', menuOpen);
+  }, [menuOpen]);
+
+  const go = (id: PageId) => {
+    window.location.hash = `#/${id}`;
+    setPage(id);
+    setMenuOpen(false);
+    window.scrollTo(0, 0);
+  };
+
   const logout = () => {
     session.clear();
     setSettings(null);
     setUsage(null);
+    setMenuOpen(false);
     setState('login');
   };
 
+  const refresh = () => {
+    setRefreshKey((k) => k + 1);
+    load();
+  };
+
+  if (state !== 'ready') {
+    return (
+      <div className="login-page">
+        <div className="login-brand">
+          <span className="logo">PM</span>
+          <span>PM-бот · админка</span>
+        </div>
+        {error && <p className="error">{error}</p>}
+        {state === 'loading' ? (
+          <p className="muted">Загрузка…</p>
+        ) : (
+          <LoginCard
+            onLoggedIn={() => {
+              setError(null);
+              load();
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const current = PAGES.find((p) => p.id === page) ?? PAGES[0];
+
   return (
-    <div className="page">
-      <header className="top">
-        <h1>PM-бот · админка</h1>
-        {state === 'ready' && (
-          <div className="top-actions">
-            <button className="ghost" onClick={load}>
-              Обновить
-            </button>
-            <button className="ghost" onClick={logout}>
-              Выйти
-            </button>
-            <button
-              className="ghost"
-              title="Закрыть все сессии админки на всех устройствах"
-              onClick={() => {
-                api
-
-                  .logoutAll()
-
-                  .catch(() => undefined)
-
-                  .finally(logout);
+    <div className="shell">
+      <aside
+        className={`sidebar${menuOpen ? ' open' : ''}`}
+        aria-label="Разделы"
+      >
+        <div className="sidebar-head">
+          <span className="logo">PM</span>
+          <span className="brand">PM-бот</span>
+          <button
+            className="icon-btn only-mobile"
+            aria-label="Закрыть меню"
+            onClick={() => setMenuOpen(false)}
+          >
+            <IconClose />
+          </button>
+        </div>
+        <nav className="nav">
+          {PAGES.map((p) => (
+            <a
+              key={p.id}
+              href={`#/${p.id}`}
+              className={`nav-item${p.id === page ? ' active' : ''}`}
+              aria-current={p.id === page ? 'page' : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                go(p.id);
               }}
             >
-              Выйти везде
-            </button>
-          </div>
-        )}
-      </header>
-
-      {error && <p className="error">{error}</p>}
-
-      {state === 'loading' && <p className="muted">Загрузка…</p>}
-
-      {state === 'login' && (
-        <LoginCard
-          onLoggedIn={() => {
-            setError(null);
-            load();
-          }}
-        />
+              {p.icon}
+              <span>{p.title}</span>
+            </a>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <button className="nav-item" onClick={logout}>
+            <IconLogout />
+            <span>Выйти</span>
+          </button>
+          <button
+            className="nav-item subtle"
+            title="Закрыть все сессии админки на всех устройствах"
+            onClick={() => {
+              api
+                .logoutAll()
+                .catch(() => undefined)
+                .finally(logout);
+            }}
+          >
+            <span className="nav-spacer" />
+            <span>Выйти везде</span>
+          </button>
+        </div>
+      </aside>
+      {menuOpen && (
+        <div className="backdrop" onClick={() => setMenuOpen(false)} />
       )}
 
-      {state === 'ready' && (
-        <>
-          {usage && <UsagePanel usage={usage} />}
-          <ChatsPanel onUnauthorized={logout} />
-          {settings && (
+      <div className="main">
+        <header className="topbar">
+          <button
+            className="icon-btn"
+            aria-label="Открыть меню"
+            onClick={() => setMenuOpen(true)}
+          >
+            <IconMenu />
+          </button>
+          <span className="topbar-title">{current.title}</span>
+          <button className="icon-btn" aria-label="Обновить" onClick={refresh}>
+            <IconRefresh />
+          </button>
+        </header>
+
+        <main className="content">
+          <div className="page-head">
+            <div>
+              <h1>{current.title}</h1>
+              <p className="muted">{current.lead}</p>
+            </div>
+            <button className="ghost only-desktop" onClick={refresh}>
+              <IconRefresh /> Обновить
+            </button>
+          </div>
+
+          {error && <p className="error">{error}</p>}
+
+          {page === 'overview' && usage && <UsagePanel usage={usage} />}
+          {page === 'team' && (
+            <TeamPage refreshKey={refreshKey} onUnauthorized={logout} />
+          )}
+          {page === 'chats' && (
+            <ChatsPanel key={refreshKey} onUnauthorized={logout} />
+          )}
+          {page === 'settings' && settings && (
             <SettingsForm
               view={settings}
               onSaved={(view) => {
@@ -131,8 +284,8 @@ export function App() {
               onUnauthorized={logout}
             />
           )}
-        </>
-      )}
+        </main>
+      </div>
     </div>
   );
 }

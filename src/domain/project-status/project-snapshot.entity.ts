@@ -13,6 +13,8 @@ export interface SnapshotSection {
   metrics?: Record<string, number>;
   // Events for proactive alerts (rule + subject + text), from fresh data only
   signals?: Array<{ rule: string; subject: string; text: string }>;
+  // Structured per-person data for the admin page
+  details?: Record<string, unknown>;
 }
 
 export class ProjectSnapshot {

@@ -12,6 +12,7 @@ import {
   PmAdminGuard,
 } from '@infrastructure/http/pm-admin/pm-admin.auth';
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
+import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
 
 @Module({
   imports: [
@@ -24,6 +25,12 @@ import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.
     TelegramInfraModule,
   ],
   controllers: [PmAdminController],
-  providers: [PmAdminAuth, PmAdminGuard, PmAdminUseCase, PasswordThrottle],
+  providers: [
+    PmAdminAuth,
+    PmAdminGuard,
+    PmAdminUseCase,
+    PasswordThrottle,
+    TeamReviewUseCase,
+  ],
 })
 export class PmAdminHttpModule {}

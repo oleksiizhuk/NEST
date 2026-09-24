@@ -16,6 +16,8 @@ export interface PmSettings {
   aiEffort?: AiEffort | null;
   // Every group the owner is in gets PM mode without /pm_on
   pmInOwnerGroups?: boolean | null;
+  // Jira display name → GitHub login, for the Сотрудники page
+  githubLogins?: Record<string, string> | null;
 }
 
 export const SETTING_KEYS: Array<keyof PmSettings> = [
@@ -26,6 +28,7 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
   'alertChatIds',
   'aiEffort',
   'pmInOwnerGroups',
+  'githubLogins',
 ];
 
 export interface IPmSettingsStore {
@@ -96,6 +99,30 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       throw new SettingsError(`aiEffort: one of ${AI_EFFORTS.join(', ')}`);
     else out.aiEffort = input.aiEffort as AiEffort;
   }
+  if (has('githubLogins')) {
+    const value = input.githubLogins;
+    if (value === null) out.githubLogins = null;
+    else if (typeof value !== 'object' || Array.isArray(value))
+      throw new SettingsError('githubLogins: an object name → login');
+    else {
+      const map: Record<string, string> = {};
+      for (const [name, login] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        if (
+          !name ||
+          name.length > 100 ||
+          name.startsWith('$') ||
+          name.includes('.')
+        )
+          throw new SettingsError(`githubLogins: bad name "${name}"`);
+        if (typeof login !== 'string' || !/^[A-Za-z0-9-]{1,39}$/.test(login))
+          throw new SettingsError(`githubLogins: bad login for ${name}`);
+        map[name] = login;
+      }
+      out.githubLogins = map;
+    }
+  }
   if (has('pmInOwnerGroups')) {
     if (nil('pmInOwnerGroups')) out.pmInOwnerGroups = null;
     else if (typeof input.pmInOwnerGroups !== 'boolean')
@@ -119,4 +146,5 @@ export const resolveConfig = (base: IPmConfig, s: PmSettings): IPmConfig => ({
   ...(s.alertChatIds != null ? { alertChatIds: s.alertChatIds } : {}),
   ...(s.aiEffort != null ? { aiEffort: s.aiEffort } : {}),
   ...(s.pmInOwnerGroups != null ? { pmInOwnerGroups: s.pmInOwnerGroups } : {}),
+  ...(s.githubLogins != null ? { githubLogins: s.githubLogins } : {}),
 });

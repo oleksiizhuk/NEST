@@ -17,6 +17,8 @@ export interface SourceResult {
   text: string;
   metrics?: Record<string, number>;
   signals?: Signal[];
+  // Structured data for the admin page (people and their work)
+  details?: Record<string, unknown>;
 }
 
 // Something a manager would want to hear about without asking: a new

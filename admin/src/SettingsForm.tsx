@@ -146,7 +146,6 @@ export function SettingsForm({
 
   return (
     <section className="card">
-      <h2>Доступы и лимиты</h2>
       <p className="muted">
         Пустое поле — значение из Vercel. Изменения действуют без редеплоя.
         {view.updatedAt &&
