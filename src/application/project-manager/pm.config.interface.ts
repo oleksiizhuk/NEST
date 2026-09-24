@@ -32,4 +32,6 @@ export interface IPmConfig {
   unlimitedUsernames?: string[];
   // Model effort for chat answers, when overridden from the admin page
   aiEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  // Groups the owner is a member of are PM chats without /pm_on
+  pmInOwnerGroups?: boolean;
 }

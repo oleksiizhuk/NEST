@@ -1,6 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api, Chat, Unauthorized } from './api';
 
+const MODE: Record<Chat['mode'], string> = {
+  fixed: 'Включён в Vercel',
+  on: 'Включён вручную',
+  off: 'Выключен вручную',
+  auto: 'Включён: вы в этой группе',
+  none: 'Выключен: вас нет в группе',
+};
+
 // Groups the bot has seen. PM mode on = project data and the manager;
 // off = the regular persona, which knows nothing about the project.
 export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
@@ -18,11 +26,11 @@ export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const toggle = async (chat: Chat) => {
+  const set = async (chat: Chat, on: boolean | 'auto') => {
     setBusy(chat.chatId);
     setError(null);
     try {
-      setChats(await api.setChat(chat.chatId, !chat.on));
+      setChats(await api.setChat(chat.chatId, on));
     } catch (e) {
       handle(e);
     } finally {
@@ -60,20 +68,30 @@ export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
                   {new Date(c.lastAt).toLocaleString('ru-RU')}
                 </td>
                 <td>
-                  {c.fixed ? (
-                    <span className="muted">включён в Vercel</span>
-                  ) : (
-                    <button
-                      className={c.on ? 'ghost' : ''}
-                      disabled={busy === c.chatId}
-                      onClick={() => toggle(c)}
-                    >
-                      {busy === c.chatId
-                        ? '…'
-                        : c.on
-                        ? 'Выключить'
-                        : 'Включить'}
-                    </button>
+                  <div>{MODE[c.mode]}</div>
+                  {c.mode !== 'fixed' && (
+                    <div className="row-actions">
+                      <button
+                        className={c.on ? 'ghost' : ''}
+                        disabled={busy === c.chatId}
+                        onClick={() => set(c, !c.on)}
+                      >
+                        {busy === c.chatId
+                          ? '…'
+                          : c.on
+                          ? 'Выключить'
+                          : 'Включить'}
+                      </button>
+                      {(c.mode === 'on' || c.mode === 'off') && (
+                        <button
+                          className="link"
+                          disabled={busy === c.chatId}
+                          onClick={() => set(c, 'auto')}
+                        >
+                          Как по умолчанию
+                        </button>
+                      )}
+                    </div>
                   )}
                 </td>
               </tr>

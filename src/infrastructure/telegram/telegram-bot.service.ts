@@ -100,6 +100,16 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
     );
   }
 
+  async isMember(chatId: number, userId: number): Promise<boolean> {
+    const member = await this.bot.api.getChatMember(chatId, userId);
+    return (
+      member.status === 'creator' ||
+      member.status === 'administrator' ||
+      member.status === 'member' ||
+      (member.status === 'restricted' && member.is_member)
+    );
+  }
+
   async clearButtons(chatId: number, messageId: number): Promise<void> {
     await this.bot.api.editMessageReplyMarkup(chatId, messageId, {
       reply_markup: { inline_keyboard: [] },

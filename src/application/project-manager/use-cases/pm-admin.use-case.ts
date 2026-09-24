@@ -18,6 +18,14 @@ import {
   IPmChatRegistry,
   PM_CHAT_REGISTRY,
 } from '@application/project-manager/pm-chat-registry.interface';
+import {
+  ITelegramGateway,
+  TELEGRAM_GATEWAY,
+} from '@application/telegram/telegram.gateway.interface';
+import {
+  ITelegramConfig,
+  TELEGRAM_CONFIG,
+} from '@application/telegram/telegram.config.interface';
 
 // What the admin page reads and changes. Only the owner reaches it (guard).
 @Injectable()
@@ -29,37 +37,57 @@ export class PmAdminUseCase {
     @Inject(TELEGRAM_MESSAGE_REPOSITORY)
     private readonly messages: ITelegramMessageRepository,
     @Inject(PM_CHAT_REGISTRY) private readonly chats: IPmChatRegistry,
+    @Inject(TELEGRAM_GATEWAY) private readonly telegram: ITelegramGateway,
+    @Inject(TELEGRAM_CONFIG) private readonly telegramConfig: ITelegramConfig,
   ) {}
 
-  // Groups the bot has seen and whether PM mode is on there. "fixed" = set
-  // by TELEGRAM_PM_CHAT_IDS and not switchable here.
+  // Groups the bot has seen and their PM mode:
+  // fixed (TELEGRAM_PM_CHAT_IDS) · on / off (switched explicitly) ·
+  // auto (the owner is in the group and automatic mode is on) · none
   async groups() {
+    const live = await this.runtime.current();
     const fixed = this.runtime.defaults().chatIds;
     const seen = await this.messages.recentGroups(30);
     return Promise.all(
-      seen.map(async (g) => ({
-        ...g,
-        fixed: fixed.includes(g.chatId),
-        on:
-          fixed.includes(g.chatId) ||
-          (await this.chats.isEnabled(g.chatId).catch(() => false)),
-      })),
+      seen.map(async (g) => {
+        let mode: 'fixed' | 'on' | 'off' | 'auto' | 'none';
+        if (fixed.includes(g.chatId)) mode = 'fixed';
+        else if (await this.chats.isEnabled(g.chatId).catch(() => false))
+          mode = 'on';
+        else if (await this.chats.isDisabled(g.chatId).catch(() => false))
+          mode = 'off';
+        else if (
+          live.pmInOwnerGroups !== false &&
+          this.telegramConfig.ownerId &&
+          (await this.telegram
+            .isMember(g.chatId, this.telegramConfig.ownerId)
+            .catch(() => false))
+        )
+          mode = 'auto';
+        else mode = 'none';
+        return {
+          ...g,
+          mode,
+          fixed: mode === 'fixed',
+          on: mode === 'fixed' || mode === 'on' || mode === 'auto',
+        };
+      }),
     );
   }
 
-  // Same as /pm_on and /pm_off, from the admin page; only for chats the
-  // bot has actually seen
-  async setGroup(chatId: number, on: boolean) {
+  // Same as /pm_on and /pm_off from the admin page ("auto" = back to the
+  // default); only for chats the bot has actually seen
+  async setGroup(chatId: number, on: boolean | 'auto') {
     const seen = (await this.messages.recentGroups(200)).find(
       (g) => g.chatId === chatId,
     );
     if (!seen) throw new SettingsError('unknown chat');
-    if (on) await this.chats.enable(chatId, seen.title);
+    if (on === 'auto') await this.chats.clear(chatId);
+    else if (on) await this.chats.enable(chatId, seen.title);
     else await this.chats.disable(chatId);
     return this.groups();
   }
 
-  // Env values, the owner's overrides, and what is in effect
   async settings() {
     const base = this.runtime.defaults();
     const { values, updatedAt } = await this.store.get();
@@ -70,6 +98,7 @@ export class PmAdminUseCase {
       actionUserIds: base.actionUserIds,
       alertChatIds: base.alertChatIds ?? [],
       aiEffort: base.aiEffort ?? null,
+      pmInOwnerGroups: base.pmInOwnerGroups !== false,
     };
     const overrides: PmSettings = {};
     for (const key of SETTING_KEYS) {

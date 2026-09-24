@@ -61,6 +61,8 @@ const authorLabel = (from: {
 };
 
 const FALLBACK_MESSAGE = 'Что-то пошло не так 😢';
+const OUTSIDE_TEAM_REPLY =
+  'Я помогаю как менеджер проекта только в чатах команды. Если это чат команды — владелец бота может включить меня здесь командой /pm_on.';
 const PM_MODE = 'pm';
 // Commands the bot answers in a group even without an @mention
 const BOT_COMMANDS = [
@@ -209,9 +211,41 @@ export class HandleTelegramMessageUseCase {
     if (!this.pmAnswer) return false;
     if (msg && this.isTeamDm(msg)) return true;
     if (this.pm?.chatIds.includes(chatId)) return true;
-    return this.pmChats
-      ? this.pmChats.isEnabled(chatId).catch(() => false)
-      : false;
+    if (this.pmChats) {
+      if (await this.pmChats.isEnabled(chatId).catch(() => false)) return true;
+      // /pm_off beats the automatic mode below
+      if (await this.pmChats.isDisabled(chatId).catch(() => false))
+        return false;
+    }
+    // Every group the owner is in is a team chat: project data stays out of
+    // groups where someone else added the bot
+    const isGroup = msg?.chatType === 'group' || msg?.chatType === 'supergroup';
+    return Boolean(
+      isGroup &&
+        this.pm?.pmInOwnerGroups !== false &&
+        (await this.ownerIsMember(chatId)),
+    );
+  }
+
+  // Membership changes rarely; one Telegram call per group per 10 minutes
+  private readonly memberCache = new Map<
+    number,
+    { at: number; yes: boolean }
+  >();
+
+  private async ownerIsMember(chatId: number): Promise<boolean> {
+    if (!this.config.ownerId) return false;
+    const cached = this.memberCache.get(chatId);
+    if (cached && Date.now() - cached.at < 10 * 60_000) return cached.yes;
+    let yes = false;
+    try {
+      yes = await this.telegram.isMember(chatId, this.config.ownerId);
+    } catch (error) {
+      this.logger.warn(`membership check failed for ${chatId}: ${error}`);
+      return false;
+    }
+    this.memberCache.set(chatId, { at: Date.now(), yes });
+    return yes;
   }
 
   async execute(msg: IncomingTelegramMessage): Promise<void> {
@@ -283,6 +317,17 @@ export class HandleTelegramMessageUseCase {
 
     if (await this.isPmChat(chatId, msg)) {
       await this.handleAsProjectManager(msg, cleanText || text);
+      return;
+    }
+
+    // Outside team chats a group gets a polite pointer, not the persona and
+    // not a model call
+    if (isGroup && this.pmAnswer) {
+      try {
+        await this.telegram.sendMessage(chatId, OUTSIDE_TEAM_REPLY);
+      } catch (error) {
+        this.logger.error(error);
+      }
       return;
     }
 

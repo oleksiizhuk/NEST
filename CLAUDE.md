@@ -134,6 +134,7 @@ PM_RELEASE_VERSION=     # Jira fixVersion that is the release scope for the comp
 PM_JIRA_SPRINT_FIELD=   # Sprint custom field id, default customfield_10020
 PM_JIRA_BOARD_ID=       # Jira board for the jira_sprint tool (active sprint); unset = off
 PM_ADMIN_EMAIL=         # Optional password login to /admin, with PM_ADMIN_PASSWORD_HASH (bcrypt hash, never the password); 5 failures in 15 min lock it
+PM_IN_OWNER_GROUPS=     # Default true: every group TELEGRAM_OWNER_ID is in is a PM chat; groups without the owner get a polite pointer, no project data, no model call
 PM_ADMIN_URL=           # Origin of the /admin page for login links; default: TELEGRAM_WEBHOOK_URL's origin
 PM_DAILY_QUESTION_LIMIT= # Questions to the model per person per UTC day (default 7, 0 = off); owner and PM_UNLIMITED_USERNAMES (usernames, no @) are exempt
 PM_ALERT_CHAT_IDS=      # Who gets proactive alerts and the weekly eval report; default "owner" (TELEGRAM_OWNER_ID's DM) only
@@ -161,7 +162,7 @@ PORT=3000
 
 ## Telegram project-manager mode
 
-In chats listed in `TELEGRAM_PM_CHAT_IDS` the bot answers as a delivery manager on `claude-opus-5-5`. Every other chat keeps the persona and never sees project data.
+In chats listed in `TELEGRAM_PM_CHAT_IDS`, chats switched on with `/pm_on`, and (by default, `PM_IN_OWNER_GROUPS`) every group the owner is a member of (checked with getChatMember, cached 10 min), the bot answers as a delivery manager on `claude-opus-5-5`. `/pm_off` is stored and beats the automatic mode. Groups without the owner get a short polite reply and never see project data; the persona remains only in private chats outside PM mode.
 - `RefreshProjectSnapshotUseCase` reads Jira, Confluence, GitHub and Figma (pages/frames, recent versions, open comments) through read-only `IProjectSource`s (`src/infrastructure/project-manager/`) into a `ProjectSnapshot` in Mongo. A failed source keeps its previous text, marked stale.
 - `AnswerProjectQuestionUseCase` answers from the latest snapshot plus `PM_PROJECT_BRIEF`; crons keep the snapshot fresh, and it is built inline only when none exists (its age is shown to the model). The Jira and GitHub sections start with a "Computed metrics" block counted in code (`application/project-manager/metrics.ts`): scope, 14-day pace, forecast with a verdict hint, unassigned/stale/overdue items, bugs, load per person, PRs waiting for review, red pipelines. Instructions are generic and live in the repo; everything project-specific comes from env and the snapshot, because the repo is public.
 - Commands: `/status` (verdict, focus per person, risks), `/refresh` (owner only). In a group the owner sends `/pm_on` to switch that chat to PM mode and add it to the digest (stored in Mongo `pmchats`), `/pm_off` to switch it back; nobody else can.

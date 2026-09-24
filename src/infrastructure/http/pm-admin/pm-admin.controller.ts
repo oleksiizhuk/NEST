@@ -12,13 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import {
-  IsBoolean,
-  IsInt,
-  IsObject,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsIn, IsInt, IsObject, IsString, MaxLength } from 'class-validator';
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
 import { SettingsError } from '@application/project-manager/settings.interface';
 import {
@@ -53,8 +47,9 @@ export class AdminChatBody {
   @IsInt()
   chatId: number;
 
-  @IsBoolean()
-  on: boolean;
+  // true / false, or "auto" to go back to the default
+  @IsIn([true, false, 'auto'])
+  on: boolean | 'auto';
 }
 
 export class AdminSettingsBody {

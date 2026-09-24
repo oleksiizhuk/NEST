@@ -22,6 +22,7 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     getBotInfo: jest.fn().mockResolvedValue(BOT),
     answerCallback: jest.fn().mockResolvedValue(undefined),
     clearButtons: jest.fn().mockResolvedValue(undefined),
+    isMember: jest.fn().mockResolvedValue(false),
   };
   const persona = {
     generateReply: jest.fn().mockResolvedValue('persona reply'),
@@ -54,6 +55,8 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     isEnabled: jest.fn().mockResolvedValue(false),
     enable: jest.fn(),
     disable: jest.fn(),
+    isDisabled: jest.fn().mockResolvedValue(false),
+    clear: jest.fn(),
     digestChats: jest.fn(),
   };
   const confirm = {
@@ -116,11 +119,40 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     );
   });
 
-  it('never gives project data to a group that is not listed', async () => {
+  it('never gives project data to a group the owner is not in', async () => {
     await useCase.execute(group(OTHER_GROUP, '@nest_bot как дела по релизу?'));
     expect(pmAnswer.execute).not.toHaveBeenCalled();
     expect(pmRefresh.execute).not.toHaveBeenCalled();
-    expect(persona.generateReply).toHaveBeenCalled();
+    expect(persona.generateReply).not.toHaveBeenCalled();
+    expect(telegram.sendMessage.mock.calls[0][1]).toContain(
+      'только в чатах команды',
+    );
+  });
+
+  it('is the manager in every group the owner is in, unless switched off', async () => {
+    telegram.isMember.mockImplementation(
+      async (chatId: number, userId: number) =>
+        chatId === -777 && userId === OWNER,
+    );
+    await useCase.execute(group(-777, '@nest_bot как дела?'));
+    expect(pmAnswer.execute).toHaveBeenCalledTimes(1);
+    expect(telegram.isMember).toHaveBeenCalledWith(-777, OWNER);
+
+    registry.isDisabled.mockResolvedValueOnce(true);
+    await useCase.execute(group(-778, '@nest_bot как дела?'));
+    expect(pmAnswer.execute).toHaveBeenCalledTimes(1);
+
+    (useCase as any).live = undefined;
+    (useCase as any).pmRuntime = {
+      current: jest.fn().mockResolvedValue({
+        ...(useCase as any).pmConfig,
+        pmInOwnerGroups: false,
+      }),
+    };
+    (useCase as any).memberCache.clear();
+    await useCase.execute(group(-777, '@nest_bot как дела?'));
+    expect(pmAnswer.execute).toHaveBeenCalledTimes(1);
+    telegram.isMember.mockResolvedValue(false);
   });
 
   it('still needs a mention or reply in a listed group', async () => {
@@ -191,8 +223,12 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       { userText: 'Dev @dev: pm question', botResponse: 're: pm question' },
     ]);
 
-    await useCase.execute(group(OTHER_GROUP, '@nest_bot привет'));
-    const personaHistory = persona.generateReply.mock.calls[0][1];
+    await useCase.execute({
+      ...group(OWNER, 'привет', OWNER),
+      chatType: 'private',
+      chatId: 999,
+    });
+    const personaHistory = persona.generateReply.mock.calls[0]?.[1] ?? [];
     expect(personaHistory.map((t: { userText: string }) => t.userText)).toEqual(
       ['Dev @dev: joke'],
     );

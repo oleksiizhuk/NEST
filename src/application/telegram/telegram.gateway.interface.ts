@@ -25,4 +25,6 @@ export interface ITelegramGateway {
   answerCallback(callbackId: string, text?: string): Promise<void>;
   // Removes the buttons so a choice cannot be pressed twice
   clearButtons(chatId: number, messageId: number): Promise<void>;
+  // Whether that user is currently in the group
+  isMember(chatId: number, userId: number): Promise<boolean>;
 }
