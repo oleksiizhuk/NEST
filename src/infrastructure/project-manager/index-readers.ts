@@ -136,6 +136,8 @@ export class ConfluenceIndexReader implements IIndexReader {
   private readonly a: ReturnType<typeof atlassian>;
   private readonly spaces: string[];
   private readonly excluded: Set<string>;
+  // Owner-cleared pages whose title only looks like access details
+  private readonly allowed: Set<string>;
   private spaceIds: string[] | null = null;
   // id → title and parent, to judge ancestors without refetching
   private readonly pages = new Map<
@@ -150,6 +152,9 @@ export class ConfluenceIndexReader implements IIndexReader {
     );
     this.excluded = new Set(
       list(config.get<string>('PM_CONFLUENCE_EXCLUDE_PAGE_IDS')),
+    );
+    this.allowed = new Set(
+      list(config.get<string>('PM_CONFLUENCE_ALLOW_PAGE_IDS')),
     );
   }
 
@@ -194,7 +199,7 @@ export class ConfluenceIndexReader implements IIndexReader {
         return true;
       }
     }
-    if (SENSITIVE_TITLE.test(page.title)) return true;
+    if (!this.allowed.has(id) && SENSITIVE_TITLE.test(page.title)) return true;
     return page.parentId && depth < 10
       ? this.hidden(page.parentId, depth + 1)
       : false;
