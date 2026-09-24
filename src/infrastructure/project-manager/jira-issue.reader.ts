@@ -23,6 +23,7 @@ const FIELDS = [
   'issuetype',
   'priority',
   'assignee',
+  'reporter',
   'duedate',
   'labels',
   'parent',
@@ -46,6 +47,7 @@ interface JiraIssue {
     issuetype?: { name?: string };
     priority?: { name?: string };
     assignee?: { displayName?: string } | null;
+    reporter?: { displayName?: string } | null;
     duedate?: string | null;
     labels?: string[];
     parent?: { key?: string } | null;
@@ -151,6 +153,7 @@ export const formatIssue = (
     f.issuetype?.name ?? '?',
     f.priority?.name ?? '-',
     f.assignee?.displayName ?? 'UNASSIGNED',
+    f.reporter?.displayName ? `by ${f.reporter.displayName}` : '',
     f.parent?.key ? `parent ${f.parent.key}` : '',
     f.labels?.length ? `labels ${f.labels.join(',')}` : '',
     fix.length ? `fix ${fix.join(',')}` : '',
@@ -238,7 +241,7 @@ export class JiraIssueReader implements IProjectSource {
       const more = hitCap ? ` (capped at ${query.limit})` : '';
       parts.push(
         `## ${query.title}: ${issues.length}${more}\n` +
-          'key | status | type | priority | assignee | … | summary\n' +
+          'key | status | type | priority | assignee | by reporter | … | summary\n' +
           issues.map((i) => formatIssue(i, this.sprintField)).join('\n'),
       );
     }

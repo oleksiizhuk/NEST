@@ -20,6 +20,7 @@ import {
   PM_MEMORY,
 } from '@application/project-manager/memory.interface';
 import { parseGolden } from '@infrastructure/http/project-manager/golden.parser';
+import { BuildIndexUseCase } from '@application/project-manager/use-cases/build-index.use-case';
 
 export class GoldenBody {
   @IsArray()
@@ -60,6 +61,7 @@ export class PmCronController {
     private readonly evaluator: RunGoldenEvalUseCase,
     @Inject(PM_GOLDEN) private readonly golden: IGoldenStore,
     @Inject(PM_MEMORY) private readonly memory: IPmMemory,
+    private readonly indexer: BuildIndexUseCase,
   ) {}
 
   // Vercel Cron, a few times on weekdays: refresh, check the alert rules,
@@ -73,6 +75,20 @@ export class PmCronController {
       sent: result.sent,
       signals: result.signals.map((s) => ({ rule: s.rule, text: s.text })),
     };
+  }
+
+  // Vercel Cron, nightly: collects the local project copy (starts a new run
+  // when the last finished more than 20 h ago, else continues it)
+  @Get('index')
+  async index() {
+    const { job } = await this.indexer.status();
+    const stale =
+      !job ||
+      job.status === 'failed' ||
+      (job.status === 'done' &&
+        Date.now() - (job.finishedAt?.getTime() ?? 0) > 20 * 3_600_000);
+    if (stale) await this.indexer.start();
+    return this.indexer.step(250_000);
   }
 
   // Vercel Cron, weekly: runs due golden questions, reports when all are done

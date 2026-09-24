@@ -57,6 +57,26 @@ import { MongoAdminApprovals } from '@infrastructure/project-manager/admin-appro
 import { PM_TEAM_REVIEWS } from '@application/project-manager/team-reviews.interface';
 import { MongoTeamReviews } from '@infrastructure/database/repositories/mongo-team-reviews';
 import { PmTeamReviewSchema } from '@infrastructure/database/schemas/pm-team-review.schema';
+import {
+  PM_INDEX,
+  PM_INDEX_JOB,
+  PM_INDEX_READERS,
+} from '@application/project-manager/project-index.interface';
+import {
+  MongoIndexJob,
+  MongoProjectIndex,
+} from '@infrastructure/database/repositories/mongo-project-index';
+import {
+  PmIndexJobSchema,
+  PmIndexSchema,
+} from '@infrastructure/database/schemas/pm-index.schema';
+import {
+  ConfluenceIndexReader,
+  FigmaIndexReader,
+  GitHubIndexReader,
+  JiraIndexReader,
+} from '@infrastructure/project-manager/index-readers';
+import { BuildIndexUseCase } from '@application/project-manager/use-cases/build-index.use-case';
 import { PmAdminApprovalSchema } from '@infrastructure/database/schemas/pm-admin-approval.schema';
 import { PmSettingsSchema } from '@infrastructure/database/schemas/pm-settings.schema';
 import { PmAdminLoginSchema } from '@infrastructure/database/schemas/pm-admin-login.schema';
@@ -81,6 +101,8 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
       { name: 'PmAdminLogin', schema: PmAdminLoginSchema },
       { name: 'PmAdminApproval', schema: PmAdminApprovalSchema },
       { name: 'PmTeamReview', schema: PmTeamReviewSchema },
+      { name: 'PmIndex', schema: PmIndexSchema },
+      { name: 'PmIndexJob', schema: PmIndexJobSchema },
     ]),
   ],
   providers: [
@@ -130,6 +152,28 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     { provide: PM_ADMIN_LINKS, useClass: MongoAdminLinks },
     { provide: PM_ADMIN_APPROVALS, useClass: MongoAdminApprovals },
     { provide: PM_TEAM_REVIEWS, useClass: MongoTeamReviews },
+    { provide: PM_INDEX, useClass: MongoProjectIndex },
+    { provide: PM_INDEX_JOB, useClass: MongoIndexJob },
+    JiraIndexReader,
+    ConfluenceIndexReader,
+    FigmaIndexReader,
+    GitHubIndexReader,
+    {
+      provide: PM_INDEX_READERS,
+      useFactory: (
+        jira: JiraIndexReader,
+        docs: ConfluenceIndexReader,
+        design: FigmaIndexReader,
+        code: GitHubIndexReader,
+      ) => [jira, docs, design, code],
+      inject: [
+        JiraIndexReader,
+        ConfluenceIndexReader,
+        FigmaIndexReader,
+        GitHubIndexReader,
+      ],
+    },
+    BuildIndexUseCase,
     PmRuntimeConfig,
     ConfirmPendingActionUseCase,
     RefreshProjectSnapshotUseCase,
@@ -146,6 +190,8 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     PM_ADMIN_LINKS,
     PM_ADMIN_APPROVALS,
     PM_TEAM_REVIEWS,
+    PM_INDEX,
+    BuildIndexUseCase,
     PmRuntimeConfig,
     ISSUE_DETAILS,
     DOC_COMMENTS,

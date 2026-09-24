@@ -7,6 +7,10 @@ import {
   StoreChanges,
 } from '@application/project-manager/staging-admin.interface';
 import {
+  IndexSource,
+  IProjectIndex,
+} from '@application/project-manager/project-index.interface';
+import {
   IPendingActions,
   MemoryProposal,
   PendingAction,
@@ -134,6 +138,8 @@ export class PmToolbox {
       memory?: boolean;
       // Release readiness computed from the current snapshot
       readiness?: () => string;
+      // Local copy of tickets, docs, design and PRs (no source API calls)
+      index?: IProjectIndex;
       // Display names of the team; a reply from one of them answers a question
       team?: string[];
     } = {},
@@ -525,6 +531,44 @@ export class PmToolbox {
             },
           ]
         : []),
+      ...(this.collab.index
+        ? [
+            {
+              name: 'search_project',
+              description:
+                'Search the local copy of the whole project: every ticket (any status, with description, author, assignee and comments), doc pages, design frames and comments, pull requests. Fast and cheap — use it first for "who created / what is ticket X about / where is Y described / which PR did Z". Returns up to 10 hits with key, facts line, link and a snippet. Use words that would appear in the text (names, keys, feature words).',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  query: { type: 'string', maxLength: 200 },
+                  source: {
+                    type: 'string',
+                    enum: ['jira', 'confluence', 'figma', 'github'],
+                  },
+                },
+                required: ['query'],
+                additionalProperties: false,
+              },
+            },
+            {
+              name: 'read_indexed',
+              description:
+                'Read one item from the local copy in full (a ticket with description and comments, a doc page, a PR body) by source and key from search_project. Cheaper than the live tools; its date says how fresh it is.',
+              input_schema: {
+                type: 'object' as const,
+                properties: {
+                  source: {
+                    type: 'string',
+                    enum: ['jira', 'confluence', 'figma', 'github'],
+                  },
+                  key: { type: 'string', maxLength: 120 },
+                },
+                required: ['source', 'key'],
+                additionalProperties: false,
+              },
+            },
+          ]
+        : []),
       ...(this.collab.readiness
         ? [
             {
@@ -594,6 +638,50 @@ export class PmToolbox {
       );
     }
     switch (name) {
+      case 'search_project': {
+        if (!this.collab.index)
+          throw new Error('The project copy is not available.');
+        const source = input.source
+          ? (str(input.source, 12) as IndexSource)
+          : undefined;
+        const hits = await this.collab.index.search(
+          str(input.query, 200),
+          10,
+          source,
+        );
+        return wrapUntrusted(
+          'project:search',
+          hits.length
+            ? hits
+                .map(
+                  (h) =>
+                    `[${h.source}] ${h.key} — ${h.title}\n  ${h.meta}${
+                      h.updatedAt
+                        ? ` · updated ${h.updatedAt.toISOString().slice(0, 10)}`
+                        : ''
+                    }${h.url ? `\n  ${h.url}` : ''}\n  ${h.snippet}`,
+                )
+                .join('\n')
+            : 'Nothing in the local copy. Try other words, or it may not be collected yet (admin page → Данные → Собрать всё).',
+        );
+      }
+      case 'read_indexed': {
+        if (!this.collab.index)
+          throw new Error('The project copy is not available.');
+        const doc = await this.collab.index.get(
+          str(input.source, 12) as IndexSource,
+          str(input.key, 120),
+        );
+        if (!doc) throw new Error('Not in the local copy.');
+        return wrapUntrusted(
+          `project:${doc.source}:${doc.key}`,
+          `${doc.title}\n${doc.meta}${
+            doc.updatedAt
+              ? ` · updated ${doc.updatedAt.toISOString().slice(0, 10)}`
+              : ''
+          }${doc.url ? `\n${doc.url}` : ''}\n\n${doc.text.slice(0, 12_000)}`,
+        );
+      }
       case 'propose_remember':
         return this.proposing(ctx, () => this.proposeRemember(input, ctx));
       case 'release_checklist':

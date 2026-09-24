@@ -45,6 +45,14 @@
     {
       "path": "/cron/pm/eval?slot=3",
       "schedule": "0 4 * * 1"
+    },
+    {
+      "path": "/cron/pm/index?slot=1",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/cron/pm/index?slot=2",
+      "schedule": "0 3 * * *"
     }
   ],
   "headers": [

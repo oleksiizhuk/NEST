@@ -141,6 +141,24 @@ export interface TeamView {
   review: { text: string; at: string } | null;
 }
 
+export type IndexSource = 'jira' | 'confluence' | 'figma' | 'github';
+
+export interface IndexJob {
+  runId: string;
+  status: 'running' | 'done' | 'failed';
+  stage: IndexSource | 'done';
+  counts: Partial<Record<IndexSource, number>>;
+  startedAt: string;
+  finishedAt: string | null;
+  error: string | null;
+}
+
+export interface IndexStatus {
+  job: IndexJob | null;
+  counts: Partial<Record<IndexSource, number>>;
+  sources: IndexSource[];
+}
+
 export const api = {
   login: (token: string) =>
     call<{ session: string }>('POST', 'login', { token }),
@@ -162,6 +180,9 @@ export const api = {
   logoutAll: () => call<{ ok: boolean }>('POST', 'logout-all'),
   chats: () => call<Chat[]>('GET', 'chats'),
   team: () => call<TeamView>('GET', 'team'),
+  indexStatus: () => call<IndexStatus>('GET', 'index'),
+  indexStart: () => call<IndexJob>('POST', 'index/start'),
+  indexStep: () => call<IndexJob>('POST', 'index/step'),
   refreshData: () =>
     call<{
       at: string;
