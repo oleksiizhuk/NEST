@@ -49,6 +49,8 @@ export class ConfluenceSearch implements IDocSearch {
   private readonly spaces: string[];
   private readonly snapshotPages: Set<string>;
   private readonly excluded: Set<string>;
+  // Pages the owner cleared although their title looks like access details
+  private readonly allowed: Set<string>;
   private spaceIds: Promise<Set<string>> | null = null;
 
   constructor(config: ConfigService) {
@@ -73,6 +75,19 @@ export class ConfluenceSearch implements IDocSearch {
     this.excluded = new Set(
       list(config.get<string>('PM_CONFLUENCE_EXCLUDE_PAGE_IDS')),
     );
+    this.allowed = new Set(
+      list(config.get<string>('PM_CONFLUENCE_ALLOW_PAGE_IDS')),
+    );
+  }
+
+  // Exclusion always wins; the title filter skips pages the owner allowed
+  private sensitive(
+    id: string | undefined,
+    title: string | undefined,
+  ): boolean {
+    return (
+      !this.allowed.has(String(id ?? '')) && SENSITIVE_TITLE.test(title ?? '')
+    );
   }
 
   isConfigured(): boolean {
@@ -84,9 +99,7 @@ export class ConfluenceSearch implements IDocSearch {
   }
 
   private hidden(id: string | undefined, title: string | undefined): boolean {
-    return Boolean(
-      !id || this.excluded.has(id) || SENSITIVE_TITLE.test(title ?? ''),
-    );
+    return Boolean(!id || this.excluded.has(id) || this.sensitive(id, title));
   }
 
   async search(query: string): Promise<string> {
@@ -187,12 +200,14 @@ export class ConfluenceSearch implements IDocSearch {
     if (ids.some((a) => this.excluded.has(a))) return true;
     // v2 ancestors carry ids only; titles need one small read each
     const titles = await Promise.all(
-      ids.map((a) =>
-        getJson<{ title?: string }>(
-          `${this.baseUrl}/wiki/api/v2/pages/${a}`,
-          this.headers,
-        ).then(({ data: page }) => page.title ?? ''),
-      ),
+      ids
+        .filter((a) => !this.allowed.has(a))
+        .map((a) =>
+          getJson<{ title?: string }>(
+            `${this.baseUrl}/wiki/api/v2/pages/${a}`,
+            this.headers,
+          ).then(({ data: page }) => page.title ?? ''),
+        ),
     );
     return titles.some((t) => SENSITIVE_TITLE.test(t));
   }

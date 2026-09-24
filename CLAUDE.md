@@ -139,7 +139,7 @@ PM_ADMIN_URL=           # Origin of the /admin page for login links; default: TE
 PM_DAILY_QUESTION_LIMIT= # Questions to the model per person per UTC day (default 7, 0 = off); owner and PM_UNLIMITED_USERNAMES (usernames, no @) are exempt
 PM_ALERT_CHAT_IDS=      # Who gets proactive alerts and the weekly eval report; default "owner" (TELEGRAM_OWNER_ID's DM) only
 PM_CONFLUENCE_PAGE_IDS= # Comma-separated page ids re-read on every refresh
-PM_CONFLUENCE_SPACES=   # Space keys the bot may search/read on demand; PM_CONFLUENCE_EXCLUDE_PAGE_IDS never readable
+PM_CONFLUENCE_SPACES=   # Space keys the bot may search/read on demand; PM_CONFLUENCE_EXCLUDE_PAGE_IDS never readable; PM_CONFLUENCE_ALLOW_PAGE_IDS lifts only the access-title filter for those pages (and as ancestors)
 PM_KNOWLEDGE_INLINE_CHARS= # Total knowledge chars inlined in every prompt (default 60000); above it the largest docs go to an index read with read_knowledge. Upload cap 20000 chars per doc, 60000 for ref:* keys
 PM_GITHUB_TOKEN=        # Fine-grained, read-only; with PM_GITHUB_ORG, PM_GITHUB_REPOS, PM_GITHUB_COMPARES (repo:base...head)
 PM_FIGMA_TOKEN=         # Figma personal token (read: file content, comments, versions) with PM_FIGMA_FILE_KEYS
