@@ -3,6 +3,7 @@ import { api, session, SettingsView, Unauthorized, Usage } from './api';
 import { SettingsForm } from './SettingsForm';
 import { UsagePanel } from './UsagePanel';
 import { LoginCard } from './LoginCard';
+import { ChatsPanel } from './ChatsPanel';
 
 type State = 'loading' | 'login' | 'ready';
 
@@ -115,6 +116,7 @@ export function App() {
       {state === 'ready' && (
         <>
           {usage && <UsagePanel usage={usage} />}
+          <ChatsPanel onUnauthorized={logout} />
           {settings && (
             <SettingsForm
               view={settings}

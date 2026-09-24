@@ -35,4 +35,8 @@ export interface ITelegramMessageRepository {
   ): Promise<boolean>;
   // Newest project-manager answers that have usage recorded
   recentAnswers(limit: number): Promise<AnswerRecord[]>;
+  // Groups the bot saw messages in, newest first
+  recentGroups(
+    limit: number,
+  ): Promise<Array<{ chatId: number; title: string | null; lastAt: Date }>>;
 }

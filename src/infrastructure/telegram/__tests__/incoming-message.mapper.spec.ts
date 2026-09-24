@@ -1,5 +1,8 @@
 import type { CallbackQuery } from 'grammy/types';
-import { mapCallbackToIncoming } from '@infrastructure/telegram/incoming-message.mapper';
+import {
+  mapCallbackToIncoming,
+  mapToIncoming,
+} from '@infrastructure/telegram/incoming-message.mapper';
 
 const query = (data: string, keyboard = true): CallbackQuery =>
   ({
@@ -64,5 +67,22 @@ describe('mapCallbackToIncoming', () => {
     expect(mapCallbackToIncoming(query('c:K7 Q2A; rm'))).toBeNull();
     expect(mapCallbackToIncoming(query('o:5'))).toBeNull();
     expect(mapCallbackToIncoming(query('o:0', false))).toBeNull();
+  });
+});
+
+describe('mapToIncoming migration', () => {
+  it('keeps a migration service message even without a sender', () => {
+    expect(
+      mapToIncoming({
+        message_id: 1,
+        date: 1,
+        chat: { id: -100777, type: 'supergroup', title: 'Team' },
+        migrate_from_chat_id: -555,
+      } as any),
+    ).toMatchObject({
+      chatId: -100777,
+      migrateFromChatId: -555,
+      from: { id: 0 },
+    });
   });
 });

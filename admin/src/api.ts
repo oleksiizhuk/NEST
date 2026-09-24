@@ -88,6 +88,14 @@ export interface Usage {
   };
 }
 
+export interface Chat {
+  chatId: number;
+  title: string | null;
+  lastAt: string;
+  on: boolean;
+  fixed: boolean;
+}
+
 export const api = {
   login: (token: string) =>
     call<{ session: string }>('POST', 'login', { token }),
@@ -107,4 +115,7 @@ export const api = {
     call<SettingsView>('PUT', 'settings', { settings }),
   usage: () => call<Usage>('GET', 'usage'),
   logoutAll: () => call<{ ok: boolean }>('POST', 'logout-all'),
+  chats: () => call<Chat[]>('GET', 'chats'),
+  setChat: (chatId: number, on: boolean) =>
+    call<Chat[]>('PUT', 'chats', { chatId, on }),
 };

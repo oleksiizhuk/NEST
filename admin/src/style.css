@@ -203,3 +203,7 @@ button.link {
 .login input {
   max-width: 360px;
 }
+
+.small {
+  font-size: 12px;
+}

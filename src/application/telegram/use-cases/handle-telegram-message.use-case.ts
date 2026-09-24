@@ -216,6 +216,10 @@ export class HandleTelegramMessageUseCase {
 
   async execute(msg: IncomingTelegramMessage): Promise<void> {
     const { chatId, chatType, text } = msg;
+    if (msg.migrateFromChatId) {
+      await this.carryPmMode(msg.migrateFromChatId, msg);
+      return;
+    }
     if (!text) return;
 
     if (this.pmRuntime) {
@@ -399,6 +403,25 @@ export class HandleTelegramMessageUseCase {
       await this.telegram.sendMessage(msg.chatId, text);
     } catch {
       // the decision is recorded; the confirmation text is a courtesy
+    }
+  }
+
+  // A group became a supergroup and got a new id; if the old one was in PM
+  // mode, the new one is too (otherwise the team suddenly gets the persona)
+  private async carryPmMode(
+    fromChatId: number,
+    msg: IncomingTelegramMessage,
+  ): Promise<void> {
+    if (!this.pmChats || !this.pmAnswer) return;
+    try {
+      const wasOn =
+        this.pmConfig?.chatIds.includes(fromChatId) ||
+        (await this.pmChats.isEnabled(fromChatId));
+      if (!wasOn) return;
+      await this.pmChats.enable(msg.chatId, msg.chatTitle);
+      this.logger.log(`PM mode carried over ${fromChatId} → ${msg.chatId}`);
+    } catch (error) {
+      this.logger.error(`PM mode carry-over failed: ${error}`);
     }
   }
 

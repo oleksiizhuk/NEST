@@ -52,6 +52,33 @@ export class MongoTelegramMessageRepository
     return result.matchedCount > 0;
   }
 
+  async recentGroups(
+    limit: number,
+  ): Promise<Array<{ chatId: number; title: string | null; lastAt: Date }>> {
+    const rows = await this.telegramMessageModel.aggregate<{
+      _id: number;
+      title: string | null;
+      lastAt: Date;
+    }>([
+      { $match: { chatType: { $in: ['group', 'supergroup'] } } },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$chatId',
+          title: { $first: '$chatTitle' },
+          lastAt: { $first: '$createdAt' },
+        },
+      },
+      { $sort: { lastAt: -1 } },
+      { $limit: limit },
+    ]);
+    return rows.map((r) => ({
+      chatId: r._id,
+      title: r.title ?? null,
+      lastAt: new Date(r.lastAt),
+    }));
+  }
+
   async recentAnswers(limit: number): Promise<AnswerRecord[]> {
     const docs = await this.telegramMessageModel
       .find(

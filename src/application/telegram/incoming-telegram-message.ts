@@ -10,6 +10,9 @@ export interface IncomingTelegramMessage {
     lastName: string | null;
   };
   replyToBotId?: number;
+  // Telegram turned a group into a supergroup: the new chat's first
+  // service message names the old id
+  migrateFromChatId?: number;
   // Set when this "message" is a press on one of the bot's inline buttons;
   // `text` then holds what the press means (a command or the chosen option)
   callback?: {
