@@ -223,6 +223,53 @@ export interface TeamView {
   review: { text: string; at: string } | null;
 }
 
+export type Stage = 'todo' | 'dev' | 'review' | 'qa' | 'blocked' | 'done';
+
+export interface FlowView {
+  asOf: string;
+  links: Links;
+  stages: {
+    windowDays: number;
+    finished: number;
+    stageMedians: Record<'dev' | 'review' | 'qa' | 'blocked', number | null>;
+    cycle: { p50: number | null; p85: number | null };
+    aging: Array<{
+      key: string;
+      assignee: string | null;
+      status: string;
+      stage: Stage;
+      ageDays: number;
+      stageDays: number;
+      overP85: boolean;
+    }>;
+    bounces: {
+      count: number;
+      total: number;
+      from: Partial<Record<Stage, number>>;
+      reopened: number;
+      worst: Array<{ key: string; times: number; assignee: string | null }>;
+    };
+    handoffs: {
+      pairs: Array<{
+        from: string;
+        to: string;
+        count: number;
+        waitDays: number | null;
+      }>;
+      many: Array<{ key: string; people: number }>;
+    };
+    blocked: {
+      daysInWindow: number;
+      current: Array<{ key: string; assignee: string | null; days: number }>;
+    };
+    statuses: Array<{
+      name: string;
+      stage: Stage;
+      source: 'map' | 'name' | 'category';
+    }>;
+  } | null;
+}
+
 export type IndexSource = 'jira' | 'confluence' | 'figma' | 'github';
 
 export interface IndexJob {
@@ -277,6 +324,7 @@ export const api = {
   setAway: (name: string, until: string | null, note: string | null) =>
     call<TeamView>('PUT', 'team/away', { name, until, note }),
   today: () => call<TodayView>('GET', 'today'),
+  flow: () => call<FlowView | null>('GET', 'flow'),
   hideToday: (id: string, days: 1 | 7) =>
     call<TodayView>('POST', 'today/hide', { id, days }),
   setChat: (chatId: number, on: boolean | 'auto') =>

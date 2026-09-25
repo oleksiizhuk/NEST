@@ -6,6 +6,7 @@ import { LoginCard } from './LoginCard';
 import { ChatsPanel } from './ChatsPanel';
 import { TeamPage } from './TeamPage';
 import { TodayPage } from './TodayPage';
+import { FlowPage } from './FlowPage';
 import { DataPage } from './DataPage';
 import {
   IconChats,
@@ -17,10 +18,18 @@ import {
   IconTeam,
   IconSettings,
   IconToday,
+  IconFlow,
 } from './icons';
 
 type State = 'loading' | 'login' | 'ready';
-type PageId = 'today' | 'overview' | 'team' | 'data' | 'chats' | 'settings';
+type PageId =
+  | 'today'
+  | 'flow'
+  | 'overview'
+  | 'team'
+  | 'data'
+  | 'chats'
+  | 'settings';
 
 const PAGES: Array<{
   id: PageId;
@@ -45,6 +54,12 @@ const PAGES: Array<{
     title: 'Сотрудники',
     icon: <IconTeam />,
     lead: 'Кто над чем работает, идёт ли в нужную сторону и что сказать на митинге.',
+  },
+  {
+    id: 'flow',
+    title: 'Поток',
+    icon: <IconFlow />,
+    lead: 'Где задачи ждут: время на этапах, стареющие задачи, возвраты, передачи и блоки.',
   },
   {
     id: 'data',
@@ -272,6 +287,7 @@ export function App() {
           {page === 'today' && <TodayPage onUnauthorized={logout} />}
           {page === 'overview' && usage && <UsagePanel usage={usage} />}
           {page === 'team' && <TeamPage onUnauthorized={logout} />}
+          {page === 'flow' && <FlowPage onUnauthorized={logout} />}
           {page === 'data' && <DataPage onUnauthorized={logout} />}
           {page === 'chats' && <ChatsPanel onUnauthorized={logout} />}
           {page === 'settings' && settings && (

@@ -219,6 +219,13 @@ export class PmAdminController {
     return { team, review };
   }
 
+  // Поток: time per stage, aging work, bounces, handoffs, blocked time
+  @Get('flow')
+  @UseGuards(PmAdminGuard)
+  flow() {
+    return this.team_.flow();
+  }
+
   // Meeting notes by the model (cached for the day unless force)
   @Post('team/review')
   @HttpCode(200)
