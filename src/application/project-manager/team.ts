@@ -19,6 +19,8 @@ export interface PersonIssue {
   priority: string | null;
   inScope: boolean;
   statusSince: string | null;
+  // dev / review / qa / blocked… when the status history was read
+  stage?: string | null;
   due: string | null;
   blocked: boolean;
 }
@@ -78,6 +80,9 @@ export const teamIssues = (
   now: Date,
   releaseVersion: string | null,
   capped: boolean,
+  // From the changelog: when each ticket last changed status, and how a
+  // status name maps to a stage
+  history: { stage?: (status: string, category?: string) => string } = {},
 ): TeamIssues => {
   const since = now.getTime() - 14 * 86_400_000;
   const people: TeamIssues['people'] = {};
@@ -92,6 +97,7 @@ export const teamIssues = (
       priority: i.priority,
       inScope: releaseVersion ? i.fixVersions.includes(releaseVersion) : true,
       statusSince: i.statusSince,
+      stage: history.stage?.(i.status, i.category) ?? null,
       due: i.due,
       blocked:
         isBlocker(i) && Boolean(i.blockedBy?.length || /block/i.test(i.status)),
@@ -302,12 +308,12 @@ export const personSignals = (
       out.push({
         level: 'warn',
         rule: 'stale',
-        text: `${i.key} в работе уже ${i.days} раб. дн. — узнать, что мешает.`,
-        why: `в работе${i.statusSince ? ` с ${ruDate(i.statusSince)}` : ''}: ${
-          i.days
-        } раб. дн. > порог ${limits.staleDays}`,
+        text: `${i.key} в статусе «${i.status}» уже ${i.days} раб. дн. — узнать, что мешает.`,
+        why: `в «${i.status}»${
+          i.statusSince ? ` с ${ruDate(i.statusSince)}` : ''
+        }: ${i.days} раб. дн. > порог ${limits.staleDays}`,
         keys: [i.key],
-        say: `${i.key} в работе ${i.days} дней — что мешает закрыть? Нужна помощь?`,
+        say: `${i.key} уже ${i.days} дней в «${i.status}» — что мешает сдвинуть дальше? Нужна помощь?`,
       });
     }
   }

@@ -156,6 +156,91 @@ describe('Jira reader', () => {
   });
 });
 
+describe('Jira reader status history', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('reads the bulk changelog and uses the last status change', async () => {
+    const open = {
+      id: '101',
+      key: 'ABC-1',
+      fields: {
+        summary: 'Checkout',
+        status: { name: 'In Review', statusCategory: { key: 'indeterminate' } },
+        assignee: { displayName: 'Ann' },
+        issuetype: { name: 'Story' },
+        created: '2026-09-01T09:00:00.000+0000',
+        statuscategorychangedate: '2026-09-02T09:00:00.000+0000',
+      },
+    };
+    const fetchMock = jest.fn((url: string, init: any) => {
+      if (url.endsWith('/changelog/bulkfetch'))
+        return json({
+          issueChangeLogs: [
+            {
+              issueId: '101',
+              changeHistories: [
+                {
+                  created: '2026-09-02T09:00:00.000+0000',
+                  items: [
+                    {
+                      fieldId: 'status',
+                      fromString: 'To Do',
+                      toString: 'In Progress',
+                    },
+                  ],
+                },
+                {
+                  created: '2026-09-21T09:00:00.000+0000',
+                  items: [
+                    {
+                      fieldId: 'status',
+                      fromString: 'In Progress',
+                      toString: 'In Review',
+                    },
+                    // Jira may leave out "toString" on an unassign
+                    { fieldId: 'assignee', fromString: 'Ann' },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+      const jql = JSON.parse(init.body).jql as string;
+      return json({
+        issues: jql.includes('statusCategory != Done') ? [open] : [],
+        isLast: true,
+      });
+    });
+    global.fetch = fetchMock as any;
+    const { details } = await new JiraIssueReader(
+      env({
+        JIRA_BASE_URL: 'https://x.atlassian.net',
+        PM_JIRA_PROJECTS: 'ABC',
+        PM_STATUS_MAP: 'In Review=review',
+      }),
+    ).fetch(new Date('2026-09-24T10:00:00Z'));
+    const bulk = fetchMock.mock.calls.find(([u]) =>
+      String(u).endsWith('/changelog/bulkfetch'),
+    );
+    expect(JSON.parse((bulk as any)[1].body)).toMatchObject({
+      issueIdsOrKeys: ['ABC-1'],
+      fieldIds: ['status', 'assignee'],
+    });
+    const d = details as any;
+    expect(d.people.Ann.open[0]).toMatchObject({
+      statusSince: '2026-09-21T09:00:00.000+0000',
+      stage: 'review',
+    });
+    expect(JSON.stringify(d.stages.handoffs)).not.toContain('function');
+    expect(d.stages.aging[0]).toMatchObject({
+      key: 'ABC-1',
+      stage: 'review',
+      stageDays: 3,
+    });
+  });
+});
+
 describe('Jira reader caps', () => {
   const realFetch = global.fetch;
   afterEach(() => (global.fetch = realFetch));

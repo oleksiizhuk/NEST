@@ -16,6 +16,7 @@ import { loadKnowledge } from '@application/project-manager/knowledge-loader';
 import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
 import { todayLine } from '@application/project-manager/release-clock';
 import { buildTeam, PersonView } from '@application/project-manager/team';
+import { FlowStages } from '@application/project-manager/stages';
 import {
   ITeamReviews,
   PM_TEAM_REVIEWS,
@@ -103,6 +104,23 @@ export class TeamReviewUseCase {
         away: live.teamAway,
       }),
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
+    };
+  }
+
+  // Поток: where work waits, from the latest snapshot's status history
+  async flow() {
+    const snapshot = await this.snapshots.findLatest();
+    if (!snapshot) return null;
+    const live = await this.runtime.current();
+    const details = snapshot.section('issues')?.details as
+      | { stages?: FlowStages | null }
+      | undefined;
+    const stages = details?.stages ?? null;
+    return {
+      asOf: snapshot.createdAt,
+      links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
+      // The per-ticket dates are only needed at refresh
+      stages: stages ? { ...stages, lastChange: undefined } : null,
     };
   }
 

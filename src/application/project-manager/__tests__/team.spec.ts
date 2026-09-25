@@ -112,7 +112,7 @@ describe('buildTeam', () => {
     ]);
     const texts = ann.signals.map((s) => s.text).join(' | ');
     expect(texts).toContain('В работе 3 задач сразу');
-    expect(texts).toContain('A-1 в работе уже 10 раб. дн.');
+    expect(texts).toContain('A-1 в статусе «In Progress» уже 10 раб. дн.');
     expect(texts).toContain(
       '2 из 3 задач в работе не из релиза 1.0, а релизные ждут: A-4',
     );
@@ -175,8 +175,8 @@ describe('buildTeam', () => {
     const stale = ann.signals.find((s) => s.rule === 'stale');
     expect(stale).toMatchObject({
       keys: ['A-1'],
-      why: 'в работе с 10.09: 10 раб. дн. > порог 5',
-      say: 'A-1 в работе 10 дней — что мешает закрыть? Нужна помощь?',
+      why: 'в «In Progress» с 10.09: 10 раб. дн. > порог 5',
+      say: 'A-1 уже 10 дней в «In Progress» — что мешает сдвинуть дальше? Нужна помощь?',
     });
     expect(ann.signals.find((s) => s.rule === 'wip')?.why).toBe(
       'в работе 3 > порог 2',

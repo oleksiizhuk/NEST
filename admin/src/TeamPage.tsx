@@ -47,6 +47,7 @@ function Issue({
     <li>
       <Key k={i.key} links={links} /> {i.summary}
       <span className="tags">
+        {i.status && <span className="tag">{i.status}</span>}
         {i.priority && <span className="tag">{i.priority}</span>}
         {i.days !== undefined && i.days !== null && (
           <span className={`tag${i.days > stale ? ' warn' : ''}`}>

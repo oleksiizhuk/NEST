@@ -16,6 +16,15 @@ import {
   weeklyFlow,
 } from '@application/project-manager/load';
 import {
+  FLOW_WINDOW_DAYS,
+  FlowStages,
+  flowStages,
+  IssueHistory,
+  parseStatusMap,
+  Stage,
+  stageFor,
+} from '@application/project-manager/stages';
+import {
   basicAuth,
   getJson,
   oneLine,
@@ -45,6 +54,7 @@ const DEFAULT_SPRINT_FIELD = 'customfield_10020';
 const PAGE_SIZE = 100;
 
 interface JiraIssue {
+  id?: string;
   key: string;
   fields: {
     summary?: string;
@@ -122,6 +132,10 @@ export const toFact = (issue: JiraIssue): IssueFact => {
   };
 };
 
+// A missing "toString" key would read Object.prototype.toString
+const str = (value: unknown): string | null =>
+  typeof value === 'string' ? value : null;
+
 interface Query {
   title: string;
   jql: string;
@@ -131,6 +145,7 @@ interface Query {
 
 // Only what the weekly counts need: these lists never reach the prompt
 const HISTORY_FIELDS = [
+  'status',
   'issuetype',
   'assignee',
   'created',
@@ -195,6 +210,7 @@ export class JiraIssueReader implements IProjectSource {
   private readonly releaseDate: string | null;
   private readonly releaseVersion: string | null;
   private readonly history: Query[];
+  private readonly statusMap: Record<string, Stage>;
 
   constructor(config: ConfigService) {
     this.baseUrl = (
@@ -239,6 +255,7 @@ export class JiraIssueReader implements IProjectSource {
           },
         ]
       : [];
+    this.statusMap = parseStatusMap(config.get<string>('PM_STATUS_MAP'));
     const weeks = `-${FLOW_WEEKS * 7}d`;
     this.history = scope
       ? [
@@ -281,9 +298,21 @@ export class JiraIssueReader implements IProjectSource {
       );
     }
     const [open = [], done = []] = results;
+    // The changelog knows the real last status change; the category date
+    // only moves on To Do → In Progress → Done
+    const history = await this.historyLists();
+    const closed = [...(history?.done ?? []), ...done].filter(
+      (i, n, all) => all.findIndex((x) => x.key === i.key) === n,
+    );
+    const stages = await this.stages(open, closed, now);
+    const openFacts = open.map((i) => {
+      const f = toFact(i);
+      const changed = stages?.lastChange[i.key];
+      return changed ? { ...f, statusSince: changed } : f;
+    });
     const numbers: Record<string, number> = {};
     const metrics = issueMetrics(
-      open.map(toFact),
+      openFacts,
       done.map(toFact),
       now,
       {
@@ -302,39 +331,168 @@ export class JiraIssueReader implements IProjectSource {
     ].join('\n\n');
     // Counts from a capped list are lower bounds; as a trend they would read
     // as "no change" while scope grows
-    const signals = issueSignals(open.map(toFact), this.releaseVersion);
+    const signals = issueSignals(openFacts, this.releaseVersion);
     const details = {
       ...teamIssues(
-        open.map(toFact),
+        openFacts,
         done.map(toFact),
         now,
         this.releaseVersion,
         caps.some(Boolean),
+        { stage: this.stageName },
       ),
-      flow: await this.flow(now),
+      flow: history ? this.flow(history, now) : null,
+      stages,
     } as unknown as Record<string, unknown>;
     return caps.some(Boolean)
       ? { text, signals, details }
       : { text, metrics: numbers, signals, details };
   }
 
-  // Weekly history; a failure only leaves the charts empty
-  private async flow(now: Date): Promise<WeeklyFlow | null> {
+  private readonly stageName = (status: string, category?: string) =>
+    stageFor(
+      status,
+      category as IssueHistory['category'] | undefined,
+      this.statusMap,
+    ).stage;
+
+  // 12 weeks of closed and created work; a failure only leaves the charts
+  // and the stage numbers on the 14-day list
+  private async historyLists(): Promise<{
+    done: JiraIssue[];
+    created: JiraIssue[];
+    capped: boolean;
+  } | null> {
     if (this.history.length < 2) return null;
     try {
       const [done, created] = await Promise.all(
         this.history.map((q) => this.search(q)),
       );
-      return weeklyFlow(
-        done.map(toFact),
-        created.map(toFact),
-        now,
-        done.length >= this.history[0].limit ||
+      return {
+        done,
+        created,
+        capped:
+          done.length >= this.history[0].limit ||
           created.length >= this.history[1].limit,
-      );
+      };
     } catch {
       return null;
     }
+  }
+
+  private flow(
+    history: { done: JiraIssue[]; created: JiraIssue[]; capped: boolean },
+    now: Date,
+  ): WeeklyFlow {
+    return weeklyFlow(
+      history.done.map(toFact),
+      history.created.map(toFact),
+      now,
+      history.capped,
+    );
+  }
+
+  // Status and assignee history of open work and of work closed in the
+  // last 30 days, from the bulk changelog API (status and assignee only)
+  private async stages(
+    open: JiraIssue[],
+    done: JiraIssue[],
+    now: Date,
+  ): Promise<FlowStages | null> {
+    const since = now.getTime() - FLOW_WINDOW_DAYS * 86_400_000;
+    const recent = done.filter((i) => {
+      const at = toFact(i).doneAt;
+      return at && new Date(at).getTime() >= since;
+    });
+    const issues = [...open, ...recent].filter(
+      (i, n, all) => all.findIndex((x) => x.key === i.key) === n,
+    );
+    if (!issues.length) return null;
+    try {
+      const logs = await this.changelogs(issues.map((i) => i.key));
+      const byId = new Map(issues.map((i) => [i.id ?? i.key, i]));
+      const histories: IssueHistory[] = issues.map((i) => {
+        const f = toFact(i);
+        return {
+          key: i.key,
+          assignee: f.assignee,
+          created: f.created,
+          status: f.status,
+          category: f.category,
+          doneAt: f.doneAt,
+          statusChanges: [],
+          assigneeChanges: [],
+        };
+      });
+      const byKey = new Map(histories.map((h) => [h.key, h]));
+      for (const log of logs) {
+        const issue = byId.get(log.issueId);
+        const h = issue ? byKey.get(issue.key) : undefined;
+        if (!h) continue;
+        for (const change of log.changeHistories ?? []) {
+          for (const item of change.items ?? []) {
+            if (item.fieldId === 'status' || item.field === 'status')
+              h.statusChanges.push({
+                at: change.created,
+                from: str(item.fromString) ?? '',
+                to: str(item.toString) ?? '',
+              });
+            else if (item.fieldId === 'assignee' || item.field === 'assignee')
+              h.assigneeChanges.push({
+                at: change.created,
+                from: str(item.fromString),
+                to: str(item.toString),
+              });
+          }
+        }
+      }
+      return flowStages(histories, this.statusMap, now);
+    } catch {
+      return null;
+    }
+  }
+
+  private async changelogs(keys: string[]): Promise<
+    Array<{
+      issueId: string;
+      changeHistories?: Array<{
+        created: string;
+        items?: Array<{
+          field?: string;
+          fieldId?: string;
+          fromString?: string | null;
+          toString?: string | null;
+        }>;
+      }>;
+    }>
+  > {
+    const out: Awaited<ReturnType<JiraIssueReader['changelogs']>> = [];
+    for (let at = 0; at < keys.length; at += 1000) {
+      let nextPageToken: string | undefined;
+      let pages = 0;
+      do {
+        const { data } = await getJson<{
+          issueChangeLogs?: typeof out;
+          nextPageToken?: string;
+        }>(
+          `${this.baseUrl}/rest/api/3/changelog/bulkfetch`,
+          { Authorization: this.auth },
+          {
+            method: 'POST',
+            body: {
+              issueIdsOrKeys: keys.slice(at, at + 1000),
+              fieldIds: ['status', 'assignee'],
+              maxResults: 1000,
+              ...(nextPageToken ? { nextPageToken } : {}),
+            },
+          },
+        );
+        out.push(...(data.issueChangeLogs ?? []));
+        nextPageToken = data.nextPageToken;
+        pages += 1;
+      } while (nextPageToken && pages < 20);
+    }
+    return out;
   }
 
   private async search(query: Query): Promise<JiraIssue[]> {

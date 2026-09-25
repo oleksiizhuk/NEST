@@ -60,3 +60,8 @@ export const IconToday = () => (
     <path d="M4 7h16M4 7v12h16V7M8 3v4M16 3v4M8 12l2.5 2.5L16 10" />
   </svg>
 );
+export const IconFlow = () => (
+  <svg {...base}>
+    <path d="M3 6h5l3 6h4l3-6h3M3 18h5l3-6M15 12l3 6h3" />
+  </svg>
+);
