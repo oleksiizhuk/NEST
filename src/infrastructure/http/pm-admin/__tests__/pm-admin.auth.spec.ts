@@ -18,6 +18,8 @@ describe('PmAdminAuth', () => {
     save: jest.fn(),
     sessionEpoch: jest.fn(async () => epoch),
     bumpSessionEpoch: jest.fn(async () => ++epoch),
+    setAway: jest.fn(),
+    hideToday: jest.fn(),
   };
   let failures = 0;
   const throttle = {

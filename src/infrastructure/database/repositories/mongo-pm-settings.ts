@@ -68,6 +68,51 @@ export class MongoPmSettings implements IPmSettingsStore {
     await this.model.updateOne({ key: KEY }, { $set: set }, { upsert: true });
   }
 
+  // $pull then $push: each step is atomic, so concurrent edits of other
+  // people or items are never lost
+  async setAway(
+    name: string,
+    away: { until: string; note: string | null } | null,
+    by: number,
+  ): Promise<void> {
+    await this.model.updateOne(
+      { key: KEY },
+      { $pull: { 'values.teamAway': { name } }, $set: { updatedBy: by } },
+      { upsert: true },
+    );
+    if (away)
+      await this.model.updateOne(
+        { key: KEY },
+        { $push: { 'values.teamAway': { name, ...away } } },
+      );
+  }
+
+  async hideToday(
+    id: string,
+    until: string,
+    now: string,
+    by: number,
+  ): Promise<void> {
+    await this.model.updateOne(
+      { key: KEY },
+      {
+        $pull: {
+          'values.todayHidden': { $or: [{ id }, { until: { $lte: now } }] },
+        },
+        $set: { updatedBy: by },
+      },
+      { upsert: true },
+    );
+    await this.model.updateOne(
+      { key: KEY },
+      {
+        $push: {
+          'values.todayHidden': { $each: [{ id, until }], $slice: -200 },
+        },
+      },
+    );
+  }
+
   async sessionEpoch(): Promise<number> {
     const doc = await this.model
       .findOne({ key: KEY }, { sessionEpoch: 1 })

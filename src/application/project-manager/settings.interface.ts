@@ -28,8 +28,8 @@ export interface PmSettings {
   teamThresholds?: TeamThresholds | null;
   // Jira display name → away until (inclusive), so signals stay quiet
   teamAway?: TeamAway | null;
-  // "Сегодня" items the owner marked done or snoozed, until a date. Written
-  // by its own endpoint, not through the settings form.
+  // "Сегодня" items the owner marked done or snoozed, until an ISO time.
+  // Written by its own endpoint, not through the settings form.
   todayHidden?: Array<{ id: string; until: string }> | null;
 }
 
@@ -49,6 +49,15 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
 export interface IPmSettingsStore {
   get(): Promise<{ values: PmSettings; updatedAt: Date | null }>;
   save(values: PmSettings, by: number): Promise<void>;
+  // One person's absence (null removes it), without touching the others
+  setAway(
+    name: string,
+    away: { until: string; note: string | null } | null,
+    by: number,
+  ): Promise<void>;
+  // Adds or replaces one hidden "Сегодня" item and drops expired ones,
+  // atomically, so two quick clicks cannot overwrite each other
+  hideToday(id: string, until: string, now: string, by: number): Promise<void>;
   // Admin sessions carry this number; raising it logs every session out
   sessionEpoch(): Promise<number>;
   bumpSessionEpoch(): Promise<number>;

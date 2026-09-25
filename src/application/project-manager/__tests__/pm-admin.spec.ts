@@ -67,6 +67,8 @@ describe('PmRuntimeConfig', () => {
       save: jest.fn(),
       sessionEpoch: jest.fn().mockResolvedValue(0),
       bumpSessionEpoch: jest.fn(),
+      setAway: jest.fn(),
+      hideToday: jest.fn(),
     };
     const runtime = new PmRuntimeConfig(base, store);
     expect((await runtime.current(1_000)).dailyQuestionLimit).toBe(3);
@@ -88,6 +90,8 @@ describe('PmAdminUseCase', () => {
       save: jest.fn(),
       sessionEpoch: jest.fn().mockResolvedValue(0),
       bumpSessionEpoch: jest.fn(),
+      setAway: jest.fn(),
+      hideToday: jest.fn(),
     };
     const runtime = new PmRuntimeConfig(base, store);
     const quota = {
@@ -203,6 +207,8 @@ describe('PmAdminUseCase — Сегодня and absences', () => {
       save: jest.fn(),
       sessionEpoch: jest.fn(),
       bumpSessionEpoch: jest.fn(),
+      setAway: jest.fn(),
+      hideToday: jest.fn(),
     };
     const signal = (rule: string, key: string) => ({
       level: 'warn',
@@ -238,11 +244,11 @@ describe('PmAdminUseCase — Сегодня and absences', () => {
   };
   const NOW = new Date('2026-09-24T10:00:00Z');
 
-  it('lists signals, hides done ones until their date', async () => {
+  it('lists signals, minus items hidden until a later time', async () => {
     const { admin } = setup({
       todayHidden: [
-        { id: 'stale|Ann|A-2', until: '2026-09-25' },
-        { id: 'blocked|Ann|A-1', until: '2026-09-24' },
+        { id: 'stale|Ann|A-2', until: '2026-09-24T12:00:00.000Z' },
+        { id: 'blocked|Ann|A-1', until: '2026-09-24T09:00:00.000Z' },
       ],
     });
     const today = await admin.today(NOW);
@@ -250,33 +256,38 @@ describe('PmAdminUseCase — Сегодня and absences', () => {
     expect(today.items[0].inRelease).toBe(true);
   });
 
-  it('hides for a day or a week and drops expired entries', async () => {
-    const { admin, store } = setup({
-      todayHidden: [{ id: 'old', until: '2026-09-20' }],
-    });
-    await admin.hideToday('stale|Ann|A-2', 7, 42, NOW);
-    expect(store.save).toHaveBeenCalledWith(
-      { todayHidden: [{ id: 'stale|Ann|A-2', until: '2026-10-01' }] },
+  it('hides for 24 hours or a week from the click, in one store call', async () => {
+    const { admin, store } = setup({});
+    await admin.hideToday('stale|Ann|A-2', 1, 42, NOW);
+    expect(store.hideToday).toHaveBeenCalledWith(
+      'stale|Ann|A-2',
+      '2026-09-25T10:00:00.000Z',
+      '2026-09-24T10:00:00.000Z',
+      42,
+    );
+    await admin.hideToday('x', 7, 42, NOW);
+    expect(store.hideToday).toHaveBeenLastCalledWith(
+      'x',
+      '2026-10-01T10:00:00.000Z',
+      '2026-09-24T10:00:00.000Z',
       42,
     );
     await expect(admin.hideToday('x', 3, 42, NOW)).rejects.toThrow('days');
   });
 
-  it('marks someone away and back', async () => {
-    const { admin, store } = setup({
-      teamAway: { Bob: { until: '2026-09-30', note: null } },
-    });
+  it('marks one person away and back without rewriting the others', async () => {
+    const { admin, store } = setup({});
     await admin.setAway('Ann', '2026-10-02', 'отпуск', 42);
-    expect(store.save).toHaveBeenLastCalledWith(
-      {
-        teamAway: {
-          Bob: { until: '2026-09-30', note: null },
-          Ann: { until: '2026-10-02', note: 'отпуск' },
-        },
-      },
+    expect(store.setAway).toHaveBeenCalledWith(
+      'Ann',
+      { until: '2026-10-02', note: 'отпуск' },
       42,
     );
-    await admin.setAway('Bob', null, null, 42);
-    expect(store.save).toHaveBeenLastCalledWith({ teamAway: {} }, 42);
+    await admin.setAway('Ann', null, null, 42);
+    expect(store.setAway).toHaveBeenLastCalledWith('Ann', null, 42);
+    await expect(admin.setAway('Ann', '2 Oct', null, 42)).rejects.toThrow(
+      'YYYY-MM-DD',
+    );
+    expect(store.save).not.toHaveBeenCalled();
   });
 });

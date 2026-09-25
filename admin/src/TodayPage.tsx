@@ -73,7 +73,7 @@ function Item({
           Готово
         </button>
         <button className="ghost" onClick={() => hide(1)} disabled={busy}>
-          Отложить до завтра
+          Отложить на сутки
         </button>
       </div>
     </article>
@@ -117,8 +117,8 @@ export function TodayPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       <p className="muted small">
         По данным на {when(view.asOf)}
         {view.releaseVersion ? ` · релиз ${view.releaseVersion}` : ''}. «Готово»
-        прячет пункт на неделю, «Отложить» — до завтра; если проблема останется
-        в данных, пункт вернётся.
+        прячет пункт на неделю, «Отложить» — на сутки; если проблема останется в
+        данных, пункт вернётся.
       </p>
       {view.items.length ? (
         <div className="today">

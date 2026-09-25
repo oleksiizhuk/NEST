@@ -109,10 +109,16 @@ export class PmAdminUseCase {
     note: string | null,
     by: number,
   ) {
-    const current = { ...((await this.store.get()).values.teamAway ?? {}) };
-    if (until) current[name] = { until, note };
-    else delete current[name];
-    await this.store.save(cleanSettings({ teamAway: current }), by);
+    const clean = until
+      ? cleanSettings({ teamAway: { [name]: { until, note } } }).teamAway?.[
+          name
+        ]
+      : null;
+    await this.store.setAway(
+      name,
+      clean ? { until: clean.until, note: clean.note ?? null } : null,
+      by,
+    );
     this.runtime.invalidate();
   }
 
@@ -122,9 +128,9 @@ export class PmAdminUseCase {
       this.team.team(now),
       this.store.get(),
     ]);
-    const day = now.toISOString().slice(0, 10);
+    const at = now.toISOString();
     const hidden = new Set(
-      (values.todayHidden ?? []).filter((h) => h.until > day).map((h) => h.id),
+      (values.todayHidden ?? []).filter((h) => h.until > at).map((h) => h.id),
     );
     if (!team) return { asOf: null, links: null, items: [], more: 0 };
     return {
@@ -135,22 +141,14 @@ export class PmAdminUseCase {
     };
   }
 
-  // "Готово" hides an item for a week, "Отложить" until tomorrow; if the
-  // problem is still in the data after that, it comes back
+  // "Готово" hides an item for a week, "Отложить" for 24 hours, counted
+  // from the click; if the problem is still in the data after that, it
+  // comes back
   async hideToday(id: string, days: number, by: number, now = new Date()) {
     if (!id || id.length > 300) throw new SettingsError('bad item id');
     if (![1, 7].includes(days)) throw new SettingsError('days: 1 or 7');
-    const day = now.toISOString().slice(0, 10);
-    const until = new Date(now.getTime() + days * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-    const kept = ((await this.store.get()).values.todayHidden ?? []).filter(
-      (h) => h.until > day && h.id !== id,
-    );
-    await this.store.save(
-      { todayHidden: [...kept, { id, until }].slice(-200) },
-      by,
-    );
+    const until = new Date(now.getTime() + days * 86_400_000).toISOString();
+    await this.store.hideToday(id, until, now.toISOString(), by);
     return this.today(now);
   }
 
