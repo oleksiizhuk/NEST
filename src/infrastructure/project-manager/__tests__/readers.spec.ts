@@ -198,6 +198,8 @@ describe('Jira reader status history', () => {
                       fromString: 'In Progress',
                       toString: 'In Review',
                     },
+                    // Jira may leave out "toString" on an unassign
+                    { fieldId: 'assignee', fromString: 'Ann' },
                   ],
                 },
               ],
@@ -230,6 +232,7 @@ describe('Jira reader status history', () => {
       statusSince: '2026-09-21T09:00:00.000+0000',
       stage: 'review',
     });
+    expect(JSON.stringify(d.stages.handoffs)).not.toContain('function');
     expect(d.stages.aging[0]).toMatchObject({
       key: 'ABC-1',
       stage: 'review',

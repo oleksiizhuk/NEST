@@ -54,9 +54,13 @@ export const parseStatusMap = (
 };
 
 const BY_NAME: Array<[RegExp, Stage]> = [
-  [/block|on hold|hold|waiting for|блок|ожида/i, 'blocked'],
+  // Review and QA first: "Waiting for QA" is a queue, not a blocker
   [/review|ревью|pull request|\bpr\b|code check/i, 'review'],
   [/\bqa\b|test|testing|verif|тест|провер/i, 'qa'],
+  [
+    /block|on hold|блок|ожидает клиента|waiting for (customer|client)/i,
+    'blocked',
+  ],
   // Names seen only in history have no known category
   [/done|closed|resolved|released|готов|закрыт|выполн/i, 'done'],
   [
@@ -75,7 +79,10 @@ export const stageFor = (
   const mapped = map[status.toLowerCase()];
   if (mapped) return { stage: mapped, source: 'map' };
   if (category === 'done') return { stage: 'done', source: 'category' };
-  const named = BY_NAME.find(([re]) => re.test(status));
+  // An open ticket is never done, whatever its status is called
+  const named = BY_NAME.find(
+    ([re, st]) => re.test(status) && !(st === 'done' && category),
+  );
   if (named) return { stage: named[1], source: 'name' };
   return {
     stage:
@@ -170,6 +177,7 @@ export const flowStages = (
   const worst: FlowStages['bounces']['worst'] = [];
   let bounced = 0;
   let reopened = 0;
+  let moved = 0;
   let blockedDays = 0;
   const pairs = new Map<string, { count: number; waits: number[] }>();
   const many: FlowStages['handoffs']['many'] = [];
@@ -182,8 +190,8 @@ export const flowStages = (
   let finished = 0;
 
   for (const i of issues) {
-    const changes = [...i.statusChanges].sort((a, b) =>
-      a.at.localeCompare(b.at),
+    const changes = [...i.statusChanges].sort(
+      (a, b) => Date.parse(a.at) - Date.parse(b.at),
     );
     const current = stage(i.status, i.category);
     // Segments: [start, end) in one status
@@ -203,19 +211,28 @@ export const flowStages = (
       segments.find((s) => !['todo', 'done'].includes(stageOfName(s.status)))
         ?.from ?? null;
 
-    // Backward moves between ordered stages; done → anything is a reopen
+    // Backward moves between ordered stages (a stop in "blocked" on the
+    // way does not hide one); done → anything is a reopen. Only moves
+    // inside the window count, like everything else on the page.
     let times = 0;
+    let last = ORDER[stageOfName(changes[0]?.from ?? i.status)];
+    let lastStage = stageOfName(changes[0]?.from ?? i.status);
     for (const c of changes) {
-      const a = stageOfName(c.from);
       const b = stageOfName(c.to);
-      if (a === 'done' && b !== 'done') reopened += 1;
-      const oa = ORDER[a];
       const ob = ORDER[b];
-      if (oa !== undefined && ob !== undefined && ob < oa) {
+      const inWindow = Date.parse(c.at) >= windowStart.getTime();
+      if (inWindow && stageOfName(c.from) === 'done' && b !== 'done')
+        reopened += 1;
+      if (ob === undefined) continue;
+      if (inWindow && last !== undefined && ob < last) {
         times += 1;
-        bounceFrom[a] = (bounceFrom[a] ?? 0) + 1;
+        bounceFrom[lastStage] = (bounceFrom[lastStage] ?? 0) + 1;
       }
+      last = ob;
+      lastStage = b;
     }
+    if (changes.some((c) => Date.parse(c.at) >= windowStart.getTime()))
+      moved += 1;
     if (times) {
       bounced += 1;
       worst.push({ key: i.key, times, assignee: i.assignee });
@@ -235,10 +252,11 @@ export const flowStages = (
     const people = new Set<string>();
     if (i.assignee) people.add(i.assignee);
     for (const a of i.assigneeChanges) {
+      if (Date.parse(a.at) < windowStart.getTime()) continue;
       if (a.from) people.add(a.from);
       if (a.to) people.add(a.to);
       if (!a.from || !a.to || a.from === a.to) continue;
-      const next = changes.find((c) => c.at > a.at);
+      const next = changes.find((c) => Date.parse(c.at) > Date.parse(a.at));
       const entry = pairs.get(`${a.from}→${a.to}`) ?? { count: 0, waits: [] };
       entry.count += 1;
       if (next) entry.waits.push(days(a.at, new Date(next.at)));
@@ -275,7 +293,8 @@ export const flowStages = (
         stage: stage(i.status, i.category),
         ageDays,
         stageDays: days(since, now),
-        overP85: p85 !== null && ageDays > p85,
+        // A percentile of a handful of tickets means nothing
+        overP85: p85 !== null && cycles.length >= 5 && ageDays > p85,
       };
     })
     .sort((a, b) => b.ageDays - a.ageDays)
@@ -294,7 +313,8 @@ export const flowStages = (
     aging,
     bounces: {
       count: bounced,
-      total: issues.length,
+      // Tickets whose status moved in the window
+      total: moved,
       from: bounceFrom,
       reopened,
       worst: worst.sort((a, b) => b.times - a.times).slice(0, 10),

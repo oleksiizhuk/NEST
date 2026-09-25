@@ -135,7 +135,8 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       <section className="card">
         <h2>Стареющие задачи</h2>
         <p className="muted small">
-          В работе дольше, чем 85% закрытых задач, — их стоит разобрать первыми.
+          Открытые задачи в работе, самые старые сверху. Выделены те, что идут
+          дольше, чем 85% закрытых задач, — их стоит разобрать первыми.
         </p>
         {s.aging.length ? (
           <div className="table-wrap">
@@ -174,6 +175,9 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
 
       <section className="card">
         <h2>Возвраты</h2>
+        <p className="muted small">
+          Считаются движения за последние {s.windowDays} дней.
+        </p>
         <p className="small">
           Двигались назад по этапам: <b>{s.bounces.count}</b> из{' '}
           {s.bounces.total} задач ({bounceRate}%). Переоткрыты после «готово»:{' '}
@@ -204,6 +208,7 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
 
       <section className="card">
         <h2>Передачи между людьми</h2>
+        <p className="muted small">За последние {s.windowDays} дней.</p>
         {s.handoffs.pairs.length ? (
           <div className="table-wrap">
             <table className="table">

@@ -132,6 +132,10 @@ export const toFact = (issue: JiraIssue): IssueFact => {
   };
 };
 
+// A missing "toString" key would read Object.prototype.toString
+const str = (value: unknown): string | null =>
+  typeof value === 'string' ? value : null;
+
 interface Query {
   title: string;
   jql: string;
@@ -294,9 +298,21 @@ export class JiraIssueReader implements IProjectSource {
       );
     }
     const [open = [], done = []] = results;
+    // The changelog knows the real last status change; the category date
+    // only moves on To Do → In Progress → Done
+    const history = await this.historyLists();
+    const closed = [...(history?.done ?? []), ...done].filter(
+      (i, n, all) => all.findIndex((x) => x.key === i.key) === n,
+    );
+    const stages = await this.stages(open, closed, now);
+    const openFacts = open.map((i) => {
+      const f = toFact(i);
+      const changed = stages?.lastChange[i.key];
+      return changed ? { ...f, statusSince: changed } : f;
+    });
     const numbers: Record<string, number> = {};
     const metrics = issueMetrics(
-      open.map(toFact),
+      openFacts,
       done.map(toFact),
       now,
       {
@@ -315,17 +331,15 @@ export class JiraIssueReader implements IProjectSource {
     ].join('\n\n');
     // Counts from a capped list are lower bounds; as a trend they would read
     // as "no change" while scope grows
-    const signals = issueSignals(open.map(toFact), this.releaseVersion);
-    const history = await this.historyLists();
-    const stages = await this.stages(open, history?.done ?? done, now);
+    const signals = issueSignals(openFacts, this.releaseVersion);
     const details = {
       ...teamIssues(
-        open.map(toFact),
+        openFacts,
         done.map(toFact),
         now,
         this.releaseVersion,
         caps.some(Boolean),
-        stages ? { lastChange: stages.lastChange, stage: this.stageName } : {},
+        { stage: this.stageName },
       ),
       flow: history ? this.flow(history, now) : null,
       stages,
@@ -420,14 +434,14 @@ export class JiraIssueReader implements IProjectSource {
             if (item.fieldId === 'status' || item.field === 'status')
               h.statusChanges.push({
                 at: change.created,
-                from: item.fromString ?? '',
-                to: item.toString ?? '',
+                from: str(item.fromString) ?? '',
+                to: str(item.toString) ?? '',
               });
             else if (item.fieldId === 'assignee' || item.field === 'assignee')
               h.assigneeChanges.push({
                 at: change.created,
-                from: item.fromString ?? null,
-                to: item.toString ?? null,
+                from: str(item.fromString),
+                to: str(item.toString),
               });
           }
         }

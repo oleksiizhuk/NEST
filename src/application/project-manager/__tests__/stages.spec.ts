@@ -35,6 +35,11 @@ describe('stages', () => {
     });
     expect(stageFor('Backlog', undefined, {}).stage).toBe('todo');
     expect(stageFor('Готово', 'done', {}).stage).toBe('done');
+    // Queues are not blockers; an open ticket is never done
+    expect(stageFor('Waiting for QA', 'indeterminate', {}).stage).toBe('qa');
+    expect(stageFor('Ожидает ревью', 'indeterminate', {}).stage).toBe('review');
+    expect(stageFor('On hold', 'indeterminate', {}).stage).toBe('blocked');
+    expect(stageFor('Resolved', 'indeterminate', {}).stage).toBe('dev');
   });
 
   it('measures time per stage, cycle time and bounces of finished work', () => {
@@ -132,12 +137,47 @@ describe('stages', () => {
       ['B-1', 12, 3],
       ['B-3', 9, 9],
     ]);
-    expect(flow.aging[0]).toMatchObject({ stage: 'blocked', overP85: true });
+    // One finished ticket is too few for a percentile to flag anything
+    expect(flow.aging[0]).toMatchObject({ stage: 'blocked', overP85: false });
     expect(flow.blocked).toEqual({
       daysInWindow: 3,
       current: [{ key: 'B-1', assignee: 'Ann', days: 3 }],
     });
     expect(flow.bounces.reopened).toBe(1);
     expect(flow.lastChange['B-1']).toBe('2026-09-21T10:00:00Z');
+  });
+
+  it('counts a bounce through a blocked stop, only inside the window', () => {
+    const flow = flowStages(
+      [
+        issue('C-1', {
+          status: 'In Progress',
+          category: 'indeterminate',
+          statusChanges: [
+            { at: '2026-09-14T10:00:00Z', from: 'In Progress', to: 'QA' },
+            { at: '2026-09-15T10:00:00Z', from: 'QA', to: 'On hold' },
+            { at: '2026-09-16T10:00:00Z', from: 'On hold', to: 'In Progress' },
+          ],
+          assigneeChanges: [
+            { at: '2026-06-01T10:00:00Z', from: 'Old', to: 'Ann' },
+          ],
+        }),
+        issue('C-2', {
+          status: 'In Progress',
+          category: 'indeterminate',
+          statusChanges: [
+            { at: '2026-06-01T10:00:00Z', from: 'QA', to: 'In Progress' },
+          ],
+        }),
+      ],
+      {},
+      NOW,
+    );
+    expect(flow.bounces).toMatchObject({
+      count: 1,
+      total: 1,
+      from: { qa: 1 },
+    });
+    expect(flow.handoffs.pairs).toEqual([]);
   });
 });

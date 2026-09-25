@@ -176,7 +176,7 @@ describe('buildTeam', () => {
     expect(stale).toMatchObject({
       keys: ['A-1'],
       why: 'в «In Progress» с 10.09: 10 раб. дн. > порог 5',
-      say: 'A-1 в работе 10 дней — что мешает закрыть? Нужна помощь?',
+      say: 'A-1 уже 10 дней в «In Progress» — что мешает сдвинуть дальше? Нужна помощь?',
     });
     expect(ann.signals.find((s) => s.rule === 'wip')?.why).toBe(
       'в работе 3 > порог 2',

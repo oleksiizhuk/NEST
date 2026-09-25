@@ -82,10 +82,7 @@ export const teamIssues = (
   capped: boolean,
   // From the changelog: when each ticket last changed status, and how a
   // status name maps to a stage
-  history: {
-    lastChange?: Record<string, string>;
-    stage?: (status: string, category?: string) => string;
-  } = {},
+  history: { stage?: (status: string, category?: string) => string } = {},
 ): TeamIssues => {
   const since = now.getTime() - 14 * 86_400_000;
   const people: TeamIssues['people'] = {};
@@ -99,9 +96,7 @@ export const teamIssues = (
       inProgress: i.category === 'indeterminate',
       priority: i.priority,
       inScope: releaseVersion ? i.fixVersions.includes(releaseVersion) : true,
-      // The category date only moves on To Do → In Progress → Done; the
-      // changelog also sees In Dev → Review → QA
-      statusSince: history.lastChange?.[i.key] ?? i.statusSince,
+      statusSince: i.statusSince,
       stage: history.stage?.(i.status, i.category) ?? null,
       due: i.due,
       blocked:
@@ -318,7 +313,7 @@ export const personSignals = (
           i.statusSince ? ` с ${ruDate(i.statusSince)}` : ''
         }: ${i.days} раб. дн. > порог ${limits.staleDays}`,
         keys: [i.key],
-        say: `${i.key} в работе ${i.days} дней — что мешает закрыть? Нужна помощь?`,
+        say: `${i.key} уже ${i.days} дней в «${i.status}» — что мешает сдвинуть дальше? Нужна помощь?`,
       });
     }
   }
