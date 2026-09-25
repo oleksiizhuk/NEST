@@ -109,7 +109,10 @@ describe('Jira reader', () => {
         json({ issues: [issue('ABC-1')], nextPageToken: 't2', isLast: false }),
       )
       .mockReturnValueOnce(json({ issues: [issue('ABC-2')], isLast: true }))
-      .mockReturnValueOnce(json({ issues: [issue('ABC-3')], isLast: true }));
+      .mockReturnValueOnce(json({ issues: [issue('ABC-3')], isLast: true }))
+      // Weekly history: closed, then created, with light fields only
+      .mockReturnValueOnce(json({ issues: [issue('ABC-3')], isLast: true }))
+      .mockReturnValueOnce(json({ issues: [issue('ABC-9')], isLast: true }));
     global.fetch = fetchMock as any;
 
     const reader = new JiraIssueReader(
@@ -120,9 +123,19 @@ describe('Jira reader', () => {
         PM_JIRA_PROJECTS: 'ABC, XYZ',
       }),
     );
-    const { text, metrics } = await reader.fetch();
+    const { text, metrics, details } = await reader.fetch();
 
     expect(text.startsWith('## Computed metrics')).toBe(true);
+    const history = JSON.parse(fetchMock.mock.calls[3][1].body);
+    expect(history.jql).toContain(
+      '(resolved >= -84d OR statusCategoryChangedDate >= -84d)',
+    );
+    expect(history.fields).not.toContain('summary');
+    expect(JSON.parse(fetchMock.mock.calls[4][1].body).jql).toContain(
+      'created >= -84d',
+    );
+    expect((details as any).flow.weeks).toHaveLength(12);
+    expect(text).not.toContain('ABC-9');
     expect(metrics).toMatchObject({ open: 2, done14: 0 });
     expect(text).toContain('Open work items: 2 — to do 2, in progress 0.');
     expect(text).toContain('## Open issues: 2');

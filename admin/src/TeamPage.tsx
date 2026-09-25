@@ -10,6 +10,7 @@ import {
   Unauthorized,
 } from './api';
 import { Key, RULES, SignalLine } from './signals';
+import { Sparkline, TeamFlowChart } from './charts';
 
 const TOGGLEABLE: SignalRule[] = [
   'wip',
@@ -22,6 +23,9 @@ const TOGGLEABLE: SignalRule[] = [
   'no-output',
   'pr-wait',
   'changes',
+  'overload',
+  'underload',
+  'runway',
 ];
 
 const when = (iso: string) =>
@@ -136,11 +140,13 @@ function ThresholdsPanel({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Thresholds>(value);
   const [busy, setBusy] = useState(false);
-  const num = (k: 'wipLimit' | 'staleDays' | 'reviewWaitDays') => (
+  const num = (
+    k: 'wipLimit' | 'staleDays' | 'reviewWaitDays' | 'runwayDays',
+  ) => (
     <input
       type="number"
       min={1}
-      max={k === 'staleDays' ? 30 : k === 'wipLimit' ? 10 : 14}
+      max={k === 'staleDays' ? 30 : k === 'reviewWaitDays' ? 14 : 10}
       value={draft[k]}
       onChange={(e) => setDraft({ ...draft, [k]: Number(e.target.value) })}
     />
@@ -176,6 +182,14 @@ function ThresholdsPanel({
           {num('reviewWaitDays')}
           <span className="muted small">
             Хорошо — ревью в течение дня, терпимо — два.
+          </span>
+        </label>
+        <label>
+          Рабочих дней работы в запасе, меньше которых — «скоро нечего делать»
+          {num('runwayDays')}
+          <span className="muted small">
+            Считается по личному темпу за 4 недели. 2 дня — время заранее
+            выбрать следующую задачу.
           </span>
         </label>
       </div>
@@ -228,16 +242,118 @@ function ThresholdsPanel({
   );
 }
 
+const BADGE = {
+  over: 'перегружен',
+  under: 'недогружен',
+  normal: 'норма',
+} as const;
+
+function LoadRow({ p, weeks }: { p: Person; weeks: string[] }) {
+  const l = p.load;
+  const max = Math.max(l.total, l.median * 2, 1);
+  return (
+    <div className="load">
+      <div
+        className="load-bar"
+        title={`Открыто ${l.total}, медиана команды ${l.median}`}
+      >
+        <span
+          className={`load-fill ${l.badge ?? 'normal'}`}
+          style={{ width: `${(l.total / max) * 100}%` }}
+        />
+        {l.median > 0 && (
+          <span
+            className="load-median"
+            style={{ left: `${(l.median / max) * 100}%` }}
+          />
+        )}
+      </div>
+      <div className="load-text small">
+        {l.badge && l.badge !== 'normal' && (
+          <span className={`tag ${l.badge === 'over' ? 'warn' : ''}`}>
+            {BADGE[l.badge]}
+          </span>
+        )}{' '}
+        Открыто {l.total}
+        {l.median ? ` · медиана ${l.median}` : ''}
+        {' · '}
+        {l.pace === null
+          ? 'темп неизвестен'
+          : `темп ${l.pace.toFixed(1)} задачи/день`}
+        {l.runwayDays !== null &&
+          ` · работы на ~${Math.round(l.runwayDays)} раб. дн.`}
+      </div>
+      {l.weekly && weeks.length > 0 && (
+        <div className="load-spark small muted">
+          {l.weekly.some(Boolean) ? (
+            <>
+              <Sparkline values={l.weekly} weeks={weeks} /> закрыто по неделям
+            </>
+          ) : (
+            `За ${weeks.length} недель закрытых задач нет`
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FlowCard({ team }: { team: NonNullable<TeamView['team']> }) {
+  const flow = team.flow;
+  const releaseFree = team.unassigned.filter((i) => i.inScope).length;
+  if (!flow)
+    return (
+      <section className="card">
+        <h2>Темп команды</h2>
+        <p className="muted">
+          Недельная история появится после следующего обновления данных.
+        </p>
+      </section>
+    );
+  const full = (list: number[]) =>
+    list
+      .slice(0, -1)
+      .slice(-4)
+      .reduce((a, b) => a + b, 0);
+  return (
+    <section className="card">
+      <h2>Темп команды</h2>
+      <p className="small">
+        За последние 4 полные недели закрыто <b>{full(flow.done)}</b>, пришло
+        новых <b>{full(flow.created)}</b>.
+        {team.unassigned.length > 0 &&
+          ` Свободных задач без исполнителя: ${team.unassigned.length}${
+            team.releaseVersion ? `, из них в релизе ${releaseFree}` : ''
+          }.`}
+      </p>
+      {team.scopeGrowing && (
+        <p className="warn-line small">
+          Две недели подряд приходит больше задач, чем закрывается: объём растёт
+          быстрее, чем команда успевает. Стоит обсудить, что отложить.
+        </p>
+      )}
+      <TeamFlowChart flow={flow} />
+      {flow.capped && (
+        <p className="muted small">
+          Список Jira упёрся в лимит: самые старые недели занижены.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function PersonCard({
   p,
   links,
   stale,
+  weeks,
   onGithub,
   onAway,
 }: {
   p: Person;
   links: Links | null;
   stale: number;
+  weeks: string[];
   onGithub: (login: string | null) => Promise<void>;
   onAway: (until: string | null, note: string | null) => Promise<void>;
 }) {
@@ -290,6 +406,8 @@ function PersonCard({
           {p.github && <span className="chip">PR {p.pulls.length}</span>}
         </div>
       </header>
+
+      <LoadRow p={p} weeks={weeks} />
 
       <ul className="signals">
         {p.signals.map((s, i) => (
@@ -497,6 +615,7 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
         </section>
       ) : (
         <>
+          <FlowCard team={team} />
           <div className="team-bar">
             <span className="muted small">
               Данные на {when(team.asOf)}
@@ -542,6 +661,7 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
                 p={p}
                 links={team.links}
                 stale={team.thresholds.staleDays}
+                weeks={team.flow?.weeks ?? []}
                 onAway={async (until, note) => {
                   try {
                     setView(await api.setAway(p.name, until, note));

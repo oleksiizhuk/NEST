@@ -125,6 +125,9 @@ export type SignalRule =
   | 'changes'
   | 'away'
   | 'handover'
+  | 'overload'
+  | 'underload'
+  | 'runway'
   | 'ok';
 
 export interface Signal {
@@ -140,6 +143,7 @@ export interface Thresholds {
   wipLimit: number;
   staleDays: number;
   reviewWaitDays: number;
+  runwayDays: number;
   off: SignalRule[];
 }
 
@@ -178,7 +182,23 @@ export interface Person {
   }>;
   merged14: string[];
   away: { until: string; note: string | null } | null;
+  load: {
+    total: number;
+    median: number;
+    ratio: number | null;
+    badge: 'over' | 'under' | 'normal' | null;
+    pace: number | null;
+    runwayDays: number | null;
+    weekly: number[] | null;
+  };
   signals: Signal[];
+}
+
+export interface WeeklyFlow {
+  weeks: string[];
+  done: number[];
+  created: number[];
+  capped: boolean;
 }
 
 export interface TeamView {
@@ -191,6 +211,14 @@ export interface TeamView {
     hasDetails: boolean;
     thresholds: Thresholds;
     links: Links;
+    flow: WeeklyFlow | null;
+    scopeGrowing: boolean;
+    unassigned: Array<{
+      key: string;
+      summary: string;
+      priority: string | null;
+      inScope: boolean;
+    }>;
   } | null;
   review: { text: string; at: string } | null;
 }

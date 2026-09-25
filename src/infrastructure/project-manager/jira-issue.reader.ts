@@ -11,6 +11,11 @@ import {
 } from '@application/project-manager/metrics';
 import { teamIssues } from '@application/project-manager/team';
 import {
+  FLOW_WEEKS,
+  WeeklyFlow,
+  weeklyFlow,
+} from '@application/project-manager/load';
+import {
   basicAuth,
   getJson,
   oneLine,
@@ -121,7 +126,17 @@ interface Query {
   title: string;
   jql: string;
   limit: number;
+  fields?: string[];
 }
+
+// Only what the weekly counts need: these lists never reach the prompt
+const HISTORY_FIELDS = [
+  'issuetype',
+  'assignee',
+  'created',
+  'resolutiondate',
+  'statuscategorychangedate',
+];
 
 // One line per issue keeps a few hundred issues within a small token budget.
 export const formatIssue = (
@@ -179,6 +194,7 @@ export class JiraIssueReader implements IProjectSource {
   private readonly sprintField: string;
   private readonly releaseDate: string | null;
   private readonly releaseVersion: string | null;
+  private readonly history: Query[];
 
   constructor(config: ConfigService) {
     this.baseUrl = (
@@ -220,6 +236,25 @@ export class JiraIssueReader implements IProjectSource {
             title: 'Done in the last 14 days',
             jql: `${scope} AND statusCategory = Done AND updated >= -14d ORDER BY updated DESC`,
             limit: 150,
+          },
+        ]
+      : [];
+    const weeks = `-${FLOW_WEEKS * 7}d`;
+    this.history = scope
+      ? [
+          {
+            title: 'done history',
+            // By when it was closed, not updated: a bulk edit of old
+            // tickets must not fill the limit
+            jql: `${scope} AND statusCategory = Done AND (resolved >= ${weeks} OR statusCategoryChangedDate >= ${weeks}) ORDER BY created DESC`,
+            limit: 1000,
+            fields: HISTORY_FIELDS,
+          },
+          {
+            title: 'created history',
+            jql: `${scope} AND created >= ${weeks} ORDER BY created DESC`,
+            limit: 1000,
+            fields: HISTORY_FIELDS,
           },
         ]
       : [];
@@ -268,16 +303,38 @@ export class JiraIssueReader implements IProjectSource {
     // Counts from a capped list are lower bounds; as a trend they would read
     // as "no change" while scope grows
     const signals = issueSignals(open.map(toFact), this.releaseVersion);
-    const details = teamIssues(
-      open.map(toFact),
-      done.map(toFact),
-      now,
-      this.releaseVersion,
-      caps.some(Boolean),
-    ) as unknown as Record<string, unknown>;
+    const details = {
+      ...teamIssues(
+        open.map(toFact),
+        done.map(toFact),
+        now,
+        this.releaseVersion,
+        caps.some(Boolean),
+      ),
+      flow: await this.flow(now),
+    } as unknown as Record<string, unknown>;
     return caps.some(Boolean)
       ? { text, signals, details }
       : { text, metrics: numbers, signals, details };
+  }
+
+  // Weekly history; a failure only leaves the charts empty
+  private async flow(now: Date): Promise<WeeklyFlow | null> {
+    if (this.history.length < 2) return null;
+    try {
+      const [done, created] = await Promise.all(
+        this.history.map((q) => this.search(q)),
+      );
+      return weeklyFlow(
+        done.map(toFact),
+        created.map(toFact),
+        now,
+        done.length >= this.history[0].limit ||
+          created.length >= this.history[1].limit,
+      );
+    } catch {
+      return null;
+    }
   }
 
   private async search(query: Query): Promise<JiraIssue[]> {
@@ -295,7 +352,7 @@ export class JiraIssueReader implements IProjectSource {
           method: 'POST',
           body: {
             jql: query.jql,
-            fields: [...FIELDS, this.sprintField],
+            fields: query.fields ?? [...FIELDS, this.sprintField],
             maxResults: PAGE_SIZE,
             ...(nextPageToken ? { nextPageToken } : {}),
           },
