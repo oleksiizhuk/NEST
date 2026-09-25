@@ -1,6 +1,12 @@
 import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity';
 import { IssueFact, isBlocker } from '@application/project-manager/metrics';
 import { workingDaysBetween } from '@application/project-manager/release-clock';
+import {
+  median,
+  pacePerDay,
+  scopeGrowing,
+  WeeklyFlow,
+} from '@application/project-manager/load';
 
 // Per-person work, kept on the snapshot at refresh so the admin page can
 // show "who is on what" without calling Jira or GitHub again.
@@ -17,9 +23,20 @@ export interface PersonIssue {
   blocked: boolean;
 }
 
+export interface FreeIssue {
+  key: string;
+  summary: string;
+  priority: string | null;
+  inScope: boolean;
+}
+
 export interface TeamIssues {
   releaseVersion: string | null;
   capped: boolean;
+  // Open work nobody owns, release work and higher priority first
+  unassigned?: FreeIssue[];
+  // Added by the Jira reader: 12 weeks of closed / created counts
+  flow?: WeeklyFlow | null;
   people: Record<
     string,
     {
@@ -80,6 +97,22 @@ export const teamIssues = (
         isBlocker(i) && Boolean(i.blockedBy?.length || /block/i.test(i.status)),
     });
   }
+  const inScope = (i: IssueFact) =>
+    releaseVersion ? i.fixVersions.includes(releaseVersion) : true;
+  const unassigned = open
+    .filter((i) => isWork(i) && !i.assignee && i.category !== 'done')
+    .sort(
+      (a, b) =>
+        Number(inScope(b)) - Number(inScope(a)) ||
+        rank(b.priority) - rank(a.priority),
+    )
+    .slice(0, 15)
+    .map((i) => ({
+      key: i.key,
+      summary: (i.summary ?? '').slice(0, 140),
+      priority: i.priority,
+      inScope: inScope(i),
+    }));
   for (const i of done.filter(isWork)) {
     if (!i.assignee || !i.doneAt || new Date(i.doneAt).getTime() < since)
       continue;
@@ -89,7 +122,7 @@ export const teamIssues = (
       doneAt: i.doneAt,
     });
   }
-  return { releaseVersion, capped, people };
+  return { releaseVersion, capped, unassigned, people };
 };
 
 export type SignalRule =
@@ -105,6 +138,9 @@ export type SignalRule =
   | 'changes'
   | 'away'
   | 'handover'
+  | 'overload'
+  | 'underload'
+  | 'runway'
   | 'ok';
 
 // Rules the owner may switch off on the admin page
@@ -119,6 +155,9 @@ export const TOGGLEABLE_RULES: SignalRule[] = [
   'no-output',
   'pr-wait',
   'changes',
+  'overload',
+  'underload',
+  'runway',
 ];
 
 export interface Signal {
@@ -142,7 +181,23 @@ export interface PersonView {
   done14: Array<{ key: string; summary: string; doneAt: string | null }>;
   pulls: AuthorPull[];
   merged14: string[];
+  load: PersonLoad;
   signals: Signal[];
+}
+
+export interface PersonLoad {
+  // Open work on the person: in progress + queue
+  total: number;
+  // The same number's median across the team (people not away)
+  median: number;
+  ratio: number | null;
+  badge: 'over' | 'under' | 'normal' | null;
+  // Tasks closed per working day over the last four full weeks
+  pace: number | null;
+  // Working days until all open work is done at that pace
+  runwayDays: number | null;
+  // Closed per week, oldest first (same weeks as the team flow)
+  weekly: number[] | null;
 }
 
 export interface TeamThresholds {
@@ -152,6 +207,8 @@ export interface TeamThresholds {
   staleDays: number;
   // Working days a PR may wait for its first review
   reviewWaitDays: number;
+  // Working days of queue left before "runs out of work" shows
+  runwayDays: number;
   off: SignalRule[];
 }
 
@@ -159,10 +216,24 @@ export const DEFAULT_THRESHOLDS: TeamThresholds = {
   wipLimit: 2,
   staleDays: 5,
   reviewWaitDays: 2,
+  runwayDays: 2,
   off: [],
 };
 
 export type TeamAway = Record<string, { until: string; note?: string | null }>;
+
+// 1 задача, 2 задачи, 5 задач
+const tasks = (n: number) => {
+  const d = n % 10;
+  const h = n % 100;
+  const word =
+    d === 1 && h !== 11
+      ? 'задача'
+      : d >= 2 && d <= 4 && (h < 12 || h > 14)
+      ? 'задачи'
+      : 'задач';
+  return `${n} ${word}`;
+};
 
 const ruDate = (iso: string) => {
   const [, m, d] = iso.slice(0, 10).split('-');
@@ -170,11 +241,14 @@ const ruDate = (iso: string) => {
 };
 
 export const personSignals = (
-  p: Omit<PersonView, 'signals' | 'name' | 'github' | 'away'>,
+  p: Omit<PersonView, 'signals' | 'name' | 'github' | 'away' | 'load'> & {
+    load?: PersonLoad;
+  },
   releaseVersion: string | null,
   now: Date,
   limits: TeamThresholds = DEFAULT_THRESHOLDS,
   away: PersonView['away'] = null,
+  free: FreeIssue[] = [],
 ): Signal[] => {
   const out: Signal[] = [];
   const list = (items: Array<{ key: string }>) =>
@@ -355,6 +429,75 @@ export const personSignals = (
         say: `По PR ${pr.repo}#${pr.number} попросили правки — когда успеешь?`,
       });
     }
+  const load = p.load;
+  const offer = free.slice(0, 3);
+  const offerKeys = offer.map((i) => i.key);
+  const total = p.inProgress.length + p.queue.length;
+  if (on('runway') && !total) {
+    out.push({
+      level: 'warn',
+      rule: 'runway',
+      text: 'Нет задач ни в работе, ни в очереди.',
+      why: 'в работе 0, очередь 0',
+      keys: offerKeys,
+      say: offer.length
+        ? `Что берёшь дальше? Свободные: ${offerKeys.join(', ')}.`
+        : 'Над чем сейчас работаешь? В Jira на тебе нет задач.',
+    });
+  } else if (
+    on('runway') &&
+    load?.runwayDays != null &&
+    load.runwayDays < limits.runwayDays
+  ) {
+    const days = Math.round(load.runwayDays * 10) / 10;
+    out.push({
+      level: 'info',
+      rule: 'runway',
+      text: `Работы примерно на ${days} раб. дн. — пора планировать следующее.`,
+      why: `открыто ${total} (в работе ${p.inProgress.length}, очередь ${
+        p.queue.length
+      }), темп ${load.pace?.toFixed(1)} задачи/день → ${days} < порог ${
+        limits.runwayDays
+      }`,
+      keys: offerKeys,
+      say: offer.length
+        ? `Что берёшь после текущих? Предлагаю ${offerKeys[0]}.`
+        : 'Что берёшь после текущих задач?',
+    });
+  }
+  if (on('overload') && load?.badge === 'over') {
+    const movable = p.queue.slice(0, 3);
+    out.push({
+      level: 'warn',
+      rule: 'overload',
+      text: `Перегружен: ${tasks(total)} (в работе ${
+        p.inProgress.length
+      }, очередь ${p.queue.length}) — в ${load.ratio?.toFixed(
+        1,
+      )} раза больше медианы команды (${load.median}).`,
+      why: `${total} ÷ медиана ${load.median} = ×${load.ratio?.toFixed(
+        1,
+      )} ≥ ×1.5`,
+      keys: movable.map((i) => i.key),
+      say: `У тебя сейчас больше всех задач — что из очереди можно отдать? Например, ${
+        movable.map((i) => i.key).join(', ') || 'что-то из очереди'
+      }.`,
+    });
+  }
+  if (on('underload') && total && load?.badge === 'under') {
+    out.push({
+      level: 'info',
+      rule: 'underload',
+      text: `Недогружен: ${tasks(total)} при медиане команды ${load.median}.`,
+      why: `${total} ÷ медиана ${load.median} = ×${load.ratio?.toFixed(
+        1,
+      )} ≤ ×0.5`,
+      keys: offerKeys,
+      say: offer.length
+        ? `Есть время взять ещё? Свободные: ${offerKeys.join(', ')}.`
+        : 'Есть время взять ещё задачу или помочь кому-то?',
+    });
+  }
   if (!out.length)
     out.push({
       level: 'ok',
@@ -378,6 +521,9 @@ const WEIGHT: Partial<Record<SignalRule, number>> = {
   wip: 40,
   'no-output': 30,
   changes: 20,
+  runway: 50,
+  overload: 45,
+  underload: 35,
 };
 
 export interface TodayItem extends Signal {
@@ -423,7 +569,7 @@ export const buildTeam = (
   snapshot: ProjectSnapshot,
   githubLogins: Record<string, string>,
   now: Date,
-  options: { thresholds?: TeamThresholds; away?: TeamAway } = {},
+  options: { thresholds?: Partial<TeamThresholds>; away?: TeamAway } = {},
 ): {
   asOf: Date;
   releaseVersion: string | null;
@@ -431,6 +577,10 @@ export const buildTeam = (
   people: PersonView[];
   unmatchedGithub: string[];
   thresholds: TeamThresholds;
+  // Team weekly closed / created, and whether more arrives than closes
+  flow: WeeklyFlow | null;
+  scopeGrowing: boolean;
+  unassigned: FreeIssue[];
   // False for a snapshot built before per-person data existed
   hasDetails: boolean;
 } => {
@@ -441,42 +591,81 @@ export const buildTeam = (
     | TeamCode
     | undefined;
   const authors = code?.authors ?? {};
-  const thresholds = options.thresholds ?? DEFAULT_THRESHOLDS;
+  // Stored thresholds from before a new field existed get its default
+  const thresholds = { ...DEFAULT_THRESHOLDS, ...options.thresholds };
+  const flow = issues?.flow ?? null;
+  const today = now.toISOString().slice(0, 10);
   const used = new Set<string>();
-  const people = Object.entries(issues?.people ?? {})
-    .map(([name, work]) => {
-      const github = githubLogins[name] ?? null;
-      const gh = github ? authors[github] : undefined;
-      if (github) used.add(github);
-      const base = {
-        inProgress: work.open
-          .filter((i) => i.inProgress)
-          .map((i) => ({
-            ...i,
-            days: i.statusSince
-              ? workingDaysBetween(new Date(i.statusSince), now)
-              : null,
-          })),
-        queue: work.open
-          .filter((i) => !i.inProgress)
-          .sort((a, b) => rank(b.priority) - rank(a.priority)),
-        done14: work.done14,
-        pulls: gh?.open ?? [],
-        merged14: gh?.merged14 ?? [],
+  const drafts = Object.entries(issues?.people ?? {}).map(([name, work]) => {
+    const github = githubLogins[name] ?? null;
+    const gh = github ? authors[github] : undefined;
+    if (github) used.add(github);
+    const off = options.away?.[name];
+    const away = off ? { until: off.until, note: off.note ?? null } : null;
+    return {
+      name,
+      github,
+      away,
+      inProgress: work.open
+        .filter((i) => i.inProgress)
+        .map((i) => ({
+          ...i,
+          days: i.statusSince
+            ? workingDaysBetween(new Date(i.statusSince), now)
+            : null,
+        })),
+      queue: work.open
+        .filter((i) => !i.inProgress)
+        .sort((a, b) => rank(b.priority) - rank(a.priority)),
+      done14: work.done14,
+      pulls: gh?.open ?? [],
+      merged14: gh?.merged14 ?? [],
+    };
+  });
+  const present = drafts.filter((d) => !(d.away && d.away.until >= today));
+  const mid = median(present.map((d) => d.inProgress.length + d.queue.length));
+  const unassigned = issues?.unassigned ?? [];
+  const people = drafts
+    .map((d) => {
+      const total = d.inProgress.length + d.queue.length;
+      const weekly = flow
+        ? flow.people[d.name] ?? flow.weeks.map(() => 0)
+        : null;
+      // Without history, the 14-day count gives a rougher pace
+      const pace = flow
+        ? pacePerDay(weekly ?? undefined)
+        : d.done14.length
+        ? d.done14.length / 10
+        : null;
+      const ratio = mid ? total / mid : null;
+      // Relative load means little in a team of one or two
+      const badge: PersonLoad['badge'] =
+        ratio === null || present.length < 3
+          ? null
+          : ratio >= 1.5 && total - mid >= 2
+          ? 'over'
+          : ratio <= 0.5
+          ? 'under'
+          : 'normal';
+      const load: PersonLoad = {
+        total,
+        median: mid,
+        ratio: ratio === null ? null : Math.round(ratio * 10) / 10,
+        badge,
+        pace: pace === null ? null : Math.round(pace * 100) / 100,
+        runwayDays: pace ? total / pace : null,
+        weekly,
       };
-      const off = options.away?.[name];
-      const away = off ? { until: off.until, note: off.note ?? null } : null;
+      const base = { ...d, load };
       return {
-        name,
-        github,
-        away,
         ...base,
         signals: personSignals(
           base,
           issues?.releaseVersion ?? null,
           now,
           thresholds,
-          away,
+          d.away,
+          unassigned,
         ),
       };
     })
@@ -495,6 +684,9 @@ export const buildTeam = (
       .filter((a) => !used.has(a))
       .sort(),
     thresholds,
+    flow,
+    scopeGrowing: flow ? scopeGrowing(flow) : false,
+    unassigned,
     hasDetails: Boolean(issues),
   };
 };

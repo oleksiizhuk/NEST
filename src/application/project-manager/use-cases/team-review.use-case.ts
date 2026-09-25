@@ -68,6 +68,15 @@ const describe = (p: PersonView): string =>
         .map((x) => `${x.repo}#${x.number} ${x.review}, ${x.waitingDays}d`)
         .join('; ') || (p.github ? 'none' : 'GitHub login not linked')
     }; merged in 14 days: ${p.merged14.length}`,
+    `Load: ${p.load.total} open (team median ${p.load.median}${
+      p.load.badge ? `, ${p.load.badge}` : ''
+    }); pace ${
+      p.load.pace === null ? 'unknown' : `${p.load.pace} tasks/working day`
+    }${
+      p.load.weekly
+        ? `; closed per week, oldest first: ${p.load.weekly.join(' ')}`
+        : ''
+    }${p.away ? `; away until ${p.away.until}` : ''}`,
     `Computed signals: ${p.signals.map((s) => s.text).join(' ')}`,
   ].join('\n');
 

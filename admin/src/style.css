@@ -732,3 +732,103 @@ a.key:hover {
   gap: 12px;
   flex-wrap: wrap;
 }
+
+/* ---------- load and weekly flow ---------- */
+.load {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.load-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.load-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--accent);
+}
+.load-fill.over {
+  background: #e0a400;
+}
+.load-fill.under {
+  background: var(--muted);
+}
+.load-median {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.6;
+}
+.load-spark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spark {
+  width: 120px;
+  height: 28px;
+}
+.flow-chart {
+  margin: 12px 0 0;
+}
+.flow-chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.bar.done {
+  fill: var(--accent);
+}
+.bar.created {
+  fill: var(--muted);
+  opacity: 0.55;
+}
+.partial .bar,
+.bar.partial {
+  opacity: 0.45;
+}
+.axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.tick {
+  font-size: 11px;
+  fill: var(--muted);
+  text-anchor: middle;
+}
+.legend {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  margin-top: 6px;
+}
+.swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+.swatch.done {
+  background: var(--accent);
+}
+.swatch.created {
+  background: var(--muted);
+  opacity: 0.55;
+}
+.warn-line {
+  padding: 8px 10px;
+  border-left: 3px solid #e0a400;
+  background: var(--changed);
+  border-radius: 6px;
+}

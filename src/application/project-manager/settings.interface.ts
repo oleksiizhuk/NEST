@@ -167,6 +167,9 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
         wipLimit: int('wipLimit', 1, 10),
         staleDays: int('staleDays', 1, 30),
         reviewWaitDays: int('reviewWaitDays', 1, 14),
+        // Added later: older admin pages do not send it
+        runwayDays:
+          value.runwayDays === undefined ? 2 : int('runwayDays', 1, 10),
         off: [...new Set(off as SignalRule[])],
       };
     }
