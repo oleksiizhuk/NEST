@@ -127,7 +127,9 @@ describe('Jira reader', () => {
 
     expect(text.startsWith('## Computed metrics')).toBe(true);
     const history = JSON.parse(fetchMock.mock.calls[3][1].body);
-    expect(history.jql).toContain('statusCategory = Done AND updated >= -84d');
+    expect(history.jql).toContain(
+      '(resolved >= -84d OR statusCategoryChangedDate >= -84d)',
+    );
     expect(history.fields).not.toContain('summary');
     expect(JSON.parse(fetchMock.mock.calls[4][1].body).jql).toContain(
       'created >= -84d',

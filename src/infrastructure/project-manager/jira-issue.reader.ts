@@ -244,7 +244,9 @@ export class JiraIssueReader implements IProjectSource {
       ? [
           {
             title: 'done history',
-            jql: `${scope} AND statusCategory = Done AND updated >= ${weeks} ORDER BY updated DESC`,
+            // By when it was closed, not updated: a bulk edit of old
+            // tickets must not fill the limit
+            jql: `${scope} AND statusCategory = Done AND (resolved >= ${weeks} OR statusCategoryChangedDate >= ${weeks}) ORDER BY created DESC`,
             limit: 1000,
             fields: HISTORY_FIELDS,
           },

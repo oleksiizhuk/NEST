@@ -170,6 +170,9 @@ export interface Signal {
   keys: string[];
   // A sentence the owner can say or send to the person
   say?: string;
+  // What "Сегодня" hides by, when the keys are only suggestions that change
+  // on their own (free tickets, the queue top)
+  subject?: string;
 }
 
 export interface PersonView {
@@ -434,9 +437,11 @@ export const personSignals = (
   const offerKeys = offer.map((i) => i.key);
   const total = p.inProgress.length + p.queue.length;
   if (on('runway') && !total) {
+    // Info, not a warning: leads, QA or people who left show up here too
     out.push({
-      level: 'warn',
+      level: 'info',
       rule: 'runway',
+      subject: 'load',
       text: 'Нет задач ни в работе, ни в очереди.',
       why: 'в работе 0, очередь 0',
       keys: offerKeys,
@@ -453,6 +458,7 @@ export const personSignals = (
     out.push({
       level: 'info',
       rule: 'runway',
+      subject: 'load',
       text: `Работы примерно на ${days} раб. дн. — пора планировать следующее.`,
       why: `открыто ${total} (в работе ${p.inProgress.length}, очередь ${
         p.queue.length
@@ -470,6 +476,7 @@ export const personSignals = (
     out.push({
       level: 'warn',
       rule: 'overload',
+      subject: 'load',
       text: `Перегружен: ${tasks(total)} (в работе ${
         p.inProgress.length
       }, очередь ${p.queue.length}) — в ${load.ratio?.toFixed(
@@ -488,6 +495,7 @@ export const personSignals = (
     out.push({
       level: 'info',
       rule: 'underload',
+      subject: 'load',
       text: `Недогружен: ${tasks(total)} при медиане команды ${load.median}.`,
       why: `${total} ÷ медиана ${load.median} = ×${load.ratio?.toFixed(
         1,
@@ -546,7 +554,7 @@ export const todayItems = (
     for (const s of p.signals) {
       const weight = WEIGHT[s.rule];
       if (!weight) continue;
-      const id = `${s.rule}|${p.name}|${s.keys.join(',')}`;
+      const id = `${s.rule}|${p.name}|${s.subject ?? s.keys.join(',')}`;
       if (hidden.has(id)) continue;
       const inRelease = s.keys.some((k) => release.has(k));
       all.push({
@@ -622,7 +630,13 @@ export const buildTeam = (
       merged14: gh?.merged14 ?? [],
     };
   });
-  const present = drafts.filter((d) => !(d.away && d.away.until >= today));
+  const isAway = (d: (typeof drafts)[number]) =>
+    Boolean(d.away && d.away.until >= today);
+  // Only people with open work set the norm: a lead, QA or someone who left
+  // closes a ticket now and then and would drag the median to zero
+  const present = drafts.filter(
+    (d) => !isAway(d) && d.inProgress.length + d.queue.length > 0,
+  );
   const mid = median(present.map((d) => d.inProgress.length + d.queue.length));
   const unassigned = issues?.unassigned ?? [];
   const people = drafts
@@ -640,7 +654,7 @@ export const buildTeam = (
       const ratio = mid ? total / mid : null;
       // Relative load means little in a team of one or two
       const badge: PersonLoad['badge'] =
-        ratio === null || present.length < 3
+        ratio === null || present.length < 3 || isAway(d)
           ? null
           : ratio >= 1.5 && total - mid >= 2
           ? 'over'

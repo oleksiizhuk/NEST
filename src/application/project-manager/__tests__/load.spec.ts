@@ -5,7 +5,11 @@ import {
   scopeGrowing,
   weeklyFlow,
 } from '@application/project-manager/load';
-import { buildTeam, teamIssues } from '@application/project-manager/team';
+import {
+  buildTeam,
+  teamIssues,
+  todayItems,
+} from '@application/project-manager/team';
 
 const NOW = new Date('2026-09-24T10:00:00Z'); // Thursday; week of 21.09
 
@@ -162,5 +166,60 @@ describe('team load', () => {
     const bob = t.people.find((p) => p.name === 'Bob');
     expect(bob?.load.pace).toBeNull();
     expect(bob?.signals.some((s) => s.rule === 'runway')).toBe(false);
+  });
+
+  it('keeps the median to people with open work and badges nobody away', () => {
+    const issues = teamIssues(
+      [
+        ...['A-1', 'A-2', 'A-3', 'A-4', 'A-5'].map((k) => queued(k, 'Ann')),
+        inProgress('B-1', 'Bob'),
+        queued('B-2', 'Bob'),
+        inProgress('C-1', 'Cid'),
+        queued('C-2', 'Cid'),
+        inProgress('D-1', 'Dee'),
+        queued('D-2', 'Dee'),
+      ],
+      ['Lead', 'QA', 'Left'].map((who, i) =>
+        fact(`X-${i}`, {
+          assignee: who,
+          category: 'done',
+          doneAt: '2026-09-20T00:00:00Z',
+        }),
+      ),
+      NOW,
+      '1.0',
+      false,
+    );
+    const t = buildTeam(
+      new ProjectSnapshot('s', NOW, [
+        {
+          source: 'issues',
+          ok: true,
+          fetchedAt: NOW,
+          text: '',
+          error: null,
+          details: issues as any,
+        },
+      ]),
+      {},
+      NOW,
+      { away: { Dee: { until: '2026-10-01' } } },
+    );
+    const by = (n: string) => t.people.find((p) => p.name === n);
+    // Median of Ann 5, Bob 2, Cid 2 — the three with nothing open do not count
+    expect(by('Bob')?.load.median).toBe(2);
+    expect(by('Bob')?.load.badge).toBe('normal');
+    expect(by('Ann')?.load.badge).toBe('over');
+    expect(by('Dee')?.load.badge).toBeNull();
+    const lead = by('Lead')?.signals.find((s) => s.rule === 'runway');
+    expect(lead).toMatchObject({ level: 'info', subject: 'load' });
+  });
+
+  it('hides load items by person, not by the suggested tickets', () => {
+    const t = team({ Dee: [5, 5, 5, 0] });
+    const items = todayItems(t.people, new Set(), 20).items;
+    expect(items.find((i) => i.rule === 'underload')?.id).toBe(
+      'underload|Dee|load',
+    );
   });
 });
