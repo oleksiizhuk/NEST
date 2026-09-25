@@ -88,7 +88,13 @@ export class TeamReviewUseCase {
     const snapshot = await this.snapshots.findLatest();
     if (!snapshot) return null;
     const live = await this.runtime.current();
-    return buildTeam(snapshot, live.githubLogins ?? {}, now);
+    return {
+      ...buildTeam(snapshot, live.githubLogins ?? {}, now, {
+        thresholds: live.teamThresholds,
+        away: live.teamAway,
+      }),
+      links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
+    };
   }
 
   async latest() {
@@ -101,7 +107,10 @@ export class TeamReviewUseCase {
     const snapshot = await this.snapshots.findLatest();
     if (!snapshot) throw new Error('Нет снимка проекта: обновите данные.');
     const live = await this.runtime.current();
-    const team = buildTeam(snapshot, live.githubLogins ?? {}, now);
+    const team = buildTeam(snapshot, live.githubLogins ?? {}, now, {
+      thresholds: live.teamThresholds,
+      away: live.teamAway,
+    });
     if (!team.hasDetails)
       throw new Error(
         'В снимке ещё нет данных по людям: нажмите «Обновить данные сейчас».',

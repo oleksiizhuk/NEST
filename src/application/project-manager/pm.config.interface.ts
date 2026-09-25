@@ -1,3 +1,5 @@
+import { TeamAway, TeamThresholds } from '@application/project-manager/team';
+
 export const PM_CONFIG = 'PM_CONFIG';
 
 export interface IPmConfig {
@@ -36,4 +38,10 @@ export interface IPmConfig {
   pmInOwnerGroups?: boolean;
   // Jira name → GitHub login (admin page)
   githubLogins?: Record<string, string>;
+  // Сотрудники thresholds and absences (admin page)
+  teamThresholds?: TeamThresholds;
+  teamAway?: TeamAway;
+  // For links on the admin page: Jira site origin and the GitHub org
+  jiraUrl?: string | null;
+  githubOrg?: string | null;
 }

@@ -1,6 +1,11 @@
 import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity';
 import { IssueFact } from '@application/project-manager/metrics';
-import { buildTeam, teamIssues } from '@application/project-manager/team';
+import {
+  buildTeam,
+  PersonView,
+  teamIssues,
+  todayItems,
+} from '@application/project-manager/team';
 import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
 import { cleanSettings } from '@application/project-manager/settings.interface';
 
@@ -156,8 +161,121 @@ describe('buildTeam', () => {
       },
     ]);
     expect(buildTeam(snap, {}, NOW).people[0].signals).toEqual([
-      { level: 'ok', text: 'Идёт по плану: явных проблем в данных нет.' },
+      {
+        level: 'ok',
+        rule: 'ok',
+        text: 'Идёт по плану: явных проблем в данных нет.',
+        keys: [],
+      },
     ]);
+  });
+
+  it('explains each signal and suggests what to say', () => {
+    const ann = buildTeam(snapshot(), {}, NOW).people[0];
+    const stale = ann.signals.find((s) => s.rule === 'stale');
+    expect(stale).toMatchObject({
+      keys: ['A-1'],
+      why: 'в работе с 10.09: 10 раб. дн. > порог 5',
+      say: 'A-1 в работе 10 дней — что мешает закрыть? Нужна помощь?',
+    });
+    expect(ann.signals.find((s) => s.rule === 'wip')?.why).toBe(
+      'в работе 3 > порог 2',
+    );
+  });
+
+  it('uses the owner thresholds and switched-off rules', () => {
+    const ann = buildTeam(snapshot(), {}, NOW, {
+      thresholds: {
+        wipLimit: 3,
+        staleDays: 10,
+        reviewWaitDays: 2,
+        off: ['no-output', 'priority'],
+      },
+    }).people[0];
+    expect(ann.signals.map((s) => s.rule)).toEqual(['off-release']);
+    const bob = buildTeam(snapshot(), { Bob: 'bob-gh' }, NOW, {
+      thresholds: { wipLimit: 2, staleDays: 5, reviewWaitDays: 4, off: [] },
+    }).people[1];
+    expect(bob.signals.map((s) => s.rule)).toEqual(['ok']);
+  });
+
+  it('keeps quiet about someone away, except release work to hand over', () => {
+    const team = buildTeam(snapshot(), {}, NOW, {
+      away: {
+        'Ann Lee': { until: '2026-10-02', note: 'отпуск' },
+        Bob: { until: '2026-09-23' },
+      },
+    });
+    const ann = team.people.find((p) => p.name === 'Ann Lee') as PersonView;
+    expect(ann.away).toEqual({ until: '2026-10-02', note: 'отпуск' });
+    expect(ann.signals.map((s) => [s.rule, s.keys])).toEqual([
+      ['away', []],
+      ['handover', ['A-3']],
+    ]);
+    expect(ann.signals[0].text).toContain('Отсутствует до 02.10 (отпуск)');
+    // An absence that ended yesterday no longer counts
+    const bob = team.people.find((p) => p.name === 'Bob') as PersonView;
+    expect(bob.signals.some((s) => s.rule === 'away')).toBe(false);
+  });
+
+  it('ranks today items across people and skips hidden ones', () => {
+    const team = buildTeam(snapshot(), { Bob: 'bob-gh' }, NOW);
+    const { items, more } = todayItems(team.people, new Set(), 3);
+    expect(items.map((i) => [i.rule, i.person])).toEqual([
+      ['off-release', 'Ann Lee'],
+      ['pr-wait', 'Bob'],
+      ['stale', 'Ann Lee'],
+    ]);
+    expect(items[0]).toMatchObject({
+      id: 'off-release|Ann Lee|A-4',
+      inRelease: true,
+    });
+    expect(more).toBe(3);
+    const next = todayItems(team.people, new Set([items[0].id]), 3);
+    expect(next.items[0].rule).toBe('pr-wait');
+  });
+
+  it('validates thresholds and absences', () => {
+    expect(
+      cleanSettings({
+        teamThresholds: {
+          wipLimit: 3,
+          staleDays: 7,
+          reviewWaitDays: 2,
+          off: ['idle', 'idle'],
+        },
+      }),
+    ).toEqual({
+      teamThresholds: {
+        wipLimit: 3,
+        staleDays: 7,
+        reviewWaitDays: 2,
+        off: ['idle'],
+      },
+    });
+    expect(() =>
+      cleanSettings({
+        teamThresholds: { wipLimit: 0, staleDays: 7, reviewWaitDays: 2 },
+      }),
+    ).toThrow('wipLimit');
+    expect(() =>
+      cleanSettings({
+        teamThresholds: {
+          wipLimit: 2,
+          staleDays: 7,
+          reviewWaitDays: 2,
+          off: ['away'],
+        },
+      }),
+    ).toThrow('teamThresholds.off');
+    expect(
+      cleanSettings({ teamAway: { 'J. Smith': { until: '2026-10-01' } } }),
+    ).toEqual({
+      teamAway: { 'J. Smith': { until: '2026-10-01', note: null } },
+    });
+    expect(() =>
+      cleanSettings({ teamAway: { Ann: { until: '1 Oct' } } }),
+    ).toThrow('YYYY-MM-DD');
   });
 
   it('validates GitHub links', () => {

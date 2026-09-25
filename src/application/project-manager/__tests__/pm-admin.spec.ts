@@ -124,6 +124,7 @@ describe('PmAdminUseCase', () => {
       chats,
       telegram as any,
       { ownerId: 42 } as any,
+      { team: jest.fn() } as any,
     );
     const settings = await admin.settings();
     expect(settings.defaults.dailyQuestionLimit).toBe(7);
@@ -192,5 +193,90 @@ describe('PmAdminUseCase', () => {
     await admin.setGroup(-400, true);
     expect(chats.enable).toHaveBeenCalledWith(-400, 'New team chat');
     await expect(admin.setGroup(-999, true)).rejects.toThrow('unknown chat');
+  });
+});
+
+describe('PmAdminUseCase — Сегодня and absences', () => {
+  const setup = (values: Record<string, unknown>) => {
+    const store = {
+      get: jest.fn().mockResolvedValue({ values, updatedAt: null }),
+      save: jest.fn(),
+      sessionEpoch: jest.fn(),
+      bumpSessionEpoch: jest.fn(),
+    };
+    const signal = (rule: string, key: string) => ({
+      level: 'warn',
+      rule,
+      text: `${rule} ${key}`,
+      keys: [key],
+    });
+    const person = {
+      name: 'Ann',
+      inProgress: [],
+      queue: [{ key: 'A-1', inScope: true }],
+      signals: [signal('blocked', 'A-1'), signal('stale', 'A-2')],
+    };
+    const team = {
+      team: jest.fn().mockResolvedValue({
+        asOf: new Date(),
+        links: { jira: null, githubOrg: null },
+        releaseVersion: '1.0',
+        people: [person],
+      }),
+    };
+    const admin = new PmAdminUseCase(
+      store as any,
+      new PmRuntimeConfig(base, store as any),
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { ownerId: 42 } as any,
+      team as any,
+    );
+    return { admin, store };
+  };
+  const NOW = new Date('2026-09-24T10:00:00Z');
+
+  it('lists signals, hides done ones until their date', async () => {
+    const { admin } = setup({
+      todayHidden: [
+        { id: 'stale|Ann|A-2', until: '2026-09-25' },
+        { id: 'blocked|Ann|A-1', until: '2026-09-24' },
+      ],
+    });
+    const today = await admin.today(NOW);
+    expect(today.items.map((i) => i.id)).toEqual(['blocked|Ann|A-1']);
+    expect(today.items[0].inRelease).toBe(true);
+  });
+
+  it('hides for a day or a week and drops expired entries', async () => {
+    const { admin, store } = setup({
+      todayHidden: [{ id: 'old', until: '2026-09-20' }],
+    });
+    await admin.hideToday('stale|Ann|A-2', 7, 42, NOW);
+    expect(store.save).toHaveBeenCalledWith(
+      { todayHidden: [{ id: 'stale|Ann|A-2', until: '2026-10-01' }] },
+      42,
+    );
+    await expect(admin.hideToday('x', 3, 42, NOW)).rejects.toThrow('days');
+  });
+
+  it('marks someone away and back', async () => {
+    const { admin, store } = setup({
+      teamAway: { Bob: { until: '2026-09-30', note: null } },
+    });
+    await admin.setAway('Ann', '2026-10-02', 'отпуск', 42);
+    expect(store.save).toHaveBeenLastCalledWith(
+      {
+        teamAway: {
+          Bob: { until: '2026-09-30', note: null },
+          Ann: { until: '2026-10-02', note: 'отпуск' },
+        },
+      },
+      42,
+    );
+    await admin.setAway('Bob', null, null, 42);
+    expect(store.save).toHaveBeenLastCalledWith({ teamAway: {} }, 42);
   });
 });

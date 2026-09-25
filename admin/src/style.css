@@ -638,3 +638,97 @@ button.link {
     transition: none;
   }
 }
+
+/* ---------- signals: why / today ---------- */
+a.key {
+  color: var(--accent);
+  text-decoration: none;
+}
+a.key:hover {
+  text-decoration: underline;
+}
+.why-btn {
+  margin-left: 6px;
+}
+.why {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.thresholds {
+  width: 100%;
+}
+.threshold-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.threshold-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.threshold-grid label .muted {
+  font-weight: 400;
+}
+.rule-toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.today {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 12px;
+}
+.today .card {
+  margin-bottom: 0;
+}
+.today-item.warn {
+  border-left: 3px solid #e0a400;
+}
+.today-item.info {
+  border-left: 3px solid var(--accent);
+}
+.today-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.today-rule {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.today-person {
+  font-weight: 600;
+}
+.today-text {
+  font-size: 16px;
+  margin: 8px 0 4px;
+}
+.today-hint {
+  margin-top: 8px;
+}
+.today-say {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}

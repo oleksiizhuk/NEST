@@ -8,6 +8,11 @@ import {
   SETTING_KEYS,
 } from '@application/project-manager/settings.interface';
 import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
+import {
+  DEFAULT_THRESHOLDS,
+  todayItems,
+} from '@application/project-manager/team';
+import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
 import { IQuota, PM_QUOTA } from '@application/project-manager/quota.interface';
 import {
   ITelegramMessageRepository,
@@ -39,6 +44,7 @@ export class PmAdminUseCase {
     @Inject(PM_CHAT_REGISTRY) private readonly chats: IPmChatRegistry,
     @Inject(TELEGRAM_GATEWAY) private readonly telegram: ITelegramGateway,
     @Inject(TELEGRAM_CONFIG) private readonly telegramConfig: ITelegramConfig,
+    private readonly team: TeamReviewUseCase,
   ) {}
 
   // Groups the bot has seen and their PM mode:
@@ -94,6 +100,58 @@ export class PmAdminUseCase {
     else delete current[name];
     await this.store.save(cleanSettings({ githubLogins: current }), by);
     this.runtime.invalidate();
+  }
+
+  // Marks a person away until a date (inclusive); null brings them back
+  async setAway(
+    name: string,
+    until: string | null,
+    note: string | null,
+    by: number,
+  ) {
+    const current = { ...((await this.store.get()).values.teamAway ?? {}) };
+    if (until) current[name] = { until, note };
+    else delete current[name];
+    await this.store.save(cleanSettings({ teamAway: current }), by);
+    this.runtime.invalidate();
+  }
+
+  // Сегодня: the top signals across the team, minus what the owner hid
+  async today(now = new Date()) {
+    const [team, { values }] = await Promise.all([
+      this.team.team(now),
+      this.store.get(),
+    ]);
+    const day = now.toISOString().slice(0, 10);
+    const hidden = new Set(
+      (values.todayHidden ?? []).filter((h) => h.until > day).map((h) => h.id),
+    );
+    if (!team) return { asOf: null, links: null, items: [], more: 0 };
+    return {
+      asOf: team.asOf,
+      links: team.links,
+      releaseVersion: team.releaseVersion,
+      ...todayItems(team.people, hidden),
+    };
+  }
+
+  // "Готово" hides an item for a week, "Отложить" until tomorrow; if the
+  // problem is still in the data after that, it comes back
+  async hideToday(id: string, days: number, by: number, now = new Date()) {
+    if (!id || id.length > 300) throw new SettingsError('bad item id');
+    if (![1, 7].includes(days)) throw new SettingsError('days: 1 or 7');
+    const day = now.toISOString().slice(0, 10);
+    const until = new Date(now.getTime() + days * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const kept = ((await this.store.get()).values.todayHidden ?? []).filter(
+      (h) => h.until > day && h.id !== id,
+    );
+    await this.store.save(
+      { todayHidden: [...kept, { id, until }].slice(-200) },
+      by,
+    );
+    return this.today(now);
   }
 
   // Adds or removes a chat from the alert recipients (an override of the
@@ -155,6 +213,9 @@ export class PmAdminUseCase {
       aiEffort: base.aiEffort ?? null,
       pmInOwnerGroups: base.pmInOwnerGroups !== false,
       githubLogins: {},
+      teamThresholds: DEFAULT_THRESHOLDS,
+      teamAway: {},
+      todayHidden: [],
     };
     const overrides: PmSettings = {};
     for (const key of SETTING_KEYS) {

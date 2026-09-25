@@ -9,6 +9,16 @@ const ids = (value: string | undefined, ownerId: number): number[] =>
     .map((v) => (v.toLowerCase() === 'owner' ? ownerId : Number(v)))
     .filter((n) => Number.isInteger(n) && n !== 0);
 
+// Only an https origin is used for links; anything else means "no links"
+const origin = (value: string | undefined): string | null => {
+  try {
+    const url = new URL(value ?? '');
+    return url.protocol === 'https:' ? url.origin : null;
+  } catch {
+    return null;
+  }
+};
+
 export const pmConfig = (config: ConfigService): IPmConfig => {
   const digest = Number(config.get<string>('PM_DIGEST_CHAT_ID'));
   const release = config.get<string>('PM_RELEASE_DATE') ?? '';
@@ -59,6 +69,11 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       config.get<string>('PM_ALERT_CHAT_IDS') || 'owner',
       Number(config.get<string>('TELEGRAM_OWNER_ID')),
     ),
+    jiraUrl: origin(
+      config.get<string>('PM_ATLASSIAN_BASE_URL') ||
+        config.get<string>('JIRA_BASE_URL'),
+    ),
+    githubOrg: config.get<string>('PM_GITHUB_ORG')?.trim() || null,
     actionUserIds: ids(
       config.get<string>('PM_ACTION_USER_IDS'),
       Number(config.get<string>('TELEGRAM_OWNER_ID')),

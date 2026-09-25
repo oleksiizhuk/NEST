@@ -1,5 +1,28 @@
 import { useEffect, useState } from 'react';
-import { api, Person, TeamIssue, TeamView, Unauthorized } from './api';
+import {
+  api,
+  Links,
+  Person,
+  SignalRule,
+  TeamIssue,
+  TeamView,
+  Thresholds,
+  Unauthorized,
+} from './api';
+import { Key, RULES, SignalLine } from './signals';
+
+const TOGGLEABLE: SignalRule[] = [
+  'wip',
+  'stale',
+  'off-release',
+  'priority',
+  'overdue',
+  'blocked',
+  'idle',
+  'no-output',
+  'pr-wait',
+  'changes',
+];
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', {
@@ -7,14 +30,22 @@ const when = (iso: string) =>
     timeStyle: 'short',
   });
 
-function Issue({ i }: { i: TeamIssue }) {
+function Issue({
+  i,
+  links,
+  stale,
+}: {
+  i: TeamIssue;
+  links: Links | null;
+  stale: number;
+}) {
   return (
     <li>
-      <span className="key">{i.key}</span> {i.summary}
+      <Key k={i.key} links={links} /> {i.summary}
       <span className="tags">
         {i.priority && <span className="tag">{i.priority}</span>}
         {i.days !== undefined && i.days !== null && (
-          <span className={`tag${i.days > 5 ? ' warn' : ''}`}>
+          <span className={`tag${i.days > stale ? ' warn' : ''}`}>
             {i.days} раб. дн.
           </span>
         )}
@@ -25,12 +56,190 @@ function Issue({ i }: { i: TeamIssue }) {
   );
 }
 
-function PersonCard({
+const ruDay = (iso: string) => {
+  const [, m, d] = iso.split('-');
+  return `${d}.${m}`;
+};
+
+function AwayEditor({
   p,
-  onGithub,
+  onAway,
 }: {
   p: Person;
+  onAway: (until: string | null, note: string | null) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [until, setUntil] = useState(p.away?.until ?? '');
+  const [note, setNote] = useState(p.away?.note ?? '');
+  const today = new Date().toISOString().slice(0, 10);
+  const away = p.away && p.away.until >= today ? p.away : null;
+
+  if (!editing)
+    return (
+      <button className="link small" onClick={() => setEditing(true)}>
+        {away
+          ? `Отсутствует до ${ruDay(away.until)}${
+              away.note ? ` (${away.note})` : ''
+            }`
+          : 'Отметить отсутствие'}
+      </button>
+    );
+  return (
+    <form
+      className="inline-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        await onAway(until || null, note.trim() || null);
+        setEditing(false);
+      }}
+    >
+      <input
+        type="date"
+        value={until}
+        min={today}
+        aria-label="Отсутствует до (включительно)"
+        onChange={(e) => setUntil(e.target.value)}
+      />
+      <input
+        value={note}
+        maxLength={60}
+        placeholder="отпуск, больничный…"
+        onChange={(e) => setNote(e.target.value)}
+      />
+      <button type="submit">OK</button>
+      {p.away && (
+        <button
+          type="button"
+          className="ghost"
+          onClick={async () => {
+            await onAway(null, null);
+            setEditing(false);
+          }}
+        >
+          Вернулся
+        </button>
+      )}
+      <button type="button" className="ghost" onClick={() => setEditing(false)}>
+        Отмена
+      </button>
+    </form>
+  );
+}
+
+function ThresholdsPanel({
+  value,
+  onSave,
+}: {
+  value: Thresholds;
+  onSave: (t: Thresholds) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Thresholds>(value);
+  const [busy, setBusy] = useState(false);
+  const num = (k: 'wipLimit' | 'staleDays' | 'reviewWaitDays') => (
+    <input
+      type="number"
+      min={1}
+      max={k === 'staleDays' ? 30 : k === 'wipLimit' ? 10 : 14}
+      value={draft[k]}
+      onChange={(e) => setDraft({ ...draft, [k]: Number(e.target.value) })}
+    />
+  );
+  if (!open)
+    return (
+      <button className="link small" onClick={() => setOpen(true)}>
+        Пороги сигналов: в работе &gt; {value.wipLimit}, застряла &gt;{' '}
+        {value.staleDays} дн., ревью &gt; {value.reviewWaitDays} дн.
+        {value.off.length ? ` · выключено ${value.off.length}` : ''}
+      </button>
+    );
+  return (
+    <section className="card thresholds">
+      <h2>Пороги сигналов</h2>
+      <div className="threshold-grid">
+        <label>
+          Задач в работе одновременно, не больше
+          {num('wipLimit')}
+          <span className="muted small">
+            Обычно 1–2 на человека: так задачи быстрее доходят до конца.
+          </span>
+        </label>
+        <label>
+          Рабочих дней в работе, после которых задача «застряла»
+          {num('staleDays')}
+          <span className="muted small">
+            Типичная задача — 2–5 дней. Больше — повод спросить, что мешает.
+          </span>
+        </label>
+        <label>
+          Рабочих дней ожидания ревью PR
+          {num('reviewWaitDays')}
+          <span className="muted small">
+            Хорошо — ревью в течение дня, терпимо — два.
+          </span>
+        </label>
+      </div>
+      <h3>Какие сигналы показывать</h3>
+      <div className="rule-toggles">
+        {TOGGLEABLE.map((r) => (
+          <label key={r} className="check">
+            <input
+              type="checkbox"
+              checked={!draft.off.includes(r)}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  off: e.target.checked
+                    ? draft.off.filter((x) => x !== r)
+                    : [...draft.off, r],
+                })
+              }
+            />
+            {RULES[r].title}
+          </label>
+        ))}
+      </div>
+      <div className="actions">
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onSave(draft);
+              setOpen(false);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          Сохранить
+        </button>
+        <button
+          className="ghost"
+          onClick={() => {
+            setDraft(value);
+            setOpen(false);
+          }}
+        >
+          Отмена
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function PersonCard({
+  p,
+  links,
+  stale,
+  onGithub,
+  onAway,
+}: {
+  p: Person;
+  links: Links | null;
+  stale: number;
   onGithub: (login: string | null) => Promise<void>;
+  onAway: (until: string | null, note: string | null) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -70,6 +279,9 @@ function PersonCard({
               {p.github ? `GitHub: ${p.github}` : 'Привязать GitHub'}
             </button>
           )}
+          <div>
+            <AwayEditor p={p} onAway={onAway} />
+          </div>
         </div>
         <div className="chips">
           <span className="chip">В работе {p.inProgress.length}</span>
@@ -81,9 +293,7 @@ function PersonCard({
 
       <ul className="signals">
         {p.signals.map((s, i) => (
-          <li key={i} className={s.level}>
-            {s.text}
-          </li>
+          <SignalLine key={i} s={s} links={links} />
         ))}
       </ul>
 
@@ -97,7 +307,7 @@ function PersonCard({
           {p.inProgress.length ? (
             <ul className="issues">
               {p.inProgress.map((i) => (
-                <Issue key={i.key} i={i} />
+                <Issue key={i.key} i={i} links={links} stale={stale} />
               ))}
             </ul>
           ) : (
@@ -107,7 +317,7 @@ function PersonCard({
           {p.queue.length ? (
             <ul className="issues">
               {p.queue.slice(0, 8).map((i) => (
-                <Issue key={i.key} i={i} />
+                <Issue key={i.key} i={i} links={links} stale={stale} />
               ))}
             </ul>
           ) : (
@@ -121,7 +331,7 @@ function PersonCard({
             <ul className="issues">
               {p.done14.map((d) => (
                 <li key={d.key}>
-                  <span className="key">{d.key}</span> {d.summary}
+                  <Key k={d.key} links={links} /> {d.summary}
                 </li>
               ))}
             </ul>
@@ -135,9 +345,7 @@ function PersonCard({
                 <ul className="issues">
                   {p.pulls.map((x) => (
                     <li key={`${x.repo}${x.number}`}>
-                      <span className="key">
-                        {x.repo}#{x.number}
-                      </span>{' '}
+                      <Key k={`${x.repo}#${x.number}`} links={links} />{' '}
                       {x.title}
                       <span className="tags">
                         {x.draft && <span className="tag">черновик</span>}
@@ -305,6 +513,19 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
                 {refreshing ? 'обновляю…' : 'обновить сейчас'}
               </button>
             </span>
+            <ThresholdsPanel
+              key={JSON.stringify(team.thresholds)}
+              value={team.thresholds}
+              onSave={async (t) => {
+                try {
+                  await api.save({ teamThresholds: t });
+                  setView(await api.team());
+                } catch (e) {
+                  handle(e);
+                  throw e;
+                }
+              }}
+            />
             <label className="check">
               <input
                 type="checkbox"
@@ -319,6 +540,15 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
               <PersonCard
                 key={p.name}
                 p={p}
+                links={team.links}
+                stale={team.thresholds.staleDays}
+                onAway={async (until, note) => {
+                  try {
+                    setView(await api.setAway(p.name, until, note));
+                  } catch (e) {
+                    handle(e);
+                  }
+                }}
                 onGithub={async (login) => {
                   try {
                     setView(await api.setGithub(p.name, login));
