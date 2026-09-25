@@ -1,4 +1,10 @@
 import { IPmConfig } from '@application/project-manager/pm.config.interface';
+import {
+  SignalRule,
+  TeamAway,
+  TeamThresholds,
+  TOGGLEABLE_RULES,
+} from '@application/project-manager/team';
 
 export const PM_SETTINGS = 'PM_SETTINGS';
 
@@ -18,6 +24,13 @@ export interface PmSettings {
   pmInOwnerGroups?: boolean | null;
   // Jira display name → GitHub login, for the Сотрудники page
   githubLogins?: Record<string, string> | null;
+  // Сотрудники: signal thresholds and rules switched off
+  teamThresholds?: TeamThresholds | null;
+  // Jira display name → away until (inclusive), so signals stay quiet
+  teamAway?: TeamAway | null;
+  // "Сегодня" items the owner marked done or snoozed, until an ISO time.
+  // Written by its own endpoint, not through the settings form.
+  todayHidden?: Array<{ id: string; until: string }> | null;
 }
 
 export const SETTING_KEYS: Array<keyof PmSettings> = [
@@ -29,11 +42,22 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
   'aiEffort',
   'pmInOwnerGroups',
   'githubLogins',
+  'teamThresholds',
+  'teamAway',
 ];
 
 export interface IPmSettingsStore {
   get(): Promise<{ values: PmSettings; updatedAt: Date | null }>;
   save(values: PmSettings, by: number): Promise<void>;
+  // One person's absence (null removes it), without touching the others
+  setAway(
+    name: string,
+    away: { until: string; note: string | null } | null,
+    by: number,
+  ): Promise<void>;
+  // Adds or replaces one hidden "Сегодня" item and drops expired ones,
+  // atomically, so two quick clicks cannot overwrite each other
+  hideToday(id: string, until: string, now: string, by: number): Promise<void>;
   // Admin sessions carry this number; raising it logs every session out
   sessionEpoch(): Promise<number>;
   bumpSessionEpoch(): Promise<number>;
@@ -119,6 +143,57 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       out.githubLogins = map;
     }
   }
+  if (has('teamThresholds')) {
+    const value = input.teamThresholds as Record<string, unknown> | null;
+    if (value === null) out.teamThresholds = null;
+    else if (typeof value !== 'object' || Array.isArray(value))
+      throw new SettingsError('teamThresholds: an object');
+    else {
+      const int = (k: string, min: number, max: number) => {
+        const n = Number(value[k]);
+        if (!Number.isInteger(n) || n < min || n > max)
+          throw new SettingsError(`teamThresholds.${k}: ${min}-${max}`);
+        return n;
+      };
+      const off = value.off ?? [];
+      if (
+        !Array.isArray(off) ||
+        off.some((r) => !TOGGLEABLE_RULES.includes(r as SignalRule))
+      )
+        throw new SettingsError(
+          `teamThresholds.off: any of ${TOGGLEABLE_RULES.join(', ')}`,
+        );
+      out.teamThresholds = {
+        wipLimit: int('wipLimit', 1, 10),
+        staleDays: int('staleDays', 1, 30),
+        reviewWaitDays: int('reviewWaitDays', 1, 14),
+        off: [...new Set(off as SignalRule[])],
+      };
+    }
+  }
+  if (has('teamAway')) {
+    const value = input.teamAway;
+    if (value === null) out.teamAway = null;
+    else if (typeof value !== 'object' || Array.isArray(value))
+      throw new SettingsError('teamAway: an object name → { until, note }');
+    else {
+      const map: TeamAway = {};
+      for (const [name, raw] of Object.entries(
+        value as Record<string, { until?: unknown; note?: unknown }>,
+      )) {
+        if (!name.trim() || name.length > 100)
+          throw new SettingsError(`teamAway: bad name "${name}"`);
+        const until = String(raw?.until ?? '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || isNaN(Date.parse(until)))
+          throw new SettingsError(`teamAway: date YYYY-MM-DD for ${name}`);
+        const note = raw?.note == null ? '' : String(raw.note).trim();
+        if (note.length > 60)
+          throw new SettingsError(`teamAway: note up to 60 chars`);
+        map[name] = { until, note: note || null };
+      }
+      out.teamAway = map;
+    }
+  }
   if (has('pmInOwnerGroups')) {
     if (nil('pmInOwnerGroups')) out.pmInOwnerGroups = null;
     else if (typeof input.pmInOwnerGroups !== 'boolean')
@@ -143,4 +218,6 @@ export const resolveConfig = (base: IPmConfig, s: PmSettings): IPmConfig => ({
   ...(s.aiEffort != null ? { aiEffort: s.aiEffort } : {}),
   ...(s.pmInOwnerGroups != null ? { pmInOwnerGroups: s.pmInOwnerGroups } : {}),
   ...(s.githubLogins != null ? { githubLogins: s.githubLogins } : {}),
+  ...(s.teamThresholds != null ? { teamThresholds: s.teamThresholds } : {}),
+  ...(s.teamAway != null ? { teamAway: s.teamAway } : {}),
 });

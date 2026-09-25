@@ -5,6 +5,7 @@ import { UsagePanel } from './UsagePanel';
 import { LoginCard } from './LoginCard';
 import { ChatsPanel } from './ChatsPanel';
 import { TeamPage } from './TeamPage';
+import { TodayPage } from './TodayPage';
 import { DataPage } from './DataPage';
 import {
   IconChats,
@@ -15,10 +16,11 @@ import {
   IconData,
   IconTeam,
   IconSettings,
+  IconToday,
 } from './icons';
 
 type State = 'loading' | 'login' | 'ready';
-type PageId = 'overview' | 'team' | 'data' | 'chats' | 'settings';
+type PageId = 'today' | 'overview' | 'team' | 'data' | 'chats' | 'settings';
 
 const PAGES: Array<{
   id: PageId;
@@ -26,6 +28,12 @@ const PAGES: Array<{
   icon: ReactNode;
   lead: string;
 }> = [
+  {
+    id: 'today',
+    title: 'Сегодня',
+    icon: <IconToday />,
+    lead: 'Главные 3–5 дел по команде на сегодня: кто, что, почему и что сказать.',
+  },
   {
     id: 'overview',
     title: 'Обзор',
@@ -70,7 +78,7 @@ const takeLoginToken = (): string | null => {
 // Pages live in the fragment (#/chats), so reload and back keep your place
 const pageFromHash = (): PageId => {
   const id = window.location.hash.match(/^#\/([a-z]+)/)?.[1];
-  return PAGES.find((p) => p.id === id)?.id ?? 'overview';
+  return PAGES.find((p) => p.id === id)?.id ?? 'today';
 };
 
 export function App() {
@@ -261,6 +269,7 @@ export function App() {
 
           {error && <p className="error">{error}</p>}
 
+          {page === 'today' && <TodayPage onUnauthorized={logout} />}
           {page === 'overview' && usage && <UsagePanel usage={usage} />}
           {page === 'team' && <TeamPage onUnauthorized={logout} />}
           {page === 'data' && <DataPage onUnauthorized={logout} />}

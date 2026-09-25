@@ -65,6 +65,7 @@ export interface Settings {
   alertChatIds?: number[] | null;
   aiEffort?: Effort | null;
   pmInOwnerGroups?: boolean | null;
+  teamThresholds?: Thresholds | null;
 }
 
 export interface SettingsView {
@@ -111,6 +112,56 @@ export interface TeamIssue {
   days?: number | null;
 }
 
+export type SignalRule =
+  | 'wip'
+  | 'stale'
+  | 'off-release'
+  | 'priority'
+  | 'overdue'
+  | 'blocked'
+  | 'idle'
+  | 'no-output'
+  | 'pr-wait'
+  | 'changes'
+  | 'away'
+  | 'handover'
+  | 'ok';
+
+export interface Signal {
+  level: 'warn' | 'info' | 'ok';
+  rule: SignalRule;
+  text: string;
+  why?: string;
+  keys: string[];
+  say?: string;
+}
+
+export interface Thresholds {
+  wipLimit: number;
+  staleDays: number;
+  reviewWaitDays: number;
+  off: SignalRule[];
+}
+
+export interface Links {
+  jira: string | null;
+  githubOrg: string | null;
+}
+
+export interface TodayItem extends Signal {
+  id: string;
+  person: string;
+  inRelease: boolean;
+}
+
+export interface TodayView {
+  asOf: string | null;
+  links: Links | null;
+  releaseVersion?: string | null;
+  items: TodayItem[];
+  more: number;
+}
+
 export interface Person {
   name: string;
   github: string | null;
@@ -126,7 +177,8 @@ export interface Person {
     draft: boolean;
   }>;
   merged14: string[];
-  signals: Array<{ level: 'warn' | 'info' | 'ok'; text: string }>;
+  away: { until: string; note: string | null } | null;
+  signals: Signal[];
 }
 
 export interface TeamView {
@@ -137,6 +189,8 @@ export interface TeamView {
     people: Person[];
     unmatchedGithub: string[];
     hasDetails: boolean;
+    thresholds: Thresholds;
+    links: Links;
   } | null;
   review: { text: string; at: string } | null;
 }
@@ -192,6 +246,11 @@ export const api = {
     call<{ text: string; at: string }>('POST', 'team/review', { force }),
   setGithub: (name: string, login: string | null) =>
     call<TeamView>('PUT', 'team/github', { name, login }),
+  setAway: (name: string, until: string | null, note: string | null) =>
+    call<TeamView>('PUT', 'team/away', { name, until, note }),
+  today: () => call<TodayView>('GET', 'today'),
+  hideToday: (id: string, days: 1 | 7) =>
+    call<TodayView>('POST', 'today/hide', { id, days }),
   setChat: (chatId: number, on: boolean | 'auto') =>
     call<Chat[]>('PUT', 'chats', { chatId, on }),
   setChatAlerts: (chatId: number, alerts: boolean) =>

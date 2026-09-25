@@ -5,6 +5,7 @@ import {
   IPmSettingsStore,
   PmSettings,
 } from '@application/project-manager/settings.interface';
+import { TeamAway } from '@application/project-manager/team';
 import { PmSettingsDocument } from '@infrastructure/database/schemas/pm-settings.schema';
 
 const KEY = 'main';
@@ -27,6 +28,17 @@ export class MongoPmSettings implements IPmSettingsStore {
         ),
       );
     }
+    if (Array.isArray(values.teamAway)) {
+      values.teamAway = Object.fromEntries(
+        (
+          values.teamAway as Array<{
+            name: string;
+            until: string;
+            note: string | null;
+          }>
+        ).map((p) => [p.name, { until: p.until, note: p.note ?? null }]),
+      );
+    }
     return {
       values: values as PmSettings,
       updatedAt: doc?.updatedAt ? new Date(doc.updatedAt) : null,
@@ -45,9 +57,60 @@ export class MongoPmSettings implements IPmSettingsStore {
                 login,
               }),
             )
+          : k === 'teamAway' && v
+          ? Object.entries(v as TeamAway).map(([name, a]) => ({
+              name,
+              until: a.until,
+              note: a.note ?? null,
+            }))
           : v;
     }
     await this.model.updateOne({ key: KEY }, { $set: set }, { upsert: true });
+  }
+
+  // $pull then $push: each step is atomic, so concurrent edits of other
+  // people or items are never lost
+  async setAway(
+    name: string,
+    away: { until: string; note: string | null } | null,
+    by: number,
+  ): Promise<void> {
+    await this.model.updateOne(
+      { key: KEY },
+      { $pull: { 'values.teamAway': { name } }, $set: { updatedBy: by } },
+      { upsert: true },
+    );
+    if (away)
+      await this.model.updateOne(
+        { key: KEY },
+        { $push: { 'values.teamAway': { name, ...away } } },
+      );
+  }
+
+  async hideToday(
+    id: string,
+    until: string,
+    now: string,
+    by: number,
+  ): Promise<void> {
+    await this.model.updateOne(
+      { key: KEY },
+      {
+        $pull: {
+          'values.todayHidden': { $or: [{ id }, { until: { $lte: now } }] },
+        },
+        $set: { updatedBy: by },
+      },
+      { upsert: true },
+    );
+    await this.model.updateOne(
+      { key: KEY },
+      {
+        $push: {
+          'values.todayHidden': { $each: [{ id, until }], $slice: -200 },
+        },
+      },
+    );
   }
 
   async sessionEpoch(): Promise<number> {

@@ -67,6 +67,8 @@ describe('PmRuntimeConfig', () => {
       save: jest.fn(),
       sessionEpoch: jest.fn().mockResolvedValue(0),
       bumpSessionEpoch: jest.fn(),
+      setAway: jest.fn(),
+      hideToday: jest.fn(),
     };
     const runtime = new PmRuntimeConfig(base, store);
     expect((await runtime.current(1_000)).dailyQuestionLimit).toBe(3);
@@ -88,6 +90,8 @@ describe('PmAdminUseCase', () => {
       save: jest.fn(),
       sessionEpoch: jest.fn().mockResolvedValue(0),
       bumpSessionEpoch: jest.fn(),
+      setAway: jest.fn(),
+      hideToday: jest.fn(),
     };
     const runtime = new PmRuntimeConfig(base, store);
     const quota = {
@@ -124,6 +128,7 @@ describe('PmAdminUseCase', () => {
       chats,
       telegram as any,
       { ownerId: 42 } as any,
+      { team: jest.fn() } as any,
     );
     const settings = await admin.settings();
     expect(settings.defaults.dailyQuestionLimit).toBe(7);
@@ -192,5 +197,97 @@ describe('PmAdminUseCase', () => {
     await admin.setGroup(-400, true);
     expect(chats.enable).toHaveBeenCalledWith(-400, 'New team chat');
     await expect(admin.setGroup(-999, true)).rejects.toThrow('unknown chat');
+  });
+});
+
+describe('PmAdminUseCase — Сегодня and absences', () => {
+  const setup = (values: Record<string, unknown>) => {
+    const store = {
+      get: jest.fn().mockResolvedValue({ values, updatedAt: null }),
+      save: jest.fn(),
+      sessionEpoch: jest.fn(),
+      bumpSessionEpoch: jest.fn(),
+      setAway: jest.fn(),
+      hideToday: jest.fn(),
+    };
+    const signal = (rule: string, key: string) => ({
+      level: 'warn',
+      rule,
+      text: `${rule} ${key}`,
+      keys: [key],
+    });
+    const person = {
+      name: 'Ann',
+      inProgress: [],
+      queue: [{ key: 'A-1', inScope: true }],
+      signals: [signal('blocked', 'A-1'), signal('stale', 'A-2')],
+    };
+    const team = {
+      team: jest.fn().mockResolvedValue({
+        asOf: new Date(),
+        links: { jira: null, githubOrg: null },
+        releaseVersion: '1.0',
+        people: [person],
+      }),
+    };
+    const admin = new PmAdminUseCase(
+      store as any,
+      new PmRuntimeConfig(base, store as any),
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      { ownerId: 42 } as any,
+      team as any,
+    );
+    return { admin, store };
+  };
+  const NOW = new Date('2026-09-24T10:00:00Z');
+
+  it('lists signals, minus items hidden until a later time', async () => {
+    const { admin } = setup({
+      todayHidden: [
+        { id: 'stale|Ann|A-2', until: '2026-09-24T12:00:00.000Z' },
+        { id: 'blocked|Ann|A-1', until: '2026-09-24T09:00:00.000Z' },
+      ],
+    });
+    const today = await admin.today(NOW);
+    expect(today.items.map((i) => i.id)).toEqual(['blocked|Ann|A-1']);
+    expect(today.items[0].inRelease).toBe(true);
+  });
+
+  it('hides for 24 hours or a week from the click, in one store call', async () => {
+    const { admin, store } = setup({});
+    await admin.hideToday('stale|Ann|A-2', 1, 42, NOW);
+    expect(store.hideToday).toHaveBeenCalledWith(
+      'stale|Ann|A-2',
+      '2026-09-25T10:00:00.000Z',
+      '2026-09-24T10:00:00.000Z',
+      42,
+    );
+    await admin.hideToday('x', 7, 42, NOW);
+    expect(store.hideToday).toHaveBeenLastCalledWith(
+      'x',
+      '2026-10-01T10:00:00.000Z',
+      '2026-09-24T10:00:00.000Z',
+      42,
+    );
+    await expect(admin.hideToday('x', 3, 42, NOW)).rejects.toThrow('days');
+  });
+
+  it('marks one person away and back without rewriting the others', async () => {
+    const { admin, store } = setup({});
+    await admin.setAway('Ann', '2026-10-02', 'отпуск', 42);
+    expect(store.setAway).toHaveBeenCalledWith(
+      'Ann',
+      { until: '2026-10-02', note: 'отпуск' },
+      42,
+    );
+    await admin.setAway('Ann', null, null, 42);
+    expect(store.setAway).toHaveBeenLastCalledWith('Ann', null, 42);
+    await expect(admin.setAway('Ann', '2 Oct', null, 42)).rejects.toThrow(
+      'YYYY-MM-DD',
+    );
+    expect(store.save).not.toHaveBeenCalled();
   });
 });

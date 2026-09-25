@@ -71,6 +71,32 @@ export class AdminGithubBody {
   login?: string | null;
 }
 
+export class AdminAwayBody {
+  @IsString()
+  @MaxLength(100)
+  name: string;
+
+  // YYYY-MM-DD, inclusive; null or missing brings the person back
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  until?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  note?: string | null;
+}
+
+export class AdminTodayHideBody {
+  @IsString()
+  @MaxLength(300)
+  id: string;
+
+  @IsIn([1, 7])
+  days: 1 | 7;
+}
+
 export class AdminChatBody {
   @IsInt()
   chatId: number;
@@ -222,6 +248,48 @@ export class PmAdminController {
         req.pmAdmin,
       );
       return this.team();
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  // Marks a person away so their signals stay quiet
+  @Put('team/away')
+  @UseGuards(PmAdminGuard)
+  async teamAway(@Body() body: AdminAwayBody, @Req() req: { pmAdmin: number }) {
+    try {
+      await this.admin.setAway(
+        body.name,
+        body.until || null,
+        body.note ?? null,
+        req.pmAdmin,
+      );
+      return this.team();
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  // Сегодня: the few things to act on across the team
+  @Get('today')
+  @UseGuards(PmAdminGuard)
+  today() {
+    return this.admin.today();
+  }
+
+  @Post('today/hide')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async todayHide(
+    @Body() body: AdminTodayHideBody,
+    @Req() req: { pmAdmin: number },
+  ) {
+    try {
+      return await this.admin.hideToday(body.id, body.days, req.pmAdmin);
     } catch (error) {
       if (error instanceof SettingsError)
         throw new BadRequestException(error.message);
