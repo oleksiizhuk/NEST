@@ -110,4 +110,102 @@ describe('releaseView', () => {
       ['RL-3', 'done-no-pr'],
     ]);
   });
+
+  it('counts a ticket tagged in after it closed on the day it was added', () => {
+    const v = releaseView(
+      {
+        version: '1.0',
+        capped: false,
+        issues: [
+          ...Array.from({ length: 5 }, (_, n) =>
+            done(`RL-${n + 10}`, '2026-08-01T10:00:00Z', {
+              addedAt: '2026-09-24T09:00:00Z',
+            }),
+          ),
+          t('RL-20', {}),
+        ],
+      },
+      NOW,
+      { releaseDate: '2026-09-30' },
+    );
+    // Today's tagging counts as today's closes, never as August pace
+    expect(v.burnup[28].done).toBe(0);
+    expect(v.burnup[29].done).toBe(5);
+    expect(v.pace.perDay).toBe(0.5);
+  });
+
+  it('keeps the range around the forecast, a zero week included', () => {
+    const v = releaseView(
+      {
+        version: '1.0',
+        capped: false,
+        issues: [
+          done('RL-1', '2026-09-22T10:00:00Z'),
+          done('RL-2', '2026-09-23T10:00:00Z'),
+          t('RL-3', {}),
+          t('RL-4', {}),
+        ],
+      },
+      NOW,
+      { releaseDate: '2026-10-30' },
+    );
+    expect(v.pace.worst).toBeNull();
+    expect(v.eta.late).toBeNull();
+    expect(v.eta.date && v.eta.early && v.eta.early <= v.eta.date).toBe(true);
+  });
+
+  it('says late without a forecast when nothing closed for two weeks', () => {
+    const v = releaseView(
+      { version: '1.0', capped: false, issues: [t('RL-1', {})] },
+      NOW,
+      { releaseDate: '2026-10-30' },
+    );
+    expect(v.eta).toMatchObject({ date: null, verdict: 'late' });
+  });
+
+  it('dates a finished release by its last close', () => {
+    const v = releaseView(
+      {
+        version: '1.0',
+        capped: false,
+        issues: [done('RL-1', '2026-09-17T10:00:00Z')],
+      },
+      NOW,
+      { releaseDate: '2026-09-18' },
+    );
+    expect(v.eta).toMatchObject({
+      date: '2026-09-17',
+      verdict: 'on-track',
+      daysLate: 0,
+    });
+  });
+
+  it('does not flag a merged ticket that is in review or QA', () => {
+    const v = releaseView(
+      {
+        version: '1.0',
+        capped: false,
+        issues: [
+          t('RL-1', { category: 'indeterminate', status: 'QA', stage: 'qa' }),
+          t('RL-2', {
+            category: 'indeterminate',
+            status: 'In Progress',
+            stage: 'dev',
+          }),
+        ],
+      },
+      NOW,
+      {
+        releaseDate: null,
+        code: {
+          authors: {
+            a: { open: [], merged14: ['api#1 RL-1 x', 'api#2 RL-2 y'] },
+          },
+        },
+      },
+    );
+    expect(v.mismatches.map((m) => [m.key, m.kind])).toEqual([
+      ['RL-2', 'merged-not-done'],
+    ]);
+  });
 });

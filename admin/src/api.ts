@@ -299,6 +299,7 @@ export interface ReleaseData {
     }>;
     addedLast7: number;
     percent: number | null;
+    custom: boolean;
   };
   critical: Array<{
     key: string;
@@ -332,6 +333,7 @@ export interface ReleaseView {
   asOf: string;
   links: Links;
   hasCode: boolean;
+  releaseError: string | null;
   release: ReleaseData | null;
 }
 

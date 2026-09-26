@@ -511,11 +511,18 @@ export class JiraIssueReader implements IProjectSource {
             statusSince: f.statusSince,
             blockedBy: f.blockedBy ?? [],
             addedAt: added.get(f.key) ?? f.created,
+            stage: this.stageName(f.status, f.category),
           };
         }),
       };
-    } catch {
-      return null;
+    } catch (error) {
+      // Shown on the page as a read error, not as "release not set"
+      return {
+        version: this.releaseVersion,
+        capped: false,
+        issues: [],
+        error: (error as Error).message.slice(0, 200),
+      };
     }
   }
 

@@ -176,7 +176,7 @@ export function ReleasePage({
       .release()
       .then((v) => {
         setView(v);
-        setBaseline(v?.release?.creep.baseline ?? '');
+        setBaseline(v?.release?.creep.custom ? v.release.creep.baseline : '');
       })
       .catch(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -186,7 +186,7 @@ export function ReleasePage({
     try {
       const v = await api.setBaseline(date);
       setView(v);
-      setBaseline(v?.release?.creep.baseline ?? '');
+      setBaseline(v?.release?.creep.custom ? v.release.creep.baseline : '');
     } catch (e) {
       handle(e);
     }
@@ -195,6 +195,16 @@ export function ReleasePage({
   if (error && view === undefined) return <p className="error">{error}</p>;
   if (view === undefined) return <p className="muted">Загрузка…</p>;
   const r = view?.release;
+  if (view?.releaseError)
+    return (
+      <section className="card">
+        <h2>Релиз не прочитался</h2>
+        <p className="muted">
+          При последнем обновлении Jira ответила ошибкой: {view.releaseError}.
+          Попробуйте обновить данные позже — настройки менять не нужно.
+        </p>
+      </section>
+    );
   if (!view || !r)
     return (
       <section className="card">
@@ -225,20 +235,28 @@ export function ReleasePage({
           </h2>
         </div>
         <p>
-          Прогноз готовности: <b>{ru(r.eta.date)}</b>
-          {r.eta.early && r.eta.late && r.eta.early !== r.eta.late
-            ? ` (от ${ru(r.eta.early)} до ${ru(
-                r.eta.late,
-              )} по лучшей и худшей неделе)`
-            : ''}
-          {r.eta.daysLate ? ` — позже цели на ${r.eta.daysLate} раб. дн.` : '.'}
+          {r.eta.date ? (
+            <>
+              Прогноз готовности: <b>{ru(r.eta.date)}</b>
+              {r.eta.early && r.eta.late && r.eta.early !== r.eta.late
+                ? ` (от ${ru(r.eta.early)} до ${ru(
+                    r.eta.late,
+                  )} по лучшей и худшей неделе)`
+                : ''}
+              {r.eta.daysLate
+                ? ` — позже цели на ${r.eta.daysLate} раб. дн.`
+                : '.'}
+            </>
+          ) : (
+            'Прогноза нет: за две недели по релизу ничего не закрыто, при таком темпе релиз не закончится.'
+          )}
         </p>
         <p className="small">
           Сделано {r.scope.done} из {r.scope.total} ({pct}%), в работе{' '}
           {r.scope.inProgress}, осталось {r.scope.open}. Темп по релизу:{' '}
           {r.pace.perDay === null
             ? 'за 2 недели ничего не закрыто'
-            : `${r.pace.perDay} задачи в рабочий день`}
+            : `${r.pace.perDay.toFixed(1)} задачи в рабочий день`}
           {r.workingDaysLeft !== null
             ? `. До цели ${r.workingDaysLeft} раб. дн.`
             : '.'}
@@ -271,7 +289,7 @@ export function ReleasePage({
           }}
         >
           <label className="small">
-            Считать с{' '}
+            Считать с{r.creep.custom ? '' : ' (сейчас — последние 30 дней)'}{' '}
             <input
               type="date"
               value={baseline}
@@ -279,6 +297,15 @@ export function ReleasePage({
             />
           </label>
           <button type="submit">OK</button>
+          {r.creep.custom && (
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => saveBaseline(null)}
+            >
+              Последние 30 дней
+            </button>
+          )}
           <button
             type="button"
             className="ghost"

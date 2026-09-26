@@ -305,6 +305,38 @@ describe('Jira reader release', () => {
   });
 });
 
+describe('Jira reader release errors', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('reports a failed release read instead of "not set"', async () => {
+    global.fetch = jest.fn((url: string, init: any) => {
+      const jql = String(JSON.parse(init.body).jql ?? '');
+      if (jql.includes('fixVersion ='))
+        return Promise.resolve({
+          ok: false,
+          status: 429,
+          json: () => Promise.resolve({}),
+          text: () => Promise.resolve('rate limited'),
+          headers: new Headers(),
+        });
+      return json({ issues: [], isLast: true });
+    }) as any;
+    const { details } = await new JiraIssueReader(
+      env({
+        JIRA_BASE_URL: 'https://x.atlassian.net',
+        PM_JIRA_PROJECTS: 'ABC',
+        PM_RELEASE_VERSION: '1.0',
+      }),
+    ).fetch(new Date('2026-09-24T10:00:00Z'));
+    expect((details as any).release).toMatchObject({
+      version: '1.0',
+      issues: [],
+      error: expect.any(String),
+    });
+  });
+});
+
 describe('Jira reader caps', () => {
   const realFetch = global.fetch;
   afterEach(() => (global.fetch = realFetch));

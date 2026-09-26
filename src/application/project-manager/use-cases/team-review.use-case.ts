@@ -148,14 +148,16 @@ export class TeamReviewUseCase {
       asOf: snapshot.createdAt,
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       hasCode: Boolean(code),
-      release: issues?.release
-        ? releaseView(issues.release, now, {
-            releaseDate: live.releaseDate,
-            baseline: live.releaseBaseline ?? null,
-            code: code ?? null,
-            flow: issues.flow ?? null,
-          })
-        : null,
+      releaseError: issues?.release?.error ?? null,
+      release:
+        issues?.release && !issues.release.error
+          ? releaseView(issues.release, now, {
+              releaseDate: live.releaseDate,
+              baseline: live.releaseBaseline ?? null,
+              code: code ?? null,
+              flow: issues.flow ?? null,
+            })
+          : null,
     };
   }
 

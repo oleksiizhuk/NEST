@@ -24,12 +24,16 @@ export interface ReleaseIssue {
   blockedBy: string[];
   // When the version was last put on the ticket (changelog), else created
   addedAt: string | null;
+  // dev / review / qa / blocked… by the reader's status mapping
+  stage?: string | null;
 }
 
 export interface ReleaseIssues {
   version: string;
   capped: boolean;
   issues: ReleaseIssue[];
+  // The release could not be read at the last refresh
+  error?: string | null;
 }
 
 type Verdict = 'on-track' | 'at-risk' | 'late' | 'unknown';
@@ -65,6 +69,8 @@ export interface ReleaseView {
     }>;
     addedLast7: number;
     percent: number | null;
+    // The owner fixed the baseline; otherwise it rolls with "30 days ago"
+    custom: boolean;
   };
   critical: Array<{
     key: string;
@@ -131,88 +137,94 @@ export const releaseView = (
     ? workingDaysLeft(now, options.releaseDate)
     : null;
 
-  // Burn-up: 30 days, one point a day
+  // A ticket tagged into the release after it was closed counts as closed
+  // for the release on the day it was added, not before
+  const time = (v: string | null) => (v ? Date.parse(v) : NaN);
+  const addedMs = (i: ReleaseIssue) => time(i.addedAt ?? i.created);
+  const closedMs = (i: ReleaseIssue) =>
+    Math.max(time(i.doneAt), addedMs(i) || 0);
+  const endOf = (day: string) => Date.parse(`${day}T23:59:59.999Z`);
+
+  // Burn-up: 30 days, one point a day (UTC days)
   const burnup: ReleaseView['burnup'] = [];
   for (let n = 29; n >= 0; n -= 1) {
-    const end = new Date(now.getTime() - n * DAY);
-    const day = iso(end);
+    const day = iso(new Date(now.getTime() - n * DAY));
+    const end = endOf(day);
     burnup.push({
       day,
-      scope: issues.filter((i) => (i.addedAt ?? i.created ?? '') <= `${day}T99`)
-        .length,
-      done: done.filter((i) => (i.doneAt ?? '') <= `${day}T99`).length,
+      scope: issues.filter((i) => !(addedMs(i) > end)).length,
+      done: done.filter((i) => closedMs(i) <= end).length,
     });
   }
 
-  // Pace of release work: last 10 working days, and weekly extremes
-  let recent = 0;
+  // Pace of release work in blocks of 5 working days back from today: the
+  // last two blocks give the forecast, the best and worst of four the range
+  const blocks = [0, 0, 0, 0];
   for (const i of done) {
-    if (!i.doneAt) continue;
-    if (workingDaysBetween(new Date(i.doneAt), now) <= 10) recent += 1;
+    const at = closedMs(i);
+    if (!Number.isFinite(at) || at > now.getTime()) continue;
+    const ago = workingDaysBetween(new Date(at), now);
+    if (ago < 20) blocks[Math.floor(ago / 5)] += 1;
   }
-  const perDay = recent ? recent / 10 : null;
-  const weeks = [0, 1, 2, 3].map((w) => {
-    const to = new Date(now.getTime() - w * 7 * DAY);
-    const from = new Date(to.getTime() - 7 * DAY);
-    return (
-      done.filter(
-        (i) =>
-          i.doneAt && new Date(i.doneAt) > from && new Date(i.doneAt) <= to,
-      ).length / 5
-    );
-  });
-  const positive = weeks.filter((w) => w > 0);
-  const best = positive.length ? Math.max(...positive) : null;
-  const worst = positive.length ? Math.min(...positive) : null;
+  const perDay = (blocks[0] + blocks[1]) / 10 || null;
+  const weekly = blocks.map((n) => n / 5);
+  const best = Math.max(...weekly) || null;
+  const worst = Math.min(...weekly) || null;
 
   const remaining = open.length;
+  const finishedAt = done.length
+    ? iso(new Date(Math.max(...done.map(closedMs).filter(Number.isFinite))))
+    : today;
   const etaAt = (pace: number | null) =>
     remaining === 0
-      ? today
+      ? finishedAt
       : pace
       ? iso(addWorkingDays(now, remaining / pace))
       : null;
   const eta = etaAt(perDay);
-  const early = etaAt(best);
-  const late = etaAt(worst);
+  const early = eta ? etaAt(best) : null;
+  const late = eta ? etaAt(worst) : null;
   let verdict: Verdict = 'unknown';
   let daysLate: number | null = null;
-  if (options.releaseDate && eta) {
-    if (eta <= options.releaseDate) verdict = 'on-track';
+  if (options.releaseDate) {
+    if (!eta) verdict = 'late';
+    else if (eta <= options.releaseDate) verdict = 'on-track';
     else if (early && early <= options.releaseDate) verdict = 'at-risk';
     else verdict = 'late';
-    daysLate =
-      eta > options.releaseDate
-        ? workingDaysBetween(
-            new Date(`${options.releaseDate}T00:00:00Z`),
-            new Date(`${eta}T00:00:00Z`),
-          )
-        : 0;
+    if (eta)
+      daysLate =
+        eta > options.releaseDate
+          ? workingDaysBetween(
+              new Date(`${options.releaseDate}T00:00:00Z`),
+              new Date(`${eta}T00:00:00Z`),
+            )
+          : 0;
   }
 
   // Scope creep against a baseline day (owner's, else 30 days ago)
-  const baseline =
-    options.baseline && /^\d{4}-\d{2}-\d{2}$/.test(options.baseline)
-      ? options.baseline
-      : iso(new Date(now.getTime() - 29 * DAY));
-  const addedOf = (i: ReleaseIssue) => i.addedAt ?? i.created ?? '';
+  const custom = Boolean(
+    options.baseline && /^\d{4}-\d{2}-\d{2}$/.test(options.baseline),
+  );
+  const baseline = custom
+    ? (options.baseline as string)
+    : iso(new Date(now.getTime() - 29 * DAY));
   const atBaseline = issues.filter(
-    (i) => addedOf(i) <= `${baseline}T99`,
+    (i) => !(addedMs(i) > endOf(baseline)),
   ).length;
   const added = issues
-    .filter((i) => addedOf(i) > `${baseline}T99`)
+    .filter((i) => addedMs(i) > endOf(baseline))
     .map((i) => ({
       key: i.key,
       summary: i.summary,
       type: i.type,
       priority: i.priority,
       reporter: i.reporter,
-      at: addedOf(i),
+      at: new Date(addedMs(i)).toISOString(),
       done: i.category === 'done',
     }))
     .sort((a, b) => b.at.localeCompare(a.at));
-  const weekAgo = iso(new Date(now.getTime() - 7 * DAY));
-  const addedLast7 = added.filter((a) => a.at.slice(0, 10) > weekAgo).length;
+  const weekAgo = now.getTime() - 7 * DAY;
+  const addedLast7 = added.filter((a) => Date.parse(a.at) > weekAgo).length;
 
   // What the rest waits on: open release tickets others are blocked by
   const openKeys = new Set(open.map((i) => i.key));
@@ -271,7 +283,12 @@ export const releaseView = (
     }
     for (const i of open) {
       const merged = inMerged.get(i.key);
-      if (merged && !inOpen.has(i.key)) {
+      // After a merge, review and QA are the normal next steps
+      if (
+        merged &&
+        !inOpen.has(i.key) &&
+        !['review', 'qa'].includes(i.stage ?? '')
+      ) {
         mismatches.push({
           key: i.key,
           kind: 'merged-not-done',
@@ -322,17 +339,15 @@ export const releaseView = (
       inProgress: open.filter((i) => i.category === 'indeterminate').length,
     },
     burnup,
-    pace: {
-      perDay: perDay === null ? null : Math.round(perDay * 100) / 100,
-      best: best === null ? null : Math.round(best * 100) / 100,
-      worst: worst === null ? null : Math.round(worst * 100) / 100,
-    },
+    // Unrounded: the page's what-if must land on the same date
+    pace: { perDay, best, worst },
     eta: { date: eta, early, late, daysLate, verdict },
     creep: {
       baseline,
       atBaseline,
       added,
       addedLast7,
+      custom,
       percent: atBaseline
         ? Math.round((added.length / atBaseline) * 100)
         : null,
