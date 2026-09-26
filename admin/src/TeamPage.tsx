@@ -5,13 +5,14 @@ import {
   Person,
   ReviewKind,
   SignalRule,
+  TeamHistory,
   TeamIssue,
   TeamView,
   Thresholds,
   Unauthorized,
 } from './api';
 import { Key, RULES, SignalLine } from './signals';
-import { Sparkline, TeamFlowChart } from './charts';
+import { LoadHeatmap, Sparkline, TeamFlowChart } from './charts';
 import { NudgeForm } from './nudge';
 
 const TOGGLEABLE: SignalRule[] = [
@@ -300,6 +301,49 @@ function LoadRow({ p, weeks }: { p: Person; weeks: string[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+function HistoryCard() {
+  const [open, setOpen] = useState(false);
+  const [h, setH] = useState<TeamHistory | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || h) return;
+    api
+      .teamHistory()
+      .then(setH)
+      .catch((e) => setError((e as Error).message));
+  }, [open, h]);
+  return (
+    <section className="card">
+      <div className="review-head">
+        <h2>Загрузка по дням</h2>
+        <button className="link small" onClick={() => setOpen((v) => !v)}>
+          {open ? 'скрыть' : 'показать за 4 недели'}
+        </button>
+      </div>
+      {open &&
+        (error ? (
+          <p className="error small">{error}</p>
+        ) : !h ? (
+          <p className="muted small">Загрузка…</p>
+        ) : h.people.length ? (
+          <>
+            <LoadHeatmap h={h} />
+            <p className="muted small">
+              Темнее — больше открытых задач в тот день (в работе и в очереди).
+              Долгая тёмная полоса — человек давно перегружен; светлая — работы
+              мало. Пустые клетки — нет данных: история копится с каждым
+              обновлением, первые дни заполнены из сохранённых снимков.
+            </p>
+          </>
+        ) : (
+          <p className="muted small">
+            История появится после следующего обновления данных.
+          </p>
+        ))}
+    </section>
   );
 }
 
@@ -795,6 +839,7 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       ) : (
         <>
           <FlowCard team={team} />
+          <HistoryCard />
           <div className="team-bar">
             <span className="muted small">
               Данные на {when(team.asOf)}

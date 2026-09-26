@@ -315,6 +315,13 @@ export class PmAdminController {
     return { notes: await this.team_.latestOf(kind) };
   }
 
+  // Load per person per day, 4 weeks, for the heatmap
+  @Get('team/history')
+  @UseGuards(PmAdminGuard)
+  teamHistory() {
+    return this.team_.teamHistory();
+  }
+
   // Meeting notes by the model (cached for the day unless force)
   @Post('team/review')
   @HttpCode(200)

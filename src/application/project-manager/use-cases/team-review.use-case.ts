@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   IProjectSnapshotRepository,
   PROJECT_SNAPSHOT_REPOSITORY,
@@ -28,6 +28,11 @@ import {
 import { WeeklyFlow } from '@application/project-manager/load';
 import { ReviewLoad } from '@application/project-manager/reviews';
 import { Areas } from '@application/project-manager/areas';
+import {
+  dayLoad,
+  ITeamHistory,
+  PM_TEAM_HISTORY,
+} from '@application/project-manager/team-history';
 import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity';
 import {
   ITeamReviews,
@@ -151,6 +156,9 @@ export class TeamReviewUseCase {
     @Inject(PM_KNOWLEDGE) private readonly knowledge: IKnowledgeStore,
     @Inject(PM_TEAM_REVIEWS) private readonly reviews: ITeamReviews,
     private readonly runtime: PmRuntimeConfig,
+    @Optional()
+    @Inject(PM_TEAM_HISTORY)
+    private readonly history?: ITeamHistory,
   ) {}
 
   async team(now = new Date()) {
@@ -229,6 +237,41 @@ export class TeamReviewUseCase {
 
   async latest() {
     return this.reviews.latest();
+  }
+
+  // Load per person per day for the heatmap; days before the history
+  // existed are filled once from the stored snapshots (kept 21 days)
+  async teamHistory(now = new Date(), days = 28) {
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+    const list = Array.from({ length: days }, (_, n) =>
+      day(new Date(now.getTime() - (days - 1 - n) * 86_400_000)),
+    );
+    const stored = this.history
+      ? await this.history.since(list[0]).catch(() => [])
+      : [];
+    const byDay = new Map(stored.map((d) => [d.day, d]));
+    for (const d of list.slice(-21)) {
+      if (byDay.has(d)) continue;
+      const next = new Date(`${d}T00:00:00Z`).getTime() + 86_400_000;
+      const snap = await this.snapshots
+        .findLatestBefore(new Date(next))
+        .catch(() => null);
+      if (!snap || day(snap.createdAt) !== d) continue;
+      const load = dayLoad(snap);
+      if (!load) continue;
+      byDay.set(d, load);
+      await this.history?.save(load).catch(() => undefined);
+    }
+    const names = new Set<string>();
+    for (const d of byDay.values())
+      Object.keys(d.people).forEach((n) => names.add(n));
+    return {
+      days: list,
+      people: [...names].sort().map((name) => ({
+        name,
+        days: list.map((d) => byDay.get(d)?.people[name] ?? null),
+      })),
+    };
   }
 
   // Качество: bugs and single-owner risk by area

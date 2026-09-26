@@ -1039,3 +1039,42 @@ details.card summary {
 .oneonone h3 {
   margin-top: 0;
 }
+
+/* ---------- heatmap ---------- */
+.heatmap-wrap {
+  overflow-x: auto;
+  margin-top: 8px;
+}
+.heatmap {
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: 11px;
+}
+.heatmap th {
+  font-weight: 400;
+  color: var(--muted);
+  padding: 0 2px;
+  white-space: nowrap;
+  text-align: left;
+}
+.heatmap th.who {
+  padding-right: 8px;
+  color: var(--text);
+  font-size: 12px;
+}
+.heatmap td {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--accent);
+  opacity: 0.08;
+}
+.heatmap td.none {
+  background: transparent;
+  outline: 1px dashed var(--border);
+  opacity: 1;
+}
+.heatmap td.we:not(.none) {
+  filter: saturate(0.4);
+}

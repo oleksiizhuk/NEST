@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   IProjectSnapshotRepository,
   PROJECT_SNAPSHOT_REPOSITORY,
@@ -13,6 +13,11 @@ import {
   SourceResult,
 } from '@application/project-manager/project-source.interface';
 import { trendLine } from '@application/project-manager/metrics';
+import {
+  dayLoad,
+  ITeamHistory,
+  PM_TEAM_HISTORY,
+} from '@application/project-manager/team-history';
 
 const DAY_MS = 86_400_000;
 
@@ -27,6 +32,9 @@ export class RefreshProjectSnapshotUseCase {
     @Inject(PROJECT_SOURCES) private readonly sources: IProjectSource[],
     @Inject(PROJECT_SNAPSHOT_REPOSITORY)
     private readonly snapshots: IProjectSnapshotRepository,
+    @Optional()
+    @Inject(PM_TEAM_HISTORY)
+    private readonly history?: ITeamHistory,
   ) {}
 
   // Sources are fetched in parallel; one failing never loses the others, and
@@ -98,6 +106,12 @@ export class RefreshProjectSnapshotUseCase {
     });
 
     const snapshot = await this.snapshots.save(sections);
+    // Per-person load for the day; never fails the refresh
+    const day = dayLoad(snapshot);
+    if (day && this.history)
+      await this.history
+        .save(day)
+        .catch((error) => this.logger.error(`team history: ${error}`));
     this.logger.log(
       `Snapshot saved: ${sections
         .map((s) => `${s.source}=${s.ok ? s.text.length : 'failed'}`)
