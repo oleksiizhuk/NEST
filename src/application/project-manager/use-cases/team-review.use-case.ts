@@ -234,9 +234,14 @@ export class TeamReviewUseCase {
       asOf: snapshot.createdAt,
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       hasCode: Boolean(code),
-      sprints:
-        (issues as { sprints?: Sprints | null } | undefined)?.sprints?.rows ??
+      sprintsError:
+        (issues as { sprints?: Sprints | null } | undefined)?.sprints?.error ??
         null,
+      sprints: (() => {
+        const sp = (issues as { sprints?: Sprints | null } | undefined)
+          ?.sprints;
+        return sp && !sp.error ? sp.rows : null;
+      })(),
       releaseError: issues?.release?.error ?? null,
       release:
         issues?.release && !issues.release.error

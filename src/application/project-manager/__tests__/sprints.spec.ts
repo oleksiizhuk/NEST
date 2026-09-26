@@ -64,6 +64,7 @@ describe('sprintView', () => {
       NOW,
     );
     expect(v.rows[0]).toEqual({
+      id: 1,
       name: 'S1',
       state: 'closed',
       start: '2026-09-01T09:00:00Z',
@@ -81,6 +82,46 @@ describe('sprintView', () => {
     expect(v.people).toEqual({
       Ann: { committed: 2, done: 1 },
       Bob: { committed: 1, done: 0 },
+    });
+  });
+
+  it('treats a ticket created in a running sprint as added, and counts an overrun sprint to now', () => {
+    const v = sprintView(
+      [
+        sprint(
+          3,
+          '2026-09-10T09:00:00Z',
+          '2026-09-20T17:00:00Z',
+          [
+            // Created during the sprint, no Sprint history entry
+            {
+              key: 'C-1',
+              assignee: 'Ann',
+              done: false,
+              doneAt: null,
+              addedAt: null,
+              created: '2026-09-15T00:00:00Z',
+            },
+            // Planned, done after the planned end while still running
+            {
+              key: 'C-2',
+              assignee: 'Ann',
+              done: true,
+              doneAt: '2026-09-22T00:00:00Z',
+              addedAt: null,
+              created: '2026-09-01T00:00:00Z',
+            },
+          ],
+          'active',
+        ),
+      ],
+      NOW,
+    );
+    expect(v.rows[0]).toMatchObject({
+      committed: 1,
+      added: 1,
+      doneCommitted: 1,
+      sayDo: 1,
     });
   });
 });

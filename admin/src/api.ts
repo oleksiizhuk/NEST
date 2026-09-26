@@ -423,7 +423,9 @@ export interface ReleaseView {
   links: Links;
   hasCode: boolean;
   releaseError: string | null;
+  sprintsError: string | null;
   sprints: Array<{
+    id: number;
     name: string;
     state: 'active' | 'closed';
     start: string | null;

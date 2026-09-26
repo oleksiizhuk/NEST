@@ -89,7 +89,23 @@ function Burnup({ points }: { points: ReleaseData['burnup'] }) {
   );
 }
 
-function SprintsCard({ rows }: { rows: ReleaseView['sprints'] }) {
+function SprintsCard({
+  rows,
+  error,
+}: {
+  rows: ReleaseView['sprints'];
+  error: string | null;
+}) {
+  if (!rows && error)
+    return (
+      <section className="card">
+        <h2>Обещали — сделали</h2>
+        <p className="muted small">
+          Спринты не прочитались из Jira: {error}. Если доска канбан, спринтов у
+          неё нет.
+        </p>
+      </section>
+    );
   if (!rows)
     return (
       <section className="card">
@@ -124,13 +140,15 @@ function SprintsCard({ rows }: { rows: ReleaseView['sprints'] }) {
               <th>Обещали</th>
               <th>Сделали из обещанного</th>
               <th>Добавили по ходу</th>
-              <th>Перенесли</th>
+              <th title="Обещанное, но не сделанное к концу спринта">
+                Перенесли
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr
-                key={r.name}
+                key={r.id}
                 className={
                   r.sayDo !== null && r.sayDo < 0.7 && r.state === 'closed'
                     ? 'row-warn'
@@ -268,18 +286,21 @@ export function ReleasePage({
   const r = view?.release;
   if (view?.releaseError)
     return (
-      <section className="card">
-        <h2>Релиз не прочитался</h2>
-        <p className="muted">
-          При последнем обновлении Jira ответила ошибкой: {view.releaseError}.
-          Попробуйте обновить данные позже — настройки менять не нужно.
-        </p>
-      </section>
+      <>
+        view?.releaseError) return (
+        <section className="card">
+          <h2>Релиз не прочитался</h2>
+          <p className="muted">
+            При последнем обновлении Jira ответила ошибкой: {view.releaseError}.
+            Попробуйте обновить данные позже — настройки менять не нужно.
+          </p>
+        </section>
+        <SprintsCard rows={view.sprints} error={view.sprintsError} />
+      </>
     );
   if (!view || !r)
     return (
       <>
-        !view || !r) return (
         <section className="card">
           <h2>Релиз не задан</h2>
           <p className="muted">
@@ -288,7 +309,7 @@ export function ReleasePage({
             задачам этой версии.
           </p>
         </section>
-        {view && <SprintsCard rows={view.sprints} />}
+        {view && <SprintsCard rows={view.sprints} error={view.sprintsError} />}
       </>
     );
 
@@ -358,7 +379,7 @@ export function ReleasePage({
 
       <WhatIf r={r} />
 
-      <SprintsCard rows={view.sprints} />
+      <SprintsCard rows={view.sprints} error={view.sprintsError} />
 
       <section className="card">
         <h2>Что добавили в релиз по ходу</h2>

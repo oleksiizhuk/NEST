@@ -463,6 +463,7 @@ describe('Jira reader sprints', () => {
         });
       if (url.includes('/sprint/10/issue'))
         return json({
+          total: 2,
           issues: [
             {
               id: '1',
@@ -497,8 +498,11 @@ describe('Jira reader sprints', () => {
                       items: [
                         {
                           fieldId: 'customfield_10020',
-                          fromString: 'Sprint 10',
-                          toString: 'Sprint 10, Sprint 1',
+                          // A name with a comma: matching goes by id
+                          fromString: 'Sprint 10, Payments',
+                          toString: 'Sprint 10, Payments, Sprint 1',
+                          from: '99',
+                          to: '99, 10',
                         },
                       ],
                     },

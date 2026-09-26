@@ -360,6 +360,12 @@ export class JiraIssueReader implements IProjectSource {
     // Counts from a capped list are lower bounds; as a trend they would read
     // as "no change" while scope grows
     const signals = issueSignals(openFacts, this.releaseVersion);
+    // Independent reads, side by side
+    const [hanging, sprints, release] = await Promise.all([
+      this.hanging(stages?.lastChange ?? {}),
+      this.sprints(now),
+      this.release(),
+    ]);
     const details = {
       ...teamIssues(
         openFacts,
@@ -371,8 +377,8 @@ export class JiraIssueReader implements IProjectSource {
       ),
       flow: history ? this.flow(history, now) : null,
       stages,
-      hanging: await this.hanging(stages?.lastChange ?? {}),
-      sprints: await this.sprints(now),
+      hanging,
+      sprints,
       areas: history
         ? areaView(
             openFacts,
@@ -382,7 +388,7 @@ export class JiraIssueReader implements IProjectSource {
             caps[0] || history.capped,
           )
         : null,
-      release: await this.release(),
+      release,
     } as unknown as Record<string, unknown>;
     return caps.some(Boolean)
       ? { text, signals, details }
@@ -531,13 +537,16 @@ export class JiraIssueReader implements IProjectSource {
       const ids = new Map<string, string>();
       for (const sprint of chosen) {
         const issues: any[] = [];
-        for (let startAt = 0; startAt < 300; startAt += 100) {
+        // Page by what came back: the server may cap maxResults below 100
+        for (let startAt = 0; startAt < 500; ) {
           const { data: page } = await getJson<any>(
-            `${this.baseUrl}/rest/agile/1.0/sprint/${sprint.id}/issue?fields=assignee,status,issuetype,resolutiondate,statuscategorychangedate&maxResults=100&startAt=${startAt}`,
+            `${this.baseUrl}/rest/agile/1.0/sprint/${sprint.id}/issue?fields=assignee,status,issuetype,created,resolutiondate,statuscategorychangedate&maxResults=100&startAt=${startAt}`,
             headers,
           );
-          issues.push(...(page.issues ?? []));
-          if ((page.issues ?? []).length < 100) break;
+          const got = page.issues ?? [];
+          issues.push(...got);
+          startAt += got.length;
+          if (!got.length || startAt >= (page.total ?? 0)) break;
         }
         const work = issues.filter(
           (i) =>
@@ -553,6 +562,7 @@ export class JiraIssueReader implements IProjectSource {
           end: sprint.completeDate ?? sprint.endDate ?? null,
           issues: work.map((i) => ({
             key: i.key,
+            created: i.fields?.created ?? null,
             assignee: i.fields?.assignee?.displayName ?? null,
             done: i.fields?.status?.statusCategory?.key === 'done',
             doneAt:
@@ -575,18 +585,21 @@ export class JiraIssueReader implements IProjectSource {
           if (!key) continue;
           for (const change of log.changeHistories ?? [])
             for (const item of change.items ?? []) {
-              // Comma-separated names: exact match ("Sprint 1" ≠ "Sprint 10")
-              const names = (v: unknown) =>
+              // Sprint ids, not names: names can hold commas, change or
+              // repeat
+              const ids = (v: unknown) =>
                 (str(v) ?? '').split(',').map((n) => n.trim());
-              const to = names(item.toString);
-              const from = names(item.fromString);
-              for (const sprint of data)
-                if (to.includes(sprint.name) && !from.includes(sprint.name)) {
+              const to = ids(item.to);
+              const from = ids(item.from);
+              for (const sprint of data) {
+                const sid = String(sprint.id);
+                if (to.includes(sid) && !from.includes(sid)) {
                   const id = `${key}|${sprint.id}`;
                   const prev = added.get(id);
                   if (!prev || Date.parse(change.created) > Date.parse(prev))
                     added.set(id, change.created);
                 }
+              }
             }
         }
       } catch {
@@ -596,8 +609,12 @@ export class JiraIssueReader implements IProjectSource {
         for (const i of sprint.issues)
           i.addedAt = added.get(`${i.key}|${sprint.id}`) ?? null;
       return sprintView(data, now);
-    } catch {
-      return null;
+    } catch (error) {
+      return {
+        rows: [],
+        people: {},
+        error: (error as Error).message.slice(0, 200),
+      };
     }
   }
 
@@ -712,6 +729,8 @@ export class JiraIssueReader implements IProjectSource {
           field?: string;
           fieldId?: string;
           fromString?: string | null;
+          from?: string | null;
+          to?: string | null;
           toString?: string | null;
         }>;
       }>;

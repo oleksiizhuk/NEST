@@ -4,6 +4,7 @@
 
 export interface SprintIssue {
   key: string;
+  created?: string | null;
   assignee: string | null;
   done: boolean;
   doneAt: string | null;
@@ -22,6 +23,7 @@ export interface SprintData {
 }
 
 export interface SprintRow {
+  id: number;
   name: string;
   state: 'active' | 'closed';
   start: string | null;
@@ -37,6 +39,8 @@ export interface SprintRow {
 
 export interface Sprints {
   rows: SprintRow[];
+  // The board could not be read (e.g. a Kanban board has no sprints)
+  error?: string | null;
   // Last three closed sprints, per assignee
   people: Record<string, { committed: number; done: number }>;
 }
@@ -55,15 +59,23 @@ export const sprintView = (sprints: SprintData[], now: Date): Sprints => {
     (a.start ?? '').localeCompare(b.start ?? ''),
   )) {
     const start = s.start ? Date.parse(s.start) : null;
-    const end = s.end ? Date.parse(s.end) : now.getTime();
-    const planned = (i: SprintIssue) =>
-      !i.addedAt || start === null || Date.parse(i.addedAt) <= start + GRACE_MS;
+    // A running sprint counts what is done so far, even past its planned end
+    const end =
+      s.state === 'active' || !s.end ? now.getTime() : Date.parse(s.end);
+    // No entry in the Sprint history: planned, unless the ticket was created
+    // after the start (created straight into the running sprint)
+    const planned = (i: SprintIssue) => {
+      if (start === null) return true;
+      if (i.addedAt) return Date.parse(i.addedAt) <= start + GRACE_MS;
+      return !i.created || Date.parse(i.created) <= start + GRACE_MS;
+    };
     const doneInTime = (i: SprintIssue) =>
       i.done && (!i.doneAt || Date.parse(i.doneAt) <= end);
     const committed = s.issues.filter(planned);
     const added = s.issues.filter((i) => !planned(i));
     const doneCommitted = committed.filter(doneInTime).length;
     rows.push({
+      id: s.id,
       name: s.name,
       state: s.state,
       start: s.start,
