@@ -26,6 +26,8 @@ import {
   releaseView,
 } from '@application/project-manager/release';
 import { WeeklyFlow } from '@application/project-manager/load';
+import { ReviewLoad } from '@application/project-manager/reviews';
+import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity';
 import {
   ITeamReviews,
   PM_TEAM_REVIEWS,
@@ -161,6 +163,13 @@ export class TeamReviewUseCase {
       }),
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       telegram: live.telegramUsernames ?? {},
+      // Per GitHub login: reviews given in 30 days and requests waiting
+      reviewers: Object.fromEntries(
+        (this.reviewsOf(snapshot)?.reviewers ?? []).map((r) => [
+          r.login,
+          { reviewed: r.reviewed, pending: r.pending },
+        ]),
+      ),
     };
   }
 
@@ -178,6 +187,14 @@ export class TeamReviewUseCase {
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       // The per-ticket dates are only needed at refresh
       stages: stages ? { ...stages, lastChange: undefined } : null,
+      reviews: this.reviewsOf(snapshot),
+      // GitHub login → Jira name, to show people by the names used elsewhere
+      names: Object.fromEntries(
+        Object.entries(live.githubLogins ?? {}).map(([name, login]) => [
+          login,
+          name,
+        ]),
+      ),
     };
   }
 
@@ -211,6 +228,16 @@ export class TeamReviewUseCase {
 
   async latest() {
     return this.reviews.latest();
+  }
+
+  private reviewsOf(snapshot: ProjectSnapshot): ReviewLoad | null {
+    return (
+      (
+        snapshot.section('code')?.details as
+          | { reviews?: ReviewLoad | null }
+          | undefined
+      )?.reviews ?? null
+    );
   }
 
   async latestOf(kind: ReviewKind) {

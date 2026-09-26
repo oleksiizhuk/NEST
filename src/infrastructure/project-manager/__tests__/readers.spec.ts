@@ -3,7 +3,10 @@ import {
   JiraIssueReader,
   toFact,
 } from '@infrastructure/project-manager/jira-issue.reader';
-import { GitHubActivityReader } from '@infrastructure/project-manager/github-activity.reader';
+import {
+  GitHubActivityReader,
+  toPrFact,
+} from '@infrastructure/project-manager/github-activity.reader';
 import { ConfluencePageReader } from '@infrastructure/project-manager/confluence-page.reader';
 import { storageToText } from '@infrastructure/project-manager/storage-to-text';
 import { pmConfig } from '@infrastructure/project-manager/pm.config';
@@ -334,6 +337,108 @@ describe('Jira reader release errors', () => {
       issues: [],
       error: expect.any(String),
     });
+  });
+});
+
+describe('GitHub review load facts', () => {
+  it('keeps human reviews with times, requests and size', () => {
+    expect(
+      toPrFact('api', {
+        number: 3,
+        isDraft: false,
+        createdAt: '2026-09-20T10:00:00Z',
+        mergedAt: null,
+        additions: 120,
+        deletions: 30,
+        changedFiles: 4,
+        author: { login: 'ann' },
+        reviewRequests: {
+          nodes: [
+            { requestedReviewer: { login: 'bob' } },
+            { requestedReviewer: { slug: 'backend' } },
+            {},
+          ],
+        },
+        reviews: {
+          nodes: [
+            {
+              author: { __typename: 'User', login: 'bob' },
+              state: 'APPROVED',
+              submittedAt: '2026-09-21T10:00:00Z',
+            },
+            {
+              author: { __typename: 'Bot', login: 'ci' },
+              state: 'COMMENTED',
+              submittedAt: '2026-09-21T10:00:00Z',
+            },
+            { author: { login: 'eve' }, state: 'PENDING', submittedAt: null },
+          ],
+        },
+        timelineItems: { nodes: [{ createdAt: '2026-09-20T12:00:00Z' }] },
+      }),
+    ).toEqual({
+      repo: 'api',
+      number: 3,
+      author: 'ann',
+      draft: false,
+      readyAt: '2026-09-20T12:00:00Z',
+      mergedAt: null,
+      lines: 150,
+      files: 4,
+      reviews: [
+        { login: 'bob', at: '2026-09-21T10:00:00Z', state: 'APPROVED' },
+      ],
+      requested: ['bob', 'team:backend'],
+    });
+  });
+});
+
+describe('GitHub review load paging', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('pages merged PRs back to the window and drops promotions', async () => {
+    const node = (number: number, over: any = {}) => ({
+      number,
+      createdAt: '2026-09-20T10:00:00Z',
+      updatedAt: '2026-09-22T10:00:00Z',
+      mergedAt: '2026-09-22T10:00:00Z',
+      headRefName: `feature/${number}`,
+      author: { login: 'ann' },
+      ...over,
+    });
+    const bodies: any[] = [];
+    global.fetch = jest.fn((_url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      bodies.push(body.variables);
+      const { states, after } = body.variables;
+      const page = (nodes: any[], hasNextPage: boolean) =>
+        json({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes,
+                pageInfo: { hasNextPage, endCursor: 'c' },
+              },
+            },
+          },
+        });
+      if (states[0] === 'OPEN')
+        return page([node(1, { mergedAt: null })], false);
+      if (!after)
+        return page([node(2), node(3, { headRefName: 'staging' })], true);
+      return page([node(4, { updatedAt: '2026-06-01T00:00:00Z' })], true);
+    }) as any;
+    const reader = new GitHubActivityReader(
+      env({ PM_GITHUB_TOKEN: 't', PM_GITHUB_ORG: 'o', PM_GITHUB_REPOS: 'api' }),
+    );
+    const facts = await (reader as any).reviewLoadFacts(
+      'api',
+      new Date('2026-09-24T10:00:00Z'),
+    );
+    expect(facts.map((f: any) => f.number)).toEqual([1, 2, 4]);
+    // Stopped after the page that reached past the window
+    expect(bodies.filter((b) => b.states[0] === 'MERGED')).toHaveLength(2);
   });
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, FlowView, Stage, Unauthorized } from './api';
+import { api, FlowView, ReviewLoad, Stage, Unauthorized } from './api';
 import { Key } from './signals';
 
 const when = (iso: string) =>
@@ -68,6 +68,122 @@ function StageBars({
   );
 }
 
+const h = (n: number | null) =>
+  n === null ? '—' : n < 48 ? `${n} ч` : `${Math.round(n / 24)} дн.`;
+
+function Reviews({
+  r,
+  names,
+  links,
+}: {
+  r: ReviewLoad;
+  names: Record<string, string>;
+  links: FlowView['links'];
+}) {
+  const who = (login: string) =>
+    names[login] ? `${names[login]} (${login})` : login;
+  return (
+    <section className="card">
+      <h2>Ревью</h2>
+      <p className="muted small">
+        PR, смёрженные за {r.windowDays} дней ({r.merged}), и открытые.
+        Считается только ревью от другого человека, не от бота.
+      </p>
+      <div className="tiles">
+        <div className="tile">
+          <span className="tile-value">{h(r.firstReview.p50)}</span>
+          <span className="small muted">
+            обычно ждут первого ревью (85% — до {h(r.firstReview.p85)});
+            открытые без ревью считаются с тем, сколько уже ждут
+          </span>
+        </div>
+        <div className="tile">
+          <span className="tile-value">
+            {r.size.medianLines === null ? '—' : `${r.size.medianLines} строк`}
+          </span>
+          <span className="small muted">
+            типичный размер PR; больше 400 строк —{' '}
+            {Math.round(r.size.bigShare * 100)}% ({r.size.big})
+          </span>
+        </div>
+      </div>
+      {r.missing && r.missing.length > 0 && (
+        <p className="warn-line small">
+          Не прочитались репозитории: {r.missing.join(', ')} — цифры ниже без
+          них.
+        </p>
+      )}
+      {r.concentration && (
+        <p className="warn-line small">
+          {who(r.concentration.login)} делает{' '}
+          {Math.round(r.concentration.share * 100)}% всех ревью: если он занят
+          или в отпуске, все ждут. Стоит подключить к ревью ещё людей.
+        </p>
+      )}
+      {r.reviewers.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Ревьюер</th>
+                <th>Сделал ревью</th>
+                <th>Доля</th>
+                <th>Ждут его сейчас</th>
+              </tr>
+            </thead>
+            <tbody>
+              {r.reviewers.map((x) => (
+                <tr key={x.login} className={x.pending >= 3 ? 'row-warn' : ''}>
+                  <td>{who(x.login)}</td>
+                  <td>{x.reviewed}</td>
+                  <td>{Math.round(x.share * 100)}%</td>
+                  <td>{x.pending}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {r.waiting.length > 0 && (
+        <>
+          <h3>Ждут первого ревью</h3>
+          <ul className="issues">
+            {r.waiting.map((w) => (
+              <li key={`${w.repo}${w.number}`}>
+                <Key k={`${w.repo}#${w.number}`} links={links} />{' '}
+                {who(w.author)} · ждёт {h(w.hours)}
+                {w.requested.length
+                  ? ` · назначены: ${w.requested.map(who).join(', ')}`
+                  : ' · ревьюер не назначен'}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {r.noReview.length > 0 && (
+        <p className="small">
+          Смёржены без ревью:{' '}
+          {r.noReview.map((x, i) => (
+            <span key={`${x.repo}${x.number}`}>
+              {i > 0 && ', '}
+              <Key k={`${x.repo}#${x.number}`} links={links} />
+            </span>
+          ))}
+        </p>
+      )}
+      {r.manyRounds.length > 0 && (
+        <p className="small muted">
+          Много кругов правок (2+):{' '}
+          {r.manyRounds
+            .map((x) => `${x.repo}#${x.number} ×${x.rounds}`)
+            .join(', ')}
+          . Обычно это большой PR или неясная задача.
+        </p>
+      )}
+    </section>
+  );
+}
+
 export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [view, setView] = useState<FlowView | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
@@ -87,14 +203,23 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
   if (view === undefined) return <p className="muted">Загрузка…</p>;
   if (!view?.stages)
     return (
-      <section className="card">
-        <h2>Истории статусов пока нет</h2>
-        <p className="muted">
-          Она собирается при обновлении данных из истории изменений Jira.
-          Обновите данные на странице «Сотрудники» или дождитесь утреннего
-          обновления.
-        </p>
-      </section>
+      <>
+        <section className="card">
+          <h2>Истории статусов пока нет</h2>
+          <p className="muted">
+            Она собирается при обновлении данных из истории изменений Jira.
+            Обновите данные на странице «Сотрудники» или дождитесь утреннего
+            обновления.
+          </p>
+        </section>
+        {view?.reviews && (
+          <Reviews
+            r={view.reviews}
+            names={view.names ?? {}}
+            links={view.links}
+          />
+        )}
+      </>
     );
 
   const s = view.stages;
@@ -268,6 +393,10 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
           <p className="muted">Сейчас заблокированных задач нет.</p>
         )}
       </section>
+
+      {view.reviews ? (
+        <Reviews r={view.reviews} names={view.names ?? {}} links={links} />
+      ) : null}
 
       <details className="card">
         <summary>Как статусы Jira разложены по этапам</summary>

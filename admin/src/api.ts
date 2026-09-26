@@ -214,6 +214,7 @@ export interface TeamView {
     thresholds: Thresholds;
     links: Links;
     telegram: Record<string, string>;
+    reviewers: Record<string, { reviewed: number; pending: number }>;
     flow: WeeklyFlow | null;
     scopeGrowing: boolean;
     unassigned: Array<{
@@ -228,9 +229,36 @@ export interface TeamView {
 
 export type Stage = 'todo' | 'dev' | 'review' | 'qa' | 'blocked' | 'done';
 
+export interface ReviewLoad {
+  windowDays: number;
+  merged: number;
+  firstReview: { p50: number | null; p85: number | null };
+  reviewers: Array<{
+    login: string;
+    pending: number;
+    reviewed: number;
+    share: number;
+  }>;
+  authors: Array<{ login: string; merged: number; waitHours: number | null }>;
+  concentration: { login: string; share: number } | null;
+  size: { medianLines: number | null; big: number; bigShare: number };
+  noReview: Array<{ repo: string; number: number; author: string }>;
+  manyRounds: Array<{ repo: string; number: number; rounds: number }>;
+  missing?: string[];
+  waiting: Array<{
+    repo: string;
+    number: number;
+    author: string;
+    hours: number;
+    requested: string[];
+  }>;
+}
+
 export interface FlowView {
   asOf: string;
   links: Links;
+  reviews: ReviewLoad | null;
+  names: Record<string, string>;
   stages: {
     windowDays: number;
     finished: number;
