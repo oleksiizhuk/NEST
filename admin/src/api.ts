@@ -206,6 +206,14 @@ export interface WeeklyFlow {
   capped: boolean;
 }
 
+export interface TeamHistory {
+  days: string[];
+  people: Array<{
+    name: string;
+    days: Array<{ inProgress: number; queue: number; closed14: number } | null>;
+  }>;
+}
+
 export interface TeamView {
   team: {
     asOf: string;
@@ -431,6 +439,7 @@ export const api = {
   logoutAll: () => call<{ ok: boolean }>('POST', 'logout-all'),
   chats: () => call<Chat[]>('GET', 'chats'),
   team: () => call<TeamView>('GET', 'team'),
+  teamHistory: () => call<TeamHistory>('GET', 'team/history'),
   indexStatus: () => call<IndexStatus>('GET', 'index'),
   indexStart: () => call<IndexJob>('POST', 'index/start'),
   indexStep: () => call<IndexJob>('POST', 'index/step'),

@@ -33,6 +33,7 @@ const MODELS = [
   'PmAdminAttempt',
   'PmAdminApproval',
   'PmTeamReview',
+  'PmTeamDay',
   'PmIndex',
   'PmIndexJob',
 ];

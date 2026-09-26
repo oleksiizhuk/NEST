@@ -1,4 +1,4 @@
-import { WeeklyFlow } from './api';
+import { TeamHistory, WeeklyFlow } from './api';
 
 // Two small inline charts: weekly bars for the team (closed vs arrived) and
 // a sparkline of one person's closed tasks. Native <title> tooltips on every
@@ -112,5 +112,76 @@ export function Sparkline({
         </rect>
       ))}
     </svg>
+  );
+}
+
+// People × days, shade = open work that day (in progress + queue), one hue
+export function LoadHeatmap({ h }: { h: TeamHistory }) {
+  const open = (c: TeamHistory['people'][number]['days'][number]) =>
+    c ? c.inProgress + c.queue : null;
+  // The scale tops out at the 90th percentile so one outlier does not make
+  // everyone else look empty
+  const values = h.people
+    .flatMap((p) => p.days.map((c) => open(c) ?? 0))
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+  const max = Math.max(
+    1,
+    values[Math.floor(values.length * 0.9)] ?? values[values.length - 1] ?? 1,
+  );
+  const weekend = (d: string) => {
+    const w = new Date(`${d}T00:00:00Z`).getUTCDay();
+    return w === 0 || w === 6;
+  };
+  return (
+    <div className="heatmap-wrap">
+      <table className="heatmap">
+        <thead>
+          <tr>
+            <th />
+            {h.days.map((d, i) => (
+              <th key={d} className={`day${weekend(d) ? ' we' : ''}`}>
+                {(i % 7 === 0 || i === h.days.length - 1) && (
+                  <span className="lbl">{week(d)}</span>
+                )}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {h.people.map((p) => (
+            <tr key={p.name}>
+              <th className="who">{p.name}</th>
+              {p.days.map((c, i) => {
+                const v = open(c);
+                return (
+                  <td
+                    key={h.days[i]}
+                    className={`${weekend(h.days[i]) ? 'we' : ''}${
+                      v === null ? ' none' : ''
+                    }`}
+                    style={v ? { opacity: 0.15 + 0.85 * (v / max) } : undefined}
+                    aria-label={
+                      c
+                        ? `${week(h.days[i])}: открыто ${v}`
+                        : `${week(h.days[i])}: нет данных`
+                    }
+                    title={
+                      c
+                        ? `${p.name} · ${week(h.days[i])}: в работе ${
+                            c.inProgress
+                          }, очередь ${c.queue}, закрыто за 14 дн. ${
+                            c.closed14
+                          }`
+                        : `${p.name} · ${week(h.days[i])}: нет данных`
+                    }
+                  />
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
