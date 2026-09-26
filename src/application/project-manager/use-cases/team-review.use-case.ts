@@ -29,6 +29,7 @@ import { WeeklyFlow } from '@application/project-manager/load';
 import {
   ITeamReviews,
   PM_TEAM_REVIEWS,
+  ReviewKind,
 } from '@application/project-manager/team-reviews.interface';
 
 export const TEAM_REVIEW_REQUEST =
@@ -39,7 +40,53 @@ export const TEAM_REVIEW_REQUEST =
   'Then up to three points for the whole team (focus, risks, who needs help). ' +
   'Use only the data below and the snapshot; if something is unknown, say so. Plain text, short lines, no tables.';
 
+export const STANDUP_REQUEST =
+  'Prepare a 5-minute standup agenda in Russian for me as the team lead. ' +
+  'For each person one line: what they are on now and a blocker if the data shows one (cite ticket keys). ' +
+  'Then the three things to unblock today, most important first. ' +
+  'Use only the data below; plain text, short lines, no tables.';
+
+export const RETRO_REQUEST =
+  'Prepare a retrospective of the last two weeks in Russian for me as the team lead. ' +
+  'Sections: (1) what went well, with numbers from the data; (2) what slowed us — stages where work waited, work sent back, blocked time, handoffs, scope growth; ' +
+  '(3) three questions to discuss with the team; (4) two concrete experiments for the next two weeks. ' +
+  'Talk about the process, never blame a person. Use only the data below; plain text, no tables.';
+
+export const ONE_ON_ONE_REQUEST =
+  'Prepare an agenda for my one-to-one meeting with the person below, in Russian. ' +
+  'Start with up to three wins (closed tickets, merged work). Then up to two friction points, each phrased as an open question, not a verdict. ' +
+  'Then one growth topic and one question about workload and how they feel about it. ' +
+  'Do not guess motivation or mood, give no ratings, do not compare them with others. Use only the data below; plain text, short lines.';
+
 const DAY = (d: Date) => d.toISOString().slice(0, 10);
+
+// Numbers from the Поток data for the retro
+const flowLines = (stages: FlowStages | null | undefined): string => {
+  if (!stages) return 'Flow data: not collected yet.';
+  const m = stages.stageMedians;
+  return [
+    `Flow over ${stages.windowDays} days: ${
+      stages.finished
+    } finished; median working days per stage — dev ${m.dev ?? '?'}, review ${
+      m.review ?? '?'
+    }, QA ${m.qa ?? '?'}, blocked ${m.blocked ?? '?'}; cycle time p50 ${
+      stages.cycle.p50 ?? '?'
+    }, p85 ${stages.cycle.p85 ?? '?'}.`,
+    `Sent back: ${stages.bounces.count} of ${
+      stages.bounces.total
+    } tickets that moved (${
+      Object.entries(stages.bounces.from)
+        .map(([k, v]) => `from ${k} ${v}`)
+        .join(', ') || 'none'
+    }); reopened ${stages.bounces.reopened}.`,
+    `Blocked: ${stages.blocked.daysInWindow} working days in total; handoffs: ${
+      stages.handoffs.pairs
+        .slice(0, 5)
+        .map((p) => `${p.from}→${p.to} ×${p.count}`)
+        .join(', ') || 'none'
+    }.`,
+  ].join('\n');
+};
 
 const describe = (p: PersonView): string =>
   [
@@ -113,6 +160,7 @@ export class TeamReviewUseCase {
         away: live.teamAway,
       }),
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
+      telegram: live.telegramUsernames ?? {},
     };
   }
 
@@ -165,8 +213,12 @@ export class TeamReviewUseCase {
     return this.reviews.latest();
   }
 
-  async review(force: boolean, now = new Date()) {
-    const cached = await this.reviews.latest();
+  async latestOf(kind: ReviewKind) {
+    return this.reviews.latest(kind);
+  }
+
+  async review(force: boolean, now = new Date(), kind: ReviewKind = 'meeting') {
+    const cached = await this.reviews.latest(kind);
     if (!force && cached && DAY(cached.at) === DAY(now)) return cached;
     const snapshot = await this.snapshots.findLatest();
     if (!snapshot) throw new Error('Нет снимка проекта: обновите данные.');
@@ -180,6 +232,29 @@ export class TeamReviewUseCase {
         'В снимке ещё нет данных по людям: нажмите «Обновить данные сейчас».',
       );
     if (!team.people.length) throw new Error('В данных Jira нет исполнителей.');
+    const who = kind.startsWith('oneonone:')
+      ? team.people.find((p) => p.name === kind.slice('oneonone:'.length))
+      : null;
+    if (kind.startsWith('oneonone:') && !who)
+      throw new Error('Такого человека нет в данных Jira.');
+    const request =
+      kind === 'standup'
+        ? STANDUP_REQUEST
+        : kind === 'retro'
+        ? RETRO_REQUEST
+        : who
+        ? ONE_ON_ONE_REQUEST
+        : TEAM_REVIEW_REQUEST;
+    const stages = (
+      snapshot.section('issues')?.details as
+        | { stages?: FlowStages | null }
+        | undefined
+    )?.stages;
+    const body = who
+      ? describe(who)
+      : `${team.people.map(describe).join('\n\n')}${
+          kind === 'retro' ? `\n\n${flowLines(stages)}` : ''
+        }`;
     const knowledge = await loadKnowledge(
       this.knowledge,
       live.knowledgeInlineChars,
@@ -191,16 +266,16 @@ export class TeamReviewUseCase {
       question: `${todayLine(
         now,
         live.releaseDate,
-      )}\n\n${TEAM_REVIEW_REQUEST}\n\nRelease version: ${
+      )}\n\n${request}\n\nRelease version: ${
         team.releaseVersion ?? 'not set (all open work counts)'
       }${
         team.capped ? ' (Jira lists were capped: counts are lower bounds)' : ''
-      }\n\n${team.people.map(describe).join('\n\n')}`,
+      }\n\n${body}`,
       deadline: Date.now() + 240_000,
     });
     if (!text || text === PM_UNAVAILABLE_REPLY)
       throw new Error('Модель не смогла подготовить разбор. Попробуйте позже.');
-    await this.reviews.save(text, now);
+    await this.reviews.save(text, now, kind);
     return { text, at: now };
   }
 }

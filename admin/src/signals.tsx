@@ -86,7 +86,16 @@ export function Key({ k, links }: { k: string; links: Links | null }) {
   );
 }
 
-export function SignalLine({ s, links }: { s: Signal; links: Links | null }) {
+export function SignalLine({
+  s,
+  links,
+  onSay,
+}: {
+  s: Signal;
+  links: Links | null;
+  // Opens "Написать в чат" with the suggested sentence
+  onSay?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const help = RULES[s.rule];
   const more = Boolean(s.why || help?.hint || s.keys.length);
@@ -127,6 +136,14 @@ export function SignalLine({ s, links }: { s: Signal; links: Links | null }) {
           {s.say && (
             <div>
               <b>Можно сказать:</b> «{s.say}»
+              {onSay && (
+                <>
+                  {' '}
+                  <button className="link small" onClick={onSay}>
+                    написать в чат
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>

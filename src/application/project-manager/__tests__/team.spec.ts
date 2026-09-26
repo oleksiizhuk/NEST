@@ -347,6 +347,27 @@ describe('TeamReviewUseCase', () => {
     expect(question).toContain('## Ann Lee');
     expect(question).toContain('A-1 [Medium, 10 working days, not in release]');
     expect(question).toContain('Release version: 1.0');
-    expect(reviews.save).toHaveBeenCalledWith('Ann: частично…', NOW);
+    expect(reviews.save).toHaveBeenCalledWith('Ann: частично…', NOW, 'meeting');
+  });
+
+  it('prepares a 1:1 from one person only and a retro with flow numbers', async () => {
+    const { useCase, ai, reviews } = build(null);
+    await useCase.review(true, NOW, 'oneonone:Bob');
+    const one = ai.digest.mock.calls[0][0].question;
+    expect(one).toContain('one-to-one');
+    expect(one).toContain('## Bob');
+    expect(one).not.toContain('## Ann Lee');
+    expect(reviews.save).toHaveBeenLastCalledWith(
+      'Ann: частично…',
+      NOW,
+      'oneonone:Bob',
+    );
+    await useCase.review(true, NOW, 'retro');
+    const retro = ai.digest.mock.calls[1][0].question;
+    expect(retro).toContain('retrospective');
+    expect(retro).toContain('Flow data: not collected yet.');
+    await expect(useCase.review(true, NOW, 'oneonone:Nobody')).rejects.toThrow(
+      'Такого человека',
+    );
   });
 });

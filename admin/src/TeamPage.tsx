@@ -3,6 +3,7 @@ import {
   api,
   Links,
   Person,
+  ReviewKind,
   SignalRule,
   TeamIssue,
   TeamView,
@@ -11,6 +12,7 @@ import {
 } from './api';
 import { Key, RULES, SignalLine } from './signals';
 import { Sparkline, TeamFlowChart } from './charts';
+import { NudgeForm } from './nudge';
 
 const TOGGLEABLE: SignalRule[] = [
   'wip',
@@ -343,24 +345,209 @@ function FlowCard({ team }: { team: NonNullable<TeamView['team']> }) {
   );
 }
 
+const KINDS: Array<{ id: ReviewKind; title: string; lead: string }> = [
+  {
+    id: 'meeting',
+    title: 'Митинг',
+    lead: 'Разбор по каждому: над чем работает, в ту ли сторону идёт и что посоветовать.',
+  },
+  {
+    id: 'standup',
+    title: 'Стендап',
+    lead: 'Повестка на 5 минут: по строке на человека и три вещи, которые разблокировать сегодня.',
+  },
+  {
+    id: 'retro',
+    title: 'Ретро',
+    lead: 'Итоги двух недель: что шло хорошо, где задачи ждали, вопросы команде и два эксперимента.',
+  },
+];
+
+type Notes = { text: string; at: string } | null;
+
+function MeetingCard({
+  initial,
+  onError,
+}: {
+  initial: Notes;
+  onError: (e: unknown) => void;
+}) {
+  const [kind, setKind] = useState<ReviewKind>('meeting');
+  const [notes, setNotes] = useState<Record<string, Notes>>({
+    meeting: initial,
+  });
+  const [busy, setBusy] = useState(false);
+  const current = notes[kind];
+  const meta = KINDS.find((k) => k.id === kind) ?? KINDS[0];
+
+  const pick = async (k: ReviewKind) => {
+    setKind(k);
+    if (notes[k] !== undefined) return;
+    try {
+      const n = await api.reviewLatest(k);
+      setNotes((all) => ({ ...all, [k]: n }));
+    } catch (e) {
+      onError(e);
+    }
+  };
+
+  const prepare = async () => {
+    setBusy(true);
+    try {
+      const n = await api.teamReview(Boolean(current), kind);
+      setNotes((all) => ({ ...all, [kind]: n }));
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="card">
+      <div className="review-head">
+        <h2>Подготовка к встрече</h2>
+        {current && <span className="muted small">от {when(current.at)}</span>}
+      </div>
+      <div className="tabs" role="tablist">
+        {KINDS.map((k) => (
+          <button
+            key={k.id}
+            role="tab"
+            aria-selected={k.id === kind}
+            className={`tab${k.id === kind ? ' active' : ''}`}
+            onClick={() => pick(k.id)}
+          >
+            {k.title}
+          </button>
+        ))}
+      </div>
+      {busy ? (
+        <p className="muted">Модель готовит — это до 2 минут…</p>
+      ) : current ? (
+        <div className="review-text">{current.text}</div>
+      ) : (
+        <p className="muted">
+          {meta.lead} Готовится моделью по данным ниже; сохраняется на день.
+        </p>
+      )}
+      <div className="actions">
+        <button onClick={prepare} disabled={busy}>
+          {current ? 'Подготовить заново' : 'Подготовить'}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function OneOnOne({ name }: { name: string }) {
+  const [notes, setNotes] = useState<Notes | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .reviewLatest('oneonone', name)
+      .then(setNotes)
+      .catch((e) => setError((e as Error).message));
+  }, [name]);
+
+  const prepare = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setNotes(await api.teamReview(Boolean(notes), 'oneonone', name));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="oneonone">
+      <h3>Встреча один на один</h3>
+      {error && <p className="error small">{error}</p>}
+      {busy ? (
+        <p className="muted small">Готовлю повестку — до 2 минут…</p>
+      ) : notes ? (
+        <>
+          <p className="muted small">от {when(notes.at)}</p>
+          <div className="review-text small">{notes.text}</div>
+        </>
+      ) : (
+        <p className="muted small">
+          Повестка: успехи, трудности как вопросы, тема для роста и вопрос о
+          нагрузке. Без оценок и сравнений с другими.
+        </p>
+      )}
+      <button className="ghost" onClick={prepare} disabled={busy}>
+        {notes ? 'Подготовить заново' : 'Подготовить повестку'}
+      </button>
+    </div>
+  );
+}
+
+function TelegramEditor({
+  username,
+  onSave,
+}: {
+  username: string | null;
+  onSave: (u: string | null) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(username ?? '');
+  if (!editing)
+    return (
+      <button className="link small" onClick={() => setEditing(true)}>
+        {username ? `Telegram: @${username}` : 'Привязать Telegram'}
+      </button>
+    );
+  return (
+    <form
+      className="inline-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        await onSave(value.trim() || null);
+        setEditing(false);
+      }}
+    >
+      <input
+        value={value}
+        placeholder="@username"
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <button type="submit">OK</button>
+      <button type="button" className="ghost" onClick={() => setEditing(false)}>
+        Отмена
+      </button>
+    </form>
+  );
+}
+
 function PersonCard({
   p,
   links,
   stale,
   weeks,
+  telegram,
   onGithub,
   onAway,
+  onTelegram,
 }: {
   p: Person;
   links: Links | null;
   stale: number;
   weeks: string[];
+  telegram: string | null;
   onGithub: (login: string | null) => Promise<void>;
+  onTelegram: (username: string | null) => Promise<void>;
   onAway: (until: string | null, note: string | null) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [login, setLogin] = useState(p.github ?? '');
+  const [nudge, setNudge] = useState<string | null>(null);
   const warns = p.signals.filter((s) => s.level === 'warn').length;
 
   return (
@@ -397,6 +584,9 @@ function PersonCard({
             </button>
           )}
           <div>
+            <TelegramEditor username={telegram} onSave={onTelegram} />
+          </div>
+          <div>
             <AwayEditor p={p} onAway={onAway} />
           </div>
         </div>
@@ -412,9 +602,17 @@ function PersonCard({
 
       <ul className="signals">
         {p.signals.map((s, i) => (
-          <SignalLine key={i} s={s} links={links} />
+          <SignalLine
+            key={i}
+            s={s}
+            links={links}
+            onSay={s.say ? () => setNudge(s.say ?? '') : undefined}
+          />
         ))}
       </ul>
+      {nudge !== null && (
+        <NudgeForm person={p.name} text={nudge} onDone={() => setNudge(null)} />
+      )}
 
       <button className="link" onClick={() => setOpen((v) => !v)}>
         {open ? 'Скрыть детали' : 'Показать, над чем работает'}
@@ -422,6 +620,7 @@ function PersonCard({
 
       {open && (
         <div className="person-details">
+          <OneOnOne name={p.name} />
           <h3>В работе</h3>
           {p.inProgress.length ? (
             <ul className="issues">
@@ -539,19 +738,6 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const review = async (force: boolean) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const r = await api.teamReview(force);
-      setView((v) => (v ? { ...v, review: r } : v));
-    } catch (e) {
-      handle(e);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   if (!view)
     return error ? (
       <p className="error">{error}</p>
@@ -567,32 +753,7 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
     <>
       {error && <p className="error">{error}</p>}
 
-      <section className="card">
-        <div className="review-head">
-          <h2>Анализ для митинга</h2>
-          {view.review && (
-            <span className="muted small">от {when(view.review.at)}</span>
-          )}
-        </div>
-        {busy ? (
-          <p className="muted">
-            Модель готовит разбор по каждому человеку — это до 2 минут…
-          </p>
-        ) : view.review ? (
-          <div className="review-text">{view.review.text}</div>
-        ) : (
-          <p className="muted">
-            Разбор по каждому: над чем работает, в ту ли сторону идёт и что
-            посоветовать на встрече. Готовится моделью по данным ниже;
-            сохраняется на день.
-          </p>
-        )}
-        <div className="actions">
-          <button onClick={() => review(Boolean(view.review))} disabled={busy}>
-            {view.review ? 'Подготовить заново' : 'Подготовить анализ'}
-          </button>
-        </div>
-      </section>
+      <MeetingCard initial={view.review} onError={handle} />
 
       {!team || !team.hasDetails ? (
         <section className="card">
@@ -663,6 +824,14 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
                 links={team.links}
                 stale={team.thresholds.staleDays}
                 weeks={team.flow?.weeks ?? []}
+                telegram={team.telegram?.[p.name] ?? null}
+                onTelegram={async (username) => {
+                  try {
+                    setView(await api.setTelegram(p.name, username));
+                  } catch (e) {
+                    handle(e);
+                  }
+                }}
                 onAway={async (until, note) => {
                   try {
                     setView(await api.setAway(p.name, until, note));

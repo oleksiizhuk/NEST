@@ -1,3 +1,4 @@
+import { teamIssues } from '@application/project-manager/team';
 import {
   codeSignals,
   IssueFact,
@@ -294,6 +295,87 @@ describe('WatchProjectUseCase', () => {
     expect(text).toContain('Client Faisal · ABC-1 · 4 раб. дн.');
     expect(text).not.toContain('Who owns this');
     expect(text).toContain('Ivan merges PR 12');
+  });
+
+  it('alerts the owner about people and a late release, never a group', async () => {
+    const task = (key: string, who: string, over: any = {}) => ({
+      key,
+      summary: key,
+      type: 'Story',
+      status: 'In Progress',
+      category: 'indeterminate',
+      priority: 'Medium',
+      assignee: who,
+      fixVersions: ['1.0'],
+      created: '2026-09-01T00:00:00Z',
+      doneAt: null,
+      statusSince: '2026-09-01T00:00:00Z',
+      due: null,
+      ...over,
+    });
+    const details = {
+      ...teamIssues(
+        [task('A-1', 'Ann'), task('B-1', 'Bob')],
+        [],
+        NOW,
+        '1.0',
+        false,
+      ),
+      release: {
+        version: '1.0',
+        capped: false,
+        issues: [
+          {
+            key: 'A-1',
+            summary: 'x',
+            type: 'Story',
+            status: 'In Progress',
+            category: 'indeterminate',
+            priority: 'Medium',
+            assignee: 'Ann',
+            reporter: null,
+            created: '2026-09-01T00:00:00Z',
+            doneAt: null,
+            statusSince: null,
+            blockedBy: [],
+            addedAt: '2026-09-01T00:00:00Z',
+          },
+        ],
+      },
+    };
+    const snap = new ProjectSnapshot('s', NOW, [
+      {
+        source: 'issues',
+        ok: true,
+        fetchedAt: NOW,
+        text: '',
+        error: null,
+        details: details as any,
+      },
+    ]);
+    const { useCase, deps } = build({
+      refresh: { execute: jest.fn().mockResolvedValue(snap) },
+      config: { alertChatIds: [1, -100], releaseDate: '2026-09-30', team: [] },
+      memory: { active: jest.fn().mockResolvedValue([]) },
+      issues: { isConfigured: () => false },
+    });
+    const { signals } = await useCase.execute(NOW);
+    expect(signals.map((s) => [s.rule, s.subject])).toEqual(
+      expect.arrayContaining([
+        ['person-stuck', 'Ann:A-1'],
+        ['release-forecast', '1.0:none'],
+      ]),
+    );
+    const toOwner = deps.telegram.sendMessage.mock.calls.find(
+      ([id]: [number]) => id === 1,
+    )?.[1];
+    const toGroup = deps.telegram.sendMessage.mock.calls.find(
+      ([id]: [number]) => id === -100,
+    )?.[1];
+    expect(toOwner).toContain('Застрявшие задачи');
+    expect(toOwner).toContain('Ann: A-1');
+    expect(toGroup).toContain('Прогноз релиза');
+    expect(toGroup).not.toContain('Ann: A-1');
   });
 
   it('stays silent when everything was already sent', async () => {

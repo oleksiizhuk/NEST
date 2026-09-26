@@ -290,4 +290,28 @@ describe('PmAdminUseCase — Сегодня and absences', () => {
     );
     expect(store.save).not.toHaveBeenCalled();
   });
+
+  it('sends a nudge to a PM group, mentioning a linked person', async () => {
+    const { admin, store } = setup({ telegramUsernames: { Ann: 'ann_k' } });
+    const telegram = { sendMessage: jest.fn() };
+    (admin as any).telegram = telegram;
+    jest.spyOn(admin, 'groups').mockResolvedValue([
+      { chatId: -5, on: true },
+      { chatId: -6, on: false },
+    ] as any);
+    await admin.nudge('Ann', 'что мешает закрыть A-1?', -5);
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      -5,
+      '@ann_k, что мешает закрыть A-1?',
+    );
+    await admin.nudge('Bob', 'привет', -5);
+    expect(telegram.sendMessage).toHaveBeenLastCalledWith(-5, 'Bob, привет');
+    await expect(admin.nudge('Ann', 'x', -6)).rejects.toThrow('PM group');
+    await expect(admin.nudge('Ann', ' ', -5)).rejects.toThrow('text');
+    await admin.setTelegramUsername('Bob', '@Bob_Dev', 42);
+    expect(store.save).toHaveBeenLastCalledWith(
+      { telegramUsernames: { Ann: 'ann_k', Bob: 'bob_dev' } },
+      42,
+    );
+  });
 });

@@ -46,6 +46,12 @@ import {
   looksLikeQuestion,
 } from '@application/project-manager/tools/open-questions';
 import { readinessChecklist } from '@application/project-manager/readiness';
+import { buildTeam } from '@application/project-manager/team';
+import {
+  ReleaseIssues,
+  releaseView,
+} from '@application/project-manager/release';
+import { WeeklyFlow } from '@application/project-manager/load';
 
 const RULES: Array<[string, string]> = [
   ['readiness', 'Готовность релиза'],
@@ -55,7 +61,15 @@ const RULES: Array<[string, string]> = [
   ['client-question', 'Вопросы без ответа команды'],
   ['commitment-overdue', 'Просроченные обещания'],
   ['review-wait', 'PR ждут ревью'],
+  ['release-forecast', 'Прогноз релиза'],
+  ['person-overload', 'Перегружены'],
+  ['person-stuck', 'Застрявшие задачи'],
+  ['person-handover', 'Передать на время отсутствия'],
+  ['person-idle', 'Без задач'],
 ];
+
+// About people: only for the owner's private chats, never a group
+const PERSONAL = /^person-/;
 const PER_RULE = 8;
 const QUESTION_DAYS = 14;
 const QUESTION_WAIT_DAYS = 2;
@@ -122,6 +136,7 @@ export class WatchProjectUseCase {
       ...snapshot.sections.filter((s) => s.ok).flatMap((s) => s.signals ?? []),
       ...(await this.questions(now)),
       ...(await this.overdueCommitments(now)),
+      ...(await this.teamSignals(snapshot, now)),
     ];
     const sent: Record<string, number> = {};
     if (dry) return { signals, sent };
@@ -144,6 +159,8 @@ export class WatchProjectUseCase {
       let waiting = 0;
       const perRule = new Map<string, number>();
       for (const signal of signals) {
+        // Group chat ids are negative
+        if (chatId < 0 && PERSONAL.test(signal.rule)) continue;
         const shown = perRule.get(signal.rule) ?? 0;
         if (shown >= PER_RULE) {
           waiting += 1;
@@ -167,6 +184,76 @@ export class WatchProjectUseCase {
       }
     }
     return { signals, sent };
+  }
+
+  // Person-level and release-forecast alerts from the admin's own numbers
+  private async teamSignals(
+    snapshot: ProjectSnapshot,
+    now: Date,
+  ): Promise<Signal[]> {
+    try {
+      const live =
+        (await this.runtime?.current().catch(() => undefined)) ?? this.config;
+      const team = buildTeam(snapshot, live.githubLogins ?? {}, now, {
+        thresholds: live.teamThresholds,
+        away: live.teamAway,
+      });
+      const out: Signal[] = [];
+      for (const p of team.people) {
+        for (const s of p.signals) {
+          if (s.rule === 'overload')
+            out.push({
+              rule: 'person-overload',
+              subject: p.name,
+              text: `${p.name}: ${s.text}`,
+            });
+          else if (s.rule === 'stale')
+            out.push({
+              rule: 'person-stuck',
+              subject: `${p.name}:${s.keys[0] ?? ''}`,
+              text: `${p.name}: ${s.text}`,
+            });
+          else if (s.rule === 'handover')
+            out.push({
+              rule: 'person-handover',
+              subject: `${p.name}:${p.away?.until ?? ''}`,
+              text: `${p.name}: ${s.text}`,
+            });
+          else if (s.rule === 'runway' && p.load.total === 0 && p.load.pace)
+            out.push({
+              rule: 'person-idle',
+              subject: p.name,
+              text: `${p.name}: ${s.text}`,
+            });
+        }
+      }
+      const issues = snapshot.section('issues')?.details as
+        | { release?: ReleaseIssues | null; flow?: WeeklyFlow | null }
+        | undefined;
+      if (issues?.release && !issues.release.error && live.releaseDate) {
+        const r = releaseView(issues.release, now, {
+          releaseDate: live.releaseDate,
+          flow: issues.flow ?? null,
+        });
+        if (r.eta.verdict === 'late' || r.eta.verdict === 'at-risk')
+          out.push({
+            rule: 'release-forecast',
+            // A new forecast date alerts again; the same one does not
+            subject: `${r.version}:${r.eta.date ?? 'none'}`,
+            text: r.eta.date
+              ? `Релиз ${r.version}: прогноз ${r.eta.date} при цели ${
+                  live.releaseDate
+                }${
+                  r.eta.daysLate ? `, позже на ${r.eta.daysLate} раб. дн.` : ''
+                } — ${r.eta.verdict === 'late' ? 'опаздываем' : 'под риском'}.`
+              : `Релиз ${r.version}: за две недели ничего не закрыто, прогноза нет.`,
+          });
+      }
+      return out;
+    } catch (error) {
+      this.logger.error(`team alerts: ${error}`);
+      return [];
+    }
   }
 
   private async readiness(
