@@ -247,7 +247,14 @@ export class TeamReviewUseCase {
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       // Per-person counts stay on the cards, not in an area table
       areas: areas
-        ? { areas: areas.areas, noAreaShare: areas.noAreaShare }
+        ? {
+            // The main closer is named only where it is a risk
+            areas: areas.areas.map((a) =>
+              a.busRisk ? a : { ...a, owner: null, backup: null },
+            ),
+            noAreaShare: areas.noAreaShare,
+            capped: areas.capped ?? false,
+          }
         : null,
     };
   }

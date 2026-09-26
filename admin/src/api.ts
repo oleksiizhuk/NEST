@@ -237,6 +237,7 @@ export interface AreasView {
   links: Links;
   areas: {
     noAreaShare: number;
+    capped: boolean;
     areas: Array<{
       name: string;
       bugsNew: number;

@@ -132,7 +132,6 @@ export const toFact = (issue: JiraIssue): IssueFact => {
     statusSince: f.statuscategorychangedate ?? null,
     due: f.duedate ?? null,
     components: names(f.components),
-    parent: f.parent?.key ?? null,
   };
 };
 
@@ -356,6 +355,7 @@ export class JiraIssueReader implements IProjectSource {
             closed.map(toFact),
             history.created.map(toFact),
             now,
+            caps[0] || history.capped,
           )
         : null,
       release: await this.release(),

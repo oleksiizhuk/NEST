@@ -70,12 +70,23 @@ describe('areaView', () => {
     expect(a.areas.find((r) => r.name === 'Catalog')?.busRisk).toBe(false);
     expect(a.areas[a.areas.length - 1].name).toBe(NO_AREA);
     expect(a.noAreaShare).toBe(0.5);
+    expect(a.capped).toBe(false);
     expect(a.people.Ann).toEqual({ done: 5, bugs: 3 });
   });
 
   it('flags many areas at once and a mostly-bugs month on the card', () => {
+    // One in progress and the next two in the queue, in three areas
     const open = ['Pay', 'Catalog', 'Auth'].map((c, n) =>
-      f(`O-${n}`, { components: [c] }),
+      f(`O-${n}`, {
+        components: [c],
+        ...(n === 0
+          ? {
+              category: 'indeterminate' as const,
+              status: 'In Progress',
+              statusSince: '2026-09-23T00:00:00Z',
+            }
+          : {}),
+      }),
     );
     const issues = teamIssues(open, [], NOW, null, false);
     const snap = new ProjectSnapshot('s', NOW, [
@@ -100,5 +111,30 @@ describe('areaView', () => {
       expect.arrayContaining(['switching', 'unplanned']),
     );
     expect(ann.load.closed28).toEqual({ done: 6, bugs: 4 });
+  });
+
+  it('ignores old closes edited lately and sub-tasks', () => {
+    const a = areaView(
+      [
+        f('S-1', { type: 'Story' }),
+        f('T-1', { type: 'Sub-task', components: [] }),
+        f('T-2', { type: 'Подзадача', components: [] }),
+      ],
+      [
+        ...Array.from({ length: 6 }, (_, n) =>
+          f(`OLD-${n}`, { category: 'done', doneAt: '2025-02-01T00:00:00Z' }),
+        ),
+        f('N-1', {
+          category: 'done',
+          doneAt: '2026-09-20T00:00:00Z',
+          assignee: 'Bob',
+        }),
+      ],
+      [],
+      NOW,
+    );
+    const pay = a.areas.find((r) => r.name === 'Payments');
+    expect(pay).toMatchObject({ done: 1, busRisk: false });
+    expect(a.noAreaShare).toBe(0);
   });
 });

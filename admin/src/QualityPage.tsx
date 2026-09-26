@@ -45,6 +45,11 @@ export function QualityPage({
         не по людям: баг в области — повод посмотреть на процесс, а не искать
         виноватого.
       </p>
+      {a.capped && (
+        <p className="muted small">
+          Список задач из Jira упёрся в лимит: цифры ниже — нижняя граница.
+        </p>
+      )}
       {a.noAreaShare > 0.5 && (
         <p className="warn-line small">
           У {Math.round(a.noAreaShare * 100)}% открытых задач нет компонента —
@@ -90,7 +95,7 @@ export function QualityPage({
                 <th>Открытых багов</th>
                 <th>Открыто задач</th>
                 <th>Закрыто, 12 нед.</th>
-                <th>Кто в основном закрывал</th>
+                <th>Один человек на область</th>
               </tr>
             </thead>
             <tbody>
@@ -125,9 +130,11 @@ export function QualityPage({
                   <td>{r.open}</td>
                   <td>{r.done}</td>
                   <td>
-                    {r.owner
-                      ? `${r.owner.name} ${Math.round(r.owner.share * 100)}%`
-                      : '—'}
+                    {r.busRisk && r.owner
+                      ? `да — ${r.owner.name} ${Math.round(
+                          r.owner.share * 100,
+                        )}%`
+                      : 'нет'}
                   </td>
                 </tr>
               ))}

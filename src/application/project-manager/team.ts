@@ -523,8 +523,11 @@ export const personSignals = (
     });
   }
   // Many areas at once: every switch costs focus
+  // In progress plus what is next, not the whole backlog
   const areas = new Set(
-    [...p.inProgress, ...p.queue].flatMap((i) => i.components ?? []),
+    [...p.inProgress, ...p.queue.slice(0, 2)].flatMap(
+      (i) => i.components ?? [],
+    ),
   );
   if (on('switching') && areas.size >= 3)
     out.push({
@@ -534,7 +537,9 @@ export const personSignals = (
       text: `Задачи в ${areas.size} областях сразу: ${[...areas]
         .slice(0, 4)
         .join(', ')} — много переключений.`,
-      why: `компоненты открытых задач: ${[...areas].join(', ')}`,
+      why: `компоненты задач в работе и ближайших в очереди: ${[...areas].join(
+        ', ',
+      )}`,
       keys: [],
       say: 'Много разных областей одновременно — какую можно передать, чтобы сосредоточиться?',
     });

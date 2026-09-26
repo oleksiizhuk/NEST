@@ -599,7 +599,7 @@ function PersonCard({
           <span className="chip">Очередь {p.queue.length}</span>
           <span className="chip">Закрыто 14 дн. {p.done14.length}</span>
           {p.github && <span className="chip">PR {p.pulls.length}</span>}
-          {p.load.closed28 && p.load.closed28.done > 0 && (
+          {p.load.closed28 && p.load.closed28.done >= 5 && (
             <span className="chip">
               Баги{' '}
               {Math.round((p.load.closed28.bugs / p.load.closed28.done) * 100)}%

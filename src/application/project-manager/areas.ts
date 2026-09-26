@@ -1,4 +1,4 @@
-import { IssueFact } from '@application/project-manager/metrics';
+import { IssueFact, isBug } from '@application/project-manager/metrics';
 
 // Quality and areas, by Jira component: where bugs come in, which area
 // only one person knows, and how much of each person's work was bugs.
@@ -7,8 +7,9 @@ import { IssueFact } from '@application/project-manager/metrics';
 export const NO_AREA = 'без компонента';
 const DAY = 86_400_000;
 
-const isBug = (i: IssueFact) => /bug|баг|ошибк|defect|incident/i.test(i.type);
-const isWork = (i: IssueFact) => !/^epic$/i.test(i.type);
+// Epics and sub-tasks are not area work: Jira does not copy components to
+// sub-tasks, and their story already counts
+const isWork = (i: IssueFact) => !/^epic$|sub-?task|подзадач/i.test(i.type);
 const areasOf = (i: IssueFact) =>
   i.components?.length ? i.components : [NO_AREA];
 
@@ -35,6 +36,8 @@ export interface Areas {
   noAreaShare: number;
   // Per person over the last 28 days: closed, and how many were bugs
   people: Record<string, { done: number; bugs: number }>;
+  // A Jira list hit its limit: counts are lower bounds
+  capped: boolean;
 }
 
 export const areaView = (
@@ -42,6 +45,7 @@ export const areaView = (
   done: IssueFact[],
   created: IssueFact[],
   now: Date,
+  capped = false,
 ): Areas => {
   const t = now.getTime();
   const rows = new Map<string, AreaRow>();
@@ -89,6 +93,9 @@ export const areaView = (
   const seenDone = new Set<string>();
   for (const i of done.filter(isWork)) {
     if (seenDone.has(i.key)) continue;
+    // The 14-day list holds old tickets edited lately (say, a component
+    // backfill); only closes inside the 12 weeks count
+    if (!i.doneAt || t - Date.parse(i.doneAt) > 84 * DAY) continue;
     seenDone.add(i.key);
     for (const a of areasOf(i)) {
       row(a).done += 1;
@@ -127,5 +134,6 @@ export const areaView = (
       ? Math.round((noArea / openWork.length) * 100) / 100
       : 0,
     people,
+    capped,
   };
 };
