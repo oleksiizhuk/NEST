@@ -27,6 +27,8 @@ export interface IssueFact {
   due: string | null;
   // Jira components, for the areas page
   components?: string[];
+  // Last change of any kind (Jira "updated")
+  updated?: string | null;
 }
 
 export interface IssueMetricsOptions {

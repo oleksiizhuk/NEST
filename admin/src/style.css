@@ -1097,3 +1097,22 @@ details.card summary {
   background: var(--surface, var(--bg));
   z-index: 1;
 }
+
+/* ---------- hanging ---------- */
+.filters {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+.filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.filters select {
+  width: auto;
+  padding: 6px 8px;
+  font-size: 14px;
+}

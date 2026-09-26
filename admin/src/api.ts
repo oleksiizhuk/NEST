@@ -240,6 +240,31 @@ export interface TeamView {
 
 export type Stage = 'todo' | 'dev' | 'review' | 'qa' | 'blocked' | 'done';
 
+export interface HangingItem {
+  key: string;
+  summary: string;
+  type: string;
+  status: string;
+  category: 'new' | 'indeterminate';
+  assignee: string | null;
+  priority: string | null;
+  inScope: boolean;
+  openDays: number | null;
+  idleDays: number | null;
+  inStatusDays: number | null;
+}
+
+export interface HangingView {
+  asOf: string;
+  stale: boolean;
+  links: Links;
+  hanging: {
+    releaseVersion: string | null;
+    capped: boolean;
+    items: HangingItem[];
+  } | null;
+}
+
 export interface AreasView {
   asOf: string;
   links: Links;
@@ -476,6 +501,7 @@ export const api = {
   flow: () => call<FlowView | null>('GET', 'flow'),
   release: () => call<ReleaseView | null>('GET', 'release'),
   areas: () => call<AreasView | null>('GET', 'areas'),
+  hanging: () => call<HangingView | null>('GET', 'hanging'),
   setBaseline: (date: string | null) =>
     call<ReleaseView | null>('PUT', 'release/baseline', { date }),
   hideToday: (id: string, days: 1 | 7) =>

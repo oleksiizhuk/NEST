@@ -17,6 +17,7 @@ import {
 } from '@application/project-manager/load';
 import { ReleaseIssues } from '@application/project-manager/release';
 import { areaView } from '@application/project-manager/areas';
+import { hangingWork } from '@application/project-manager/hanging';
 import {
   FLOW_WINDOW_DAYS,
   FlowStages,
@@ -132,6 +133,7 @@ export const toFact = (issue: JiraIssue): IssueFact => {
     statusSince: f.statuscategorychangedate ?? null,
     due: f.duedate ?? null,
     components: names(f.components),
+    updated: f.updated ?? null,
   };
 };
 
@@ -349,6 +351,12 @@ export class JiraIssueReader implements IProjectSource {
       ),
       flow: history ? this.flow(history, now) : null,
       stages,
+      hanging: hangingWork(
+        openFacts,
+        now,
+        this.releaseVersion,
+        caps[0] ?? false,
+      ),
       areas: history
         ? areaView(
             openFacts,

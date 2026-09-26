@@ -268,6 +268,13 @@ export class PmAdminController {
     return this.team_.flow();
   }
 
+  // Зависшие: open tickets with how long they have been open and idle
+  @Get('hanging')
+  @UseGuards(PmAdminGuard)
+  hanging() {
+    return this.team_.hanging();
+  }
+
   // Качество: bugs by area and areas only one person knows
   @Get('areas')
   @UseGuards(PmAdminGuard)
