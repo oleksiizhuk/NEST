@@ -270,6 +270,10 @@ describe('WatchProjectUseCase', () => {
       deps.knowledge as any,
       deps.memory as any,
       deps.issues as any,
+      undefined,
+      undefined,
+      undefined,
+      { ownerId: 1 } as any,
     );
     return { useCase, deps };
   };
@@ -355,7 +359,11 @@ describe('WatchProjectUseCase', () => {
     ]);
     const { useCase, deps } = build({
       refresh: { execute: jest.fn().mockResolvedValue(snap) },
-      config: { alertChatIds: [1, -100], releaseDate: '2026-09-30', team: [] },
+      config: {
+        alertChatIds: [1, -100, 77],
+        releaseDate: '2026-09-30',
+        team: [],
+      },
       memory: { active: jest.fn().mockResolvedValue([]) },
       issues: { isConfigured: () => false },
     });
@@ -363,7 +371,7 @@ describe('WatchProjectUseCase', () => {
     expect(signals.map((s) => [s.rule, s.subject])).toEqual(
       expect.arrayContaining([
         ['person-stuck', 'Ann:A-1'],
-        ['release-forecast', '1.0:none'],
+        ['release-forecast', '1.0:late:none'],
       ]),
     );
     const toOwner = deps.telegram.sendMessage.mock.calls.find(
@@ -376,6 +384,11 @@ describe('WatchProjectUseCase', () => {
     expect(toOwner).toContain('Ann: A-1');
     expect(toGroup).toContain('Прогноз релиза');
     expect(toGroup).not.toContain('Ann: A-1');
+    // A teammate on the alert list gets no person alerts either
+    const toTeammate = deps.telegram.sendMessage.mock.calls.find(
+      ([id]: [number]) => id === 77,
+    )?.[1];
+    expect(toTeammate).not.toContain('Ann: A-1');
   });
 
   it('stays silent when everything was already sent', async () => {

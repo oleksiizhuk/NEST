@@ -299,12 +299,13 @@ export class PmAdminController {
   @Post('team/review/latest')
   @HttpCode(200)
   @UseGuards(PmAdminGuard)
-  reviewLatest(@Body() body: AdminTeamReviewBody) {
+  async reviewLatest(@Body() body: AdminTeamReviewBody) {
     const kind: ReviewKind =
       body.kind === 'oneonone'
         ? `oneonone:${body.person ?? ''}`
         : body.kind ?? 'meeting';
-    return this.team_.latestOf(kind);
+    // Wrapped: a bare null would go out as an empty body
+    return { notes: await this.team_.latestOf(kind) };
   }
 
   // Meeting notes by the model (cached for the day unless force)

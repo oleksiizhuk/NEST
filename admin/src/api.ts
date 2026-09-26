@@ -394,10 +394,11 @@ export const api = {
       person,
     }),
   reviewLatest: (kind: ReviewKind, person?: string) =>
-    call<{ text: string; at: string } | null>('POST', 'team/review/latest', {
-      kind,
-      person,
-    }),
+    call<{ notes: { text: string; at: string } | null }>(
+      'POST',
+      'team/review/latest',
+      { kind, person },
+    ).then((r) => r.notes ?? null),
   setTelegram: (name: string, username: string | null) =>
     call<TeamView>('PUT', 'team/telegram', { name, username }),
   nudge: (name: string, text: string, chatId: number) =>

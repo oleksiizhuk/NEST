@@ -121,7 +121,8 @@ export class PmAdminUseCase {
       throw new SettingsError('text: 1-800 characters');
     const chat = (await this.groups()).find((g) => g.chatId === chatId && g.on);
     if (!chat) throw new SettingsError('chat: a PM group the bot works in');
-    const username = (await this.runtime.current()).telegramUsernames?.[name];
+    // From the store: a link saved a moment ago may not be in the cache
+    const username = (await this.store.get()).values.telegramUsernames?.[name];
     const to = username ? `@${username}` : name;
     await this.telegram.sendMessage(chatId, `${to}, ${message}`);
     return { sent: true, chatId, mention: Boolean(username) };

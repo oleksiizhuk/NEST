@@ -14,6 +14,10 @@ import {
   TELEGRAM_GATEWAY,
 } from '@application/telegram/telegram.gateway.interface';
 import {
+  ITelegramConfig,
+  TELEGRAM_CONFIG,
+} from '@application/telegram/telegram.config.interface';
+import {
   IAlertLog,
   PM_ALERT_LOG,
 } from '@application/project-manager/alert-log.interface';
@@ -118,6 +122,9 @@ export class WatchProjectUseCase {
     @Optional() @Inject(DOC_COMMENTS) private readonly docs?: IDocComments,
     @Optional() @Inject(DESIGN_HOST) private readonly design?: IDesignHost,
     @Optional() private readonly runtime?: PmRuntimeConfig,
+    @Optional()
+    @Inject(TELEGRAM_CONFIG)
+    private readonly telegramConfig?: ITelegramConfig,
   ) {}
 
   // dry: read the latest snapshot, send and record nothing
@@ -159,8 +166,13 @@ export class WatchProjectUseCase {
       let waiting = 0;
       const perRule = new Map<string, number>();
       for (const signal of signals) {
-        // Group chat ids are negative
-        if (chatId < 0 && PERSONAL.test(signal.rule)) continue;
+        // About people: the owner's own chat only, never a group or a
+        // teammate on the alert list
+        if (
+          PERSONAL.test(signal.rule) &&
+          chatId !== this.telegramConfig?.ownerId
+        )
+          continue;
         const shown = perRule.get(signal.rule) ?? 0;
         if (shown >= PER_RULE) {
           waiting += 1;
@@ -238,8 +250,11 @@ export class WatchProjectUseCase {
         if (r.eta.verdict === 'late' || r.eta.verdict === 'at-risk')
           out.push({
             rule: 'release-forecast',
-            // A new forecast date alerts again; the same one does not
-            subject: `${r.version}:${r.eta.date ?? 'none'}`,
+            // The date moves every day at a steady pace; alert again only
+            // when the verdict or the slip in whole weeks changes
+            subject: `${r.version}:${r.eta.verdict}:${
+              r.eta.date ? Math.ceil((r.eta.daysLate ?? 0) / 5) : 'none'
+            }`,
             text: r.eta.date
               ? `Релиз ${r.version}: прогноз ${r.eta.date} при цели ${
                   live.releaseDate
