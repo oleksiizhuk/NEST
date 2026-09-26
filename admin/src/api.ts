@@ -226,6 +226,7 @@ export interface TeamView {
     links: Links;
     telegram: Record<string, string>;
     reviewers: Record<string, { reviewed: number; pending: number }>;
+    sprints: Record<string, { committed: number; done: number }>;
     flow: WeeklyFlow | null;
     scopeGrowing: boolean;
     unassigned: Array<{
@@ -422,6 +423,18 @@ export interface ReleaseView {
   links: Links;
   hasCode: boolean;
   releaseError: string | null;
+  sprints: Array<{
+    name: string;
+    state: 'active' | 'closed';
+    start: string | null;
+    end: string | null;
+    committed: number;
+    added: number;
+    doneCommitted: number;
+    doneAdded: number;
+    carried: number;
+    sayDo: number | null;
+  }> | null;
   release: ReleaseData | null;
 }
 

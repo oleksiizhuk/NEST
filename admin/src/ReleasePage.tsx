@@ -89,6 +89,77 @@ function Burnup({ points }: { points: ReleaseData['burnup'] }) {
   );
 }
 
+function SprintsCard({ rows }: { rows: ReleaseView['sprints'] }) {
+  if (!rows)
+    return (
+      <section className="card">
+        <h2>Обещали — сделали</h2>
+        <p className="muted small">
+          Чтобы видеть спринты, задайте в Vercel номер доски Jira
+          (PM_JIRA_BOARD_ID) и обновите данные.
+        </p>
+      </section>
+    );
+  const closed = rows.filter((r) => r.state === 'closed' && r.sayDo !== null);
+  const avg = closed.length
+    ? Math.round(
+        (closed.reduce((n, r) => n + (r.sayDo ?? 0), 0) / closed.length) * 100,
+      )
+    : null;
+  return (
+    <section className="card">
+      <h2>Обещали — сделали</h2>
+      <p className="muted small">
+        «Обещали» — задачи, которые были в спринте на старте; добавленные по
+        ходу считаются отдельно.{' '}
+        {avg !== null && `В среднем выполняется ${avg}% обещанного.`} Устойчиво
+        меньше 70% — планируют больше, чем успевают: стоит брать в спринт
+        меньше.
+      </p>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Спринт</th>
+              <th>Обещали</th>
+              <th>Сделали из обещанного</th>
+              <th>Добавили по ходу</th>
+              <th>Перенесли</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr
+                key={r.name}
+                className={
+                  r.sayDo !== null && r.sayDo < 0.7 && r.state === 'closed'
+                    ? 'row-warn'
+                    : ''
+                }
+              >
+                <td>
+                  {r.name}
+                  {r.state === 'active' && <span className="tag">идёт</span>}
+                </td>
+                <td>{r.committed}</td>
+                <td>
+                  {r.doneCommitted}
+                  {r.sayDo !== null && ` (${Math.round(r.sayDo * 100)}%)`}
+                </td>
+                <td>
+                  {r.added}
+                  {r.added > 0 && ` (сделано ${r.doneAdded})`}
+                </td>
+                <td>{r.state === 'closed' ? r.carried : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function WhatIf({ r }: { r: ReleaseData }) {
   const [dropLow, setDropLow] = useState(false);
   const [pacePct, setPacePct] = useState(100);
@@ -207,14 +278,18 @@ export function ReleasePage({
     );
   if (!view || !r)
     return (
-      <section className="card">
-        <h2>Релиз не задан</h2>
-        <p className="muted">
-          Укажите в Vercel версию релиза в Jira (PM_RELEASE_VERSION) и дату
-          (PM_RELEASE_DATE), затем обновите данные. Страница считает всё по
-          задачам этой версии.
-        </p>
-      </section>
+      <>
+        !view || !r) return (
+        <section className="card">
+          <h2>Релиз не задан</h2>
+          <p className="muted">
+            Укажите в Vercel версию релиза в Jira (PM_RELEASE_VERSION) и дату
+            (PM_RELEASE_DATE), затем обновите данные. Страница считает всё по
+            задачам этой версии.
+          </p>
+        </section>
+        {view && <SprintsCard rows={view.sprints} />}
+      </>
     );
 
   const links = view.links;
@@ -282,6 +357,8 @@ export function ReleasePage({
       </section>
 
       <WhatIf r={r} />
+
+      <SprintsCard rows={view.sprints} />
 
       <section className="card">
         <h2>Что добавили в релиз по ходу</h2>
