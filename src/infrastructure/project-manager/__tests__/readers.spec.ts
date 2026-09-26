@@ -1,4 +1,5 @@
 import {
+  assigneeAt,
   formatIssue,
   JiraIssueReader,
   toFact,
@@ -529,6 +530,27 @@ describe('Jira reader sprints', () => {
         doneAdded: 1,
       }),
     ]);
+  });
+});
+
+describe('assigneeAt', () => {
+  const changes = [
+    { at: '2026-09-10T00:00:00Z', from: 'Ann', to: 'Bob' },
+    { at: '2026-09-20T00:00:00Z', from: 'Bob', to: 'Cid' },
+  ];
+  it('credits whoever had the ticket at that moment', () => {
+    expect(assigneeAt(changes, Date.parse('2026-09-15T00:00:00Z'), 'Cid')).toBe(
+      'Bob',
+    );
+    expect(assigneeAt(changes, Date.parse('2026-09-01T00:00:00Z'), 'Cid')).toBe(
+      'Ann',
+    );
+    expect(assigneeAt(changes, Date.parse('2026-09-25T00:00:00Z'), 'Cid')).toBe(
+      'Cid',
+    );
+    expect(assigneeAt([], Date.parse('2026-09-01T00:00:00Z'), 'Dee')).toBe(
+      'Dee',
+    );
   });
 });
 
