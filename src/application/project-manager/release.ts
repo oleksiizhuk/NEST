@@ -137,12 +137,18 @@ export const releaseView = (
     ? workingDaysLeft(now, options.releaseDate)
     : null;
 
-  // A ticket tagged into the release after it was closed counts as closed
-  // for the release on the day it was added, not before
+  // A ticket tagged into the release after it was closed shows as done on
+  // the burn-up from the day it was added, but is not release pace: that
+  // work was done before it belonged to the release
   const time = (v: string | null) => (v ? Date.parse(v) : NaN);
   const addedMs = (i: ReleaseIssue) => time(i.addedAt ?? i.created);
-  const closedMs = (i: ReleaseIssue) =>
-    Math.max(time(i.doneAt), addedMs(i) || 0);
+  const closedMs = (i: ReleaseIssue) => {
+    const doneAt = time(i.doneAt);
+    const added = addedMs(i);
+    if (!Number.isFinite(doneAt)) return added;
+    return Number.isFinite(added) ? Math.max(doneAt, added) : doneAt;
+  };
+  const taggedAfterClose = (i: ReleaseIssue) => time(i.doneAt) < addedMs(i);
   const endOf = (day: string) => Date.parse(`${day}T23:59:59.999Z`);
 
   // Burn-up: 30 days, one point a day (UTC days)
@@ -161,7 +167,8 @@ export const releaseView = (
   // last two blocks give the forecast, the best and worst of four the range
   const blocks = [0, 0, 0, 0];
   for (const i of done) {
-    const at = closedMs(i);
+    if (taggedAfterClose(i)) continue;
+    const at = time(i.doneAt);
     if (!Number.isFinite(at) || at > now.getTime()) continue;
     const ago = workingDaysBetween(new Date(at), now);
     if (ago < 20) blocks[Math.floor(ago / 5)] += 1;
@@ -172,9 +179,8 @@ export const releaseView = (
   const worst = Math.min(...weekly) || null;
 
   const remaining = open.length;
-  const finishedAt = done.length
-    ? iso(new Date(Math.max(...done.map(closedMs).filter(Number.isFinite))))
-    : today;
+  const closes = done.map(closedMs).filter(Number.isFinite);
+  const finishedAt = closes.length ? iso(new Date(Math.max(...closes))) : today;
   const etaAt = (pace: number | null) =>
     remaining === 0
       ? finishedAt
@@ -202,8 +208,13 @@ export const releaseView = (
   }
 
   // Scope creep against a baseline day (owner's, else 30 days ago)
+  // A real day only; anything else stored earlier falls back
   const custom = Boolean(
-    options.baseline && /^\d{4}-\d{2}-\d{2}$/.test(options.baseline),
+    options.baseline &&
+      /^\d{4}-\d{2}-\d{2}$/.test(options.baseline) &&
+      !isNaN(Date.parse(`${options.baseline}T00:00:00Z`)) &&
+      new Date(`${options.baseline}T00:00:00Z`).toISOString().slice(0, 10) ===
+        options.baseline,
   );
   const baseline = custom
     ? (options.baseline as string)

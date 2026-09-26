@@ -111,27 +111,30 @@ describe('releaseView', () => {
     ]);
   });
 
-  it('counts a ticket tagged in after it closed on the day it was added', () => {
+  it('shows a ticket tagged in after it closed as done, but not as pace', () => {
     const v = releaseView(
       {
         version: '1.0',
         capped: false,
         issues: [
           ...Array.from({ length: 5 }, (_, n) =>
-            done(`RL-${n + 10}`, '2026-08-01T10:00:00Z', {
+            done(`RL-${n + 10}`, '2026-06-01T10:00:00Z', {
               addedAt: '2026-09-24T09:00:00Z',
             }),
           ),
+          done('RL-30', '2026-09-23T10:00:00Z', { doneAt: null }),
           t('RL-20', {}),
         ],
       },
       NOW,
       { releaseDate: '2026-09-30' },
     );
-    // Today's tagging counts as today's closes, never as August pace
-    expect(v.burnup[28].done).toBe(0);
-    expect(v.burnup[29].done).toBe(5);
-    expect(v.pace.perDay).toBe(0.5);
+    expect(v.burnup[28].done).toBe(1);
+    expect(v.burnup[29].done).toBe(6);
+    // Old work tagged today is not release pace; a close without a date
+    // does not crash anything
+    expect(v.pace.perDay).toBeNull();
+    expect(v.eta).toMatchObject({ date: null, verdict: 'late' });
   });
 
   it('keeps the range around the forecast, a zero week included', () => {
@@ -178,6 +181,16 @@ describe('releaseView', () => {
       verdict: 'on-track',
       daysLate: 0,
     });
+    const old = releaseView(
+      {
+        version: '1.0',
+        capped: false,
+        issues: [done('RL-1', '2026-09-17T10:00:00Z')],
+      },
+      NOW,
+      { releaseDate: '2026-09-18', baseline: '2026-02-31' },
+    );
+    expect(old.creep.custom).toBe(false);
   });
 
   it('does not flag a merged ticket that is in review or QA', () => {

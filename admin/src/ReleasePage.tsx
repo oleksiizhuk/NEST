@@ -238,10 +238,14 @@ export function ReleasePage({
           {r.eta.date ? (
             <>
               Прогноз готовности: <b>{ru(r.eta.date)}</b>
-              {r.eta.early && r.eta.late && r.eta.early !== r.eta.late
-                ? ` (от ${ru(r.eta.early)} до ${ru(
-                    r.eta.late,
-                  )} по лучшей и худшей неделе)`
+              {r.eta.early && r.eta.early !== r.eta.date
+                ? r.eta.late
+                  ? ` (от ${ru(r.eta.early)} до ${ru(
+                      r.eta.late,
+                    )} по лучшей и худшей неделе)`
+                  : ` (при лучшей неделе — ${ru(
+                      r.eta.early,
+                    )}; была неделя без закрытий, поэтому поздней границы нет)`
                 : ''}
               {r.eta.daysLate
                 ? ` — позже цели на ${r.eta.daysLate} раб. дн.`
