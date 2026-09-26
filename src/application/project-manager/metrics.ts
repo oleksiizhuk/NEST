@@ -25,6 +25,9 @@ export interface IssueFact {
   // When it entered its current status category
   statusSince: string | null;
   due: string | null;
+  // Jira components and the parent (epic) key, for the areas page
+  components?: string[];
+  parent?: string | null;
 }
 
 export interface IssueMetricsOptions {

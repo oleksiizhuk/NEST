@@ -1,6 +1,7 @@
 import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity';
 import { IssueFact, isBlocker } from '@application/project-manager/metrics';
 import { workingDaysBetween } from '@application/project-manager/release-clock';
+import { Areas } from '@application/project-manager/areas';
 import {
   median,
   pacePerDay,
@@ -21,6 +22,7 @@ export interface PersonIssue {
   statusSince: string | null;
   // dev / review / qa / blocked… when the status history was read
   stage?: string | null;
+  components?: string[];
   due: string | null;
   blocked: boolean;
 }
@@ -39,6 +41,7 @@ export interface TeamIssues {
   unassigned?: FreeIssue[];
   // Added by the Jira reader: 12 weeks of closed / created counts
   flow?: WeeklyFlow | null;
+  areas?: Areas | null;
   people: Record<
     string,
     {
@@ -98,6 +101,7 @@ export const teamIssues = (
       inScope: releaseVersion ? i.fixVersions.includes(releaseVersion) : true,
       statusSince: i.statusSince,
       stage: history.stage?.(i.status, i.category) ?? null,
+      components: i.components ?? [],
       due: i.due,
       blocked:
         isBlocker(i) && Boolean(i.blockedBy?.length || /block/i.test(i.status)),
@@ -147,6 +151,8 @@ export type SignalRule =
   | 'overload'
   | 'underload'
   | 'runway'
+  | 'switching'
+  | 'unplanned'
   | 'ok';
 
 // Rules the owner may switch off on the admin page
@@ -164,6 +170,8 @@ export const TOGGLEABLE_RULES: SignalRule[] = [
   'overload',
   'underload',
   'runway',
+  'switching',
+  'unplanned',
 ];
 
 export interface Signal {
@@ -207,6 +215,8 @@ export interface PersonLoad {
   runwayDays: number | null;
   // Closed per week, oldest first (same weeks as the team flow)
   weekly: number[] | null;
+  // Last 28 days: closed, and how many of those were bugs
+  closed28?: { done: number; bugs: number } | null;
 }
 
 export interface TeamThresholds {
@@ -512,6 +522,34 @@ export const personSignals = (
         : 'Есть время взять ещё задачу или помочь кому-то?',
     });
   }
+  // Many areas at once: every switch costs focus
+  const areas = new Set(
+    [...p.inProgress, ...p.queue].flatMap((i) => i.components ?? []),
+  );
+  if (on('switching') && areas.size >= 3)
+    out.push({
+      level: 'info',
+      rule: 'switching',
+      subject: 'areas',
+      text: `Задачи в ${areas.size} областях сразу: ${[...areas]
+        .slice(0, 4)
+        .join(', ')} — много переключений.`,
+      why: `компоненты открытых задач: ${[...areas].join(', ')}`,
+      keys: [],
+      say: 'Много разных областей одновременно — какую можно передать, чтобы сосредоточиться?',
+    });
+  // Mostly bugs: interrupt-driven work, often the same senior
+  const c = load?.closed28;
+  if (on('unplanned') && c && c.done >= 5 && c.bugs / c.done > 0.4)
+    out.push({
+      level: 'info',
+      rule: 'unplanned',
+      subject: 'bugs',
+      text: `За 4 недели ${c.bugs} из ${c.done} закрытых — баги: много незапланированной работы.`,
+      why: `баги ${Math.round((c.bugs / c.done) * 100)}% > 40% за 28 дней`,
+      keys: [],
+      say: 'Тебе прилетает много багов — давай распределим дежурство по багам между всеми?',
+    });
   if (!out.length)
     out.push({
       level: 'ok',
@@ -675,6 +713,7 @@ export const buildTeam = (
         pace: pace === null ? null : Math.round(pace * 100) / 100,
         runwayDays: pace ? total / pace : null,
         weekly,
+        closed28: issues?.areas?.people?.[d.name] ?? null,
       };
       const base = { ...d, load };
       return {

@@ -130,6 +130,8 @@ export type SignalRule =
   | 'overload'
   | 'underload'
   | 'runway'
+  | 'switching'
+  | 'unplanned'
   | 'ok';
 
 export interface Signal {
@@ -192,6 +194,7 @@ export interface Person {
     pace: number | null;
     runwayDays: number | null;
     weekly: number[] | null;
+    closed28?: { done: number; bugs: number } | null;
   };
   signals: Signal[];
 }
@@ -228,6 +231,26 @@ export interface TeamView {
 }
 
 export type Stage = 'todo' | 'dev' | 'review' | 'qa' | 'blocked' | 'done';
+
+export interface AreasView {
+  asOf: string;
+  links: Links;
+  areas: {
+    noAreaShare: number;
+    areas: Array<{
+      name: string;
+      bugsNew: number;
+      bugsBefore: number;
+      openBugs: number;
+      openBugKeys: string[];
+      open: number;
+      done: number;
+      owner: { name: string; share: number } | null;
+      backup: string | null;
+      busRisk: boolean;
+    }>;
+  } | null;
+}
 
 export interface ReviewLoad {
   windowDays: number;
@@ -442,6 +465,7 @@ export const api = {
   today: () => call<TodayView>('GET', 'today'),
   flow: () => call<FlowView | null>('GET', 'flow'),
   release: () => call<ReleaseView | null>('GET', 'release'),
+  areas: () => call<AreasView | null>('GET', 'areas'),
   setBaseline: (date: string | null) =>
     call<ReleaseView | null>('PUT', 'release/baseline', { date }),
   hideToday: (id: string, days: 1 | 7) =>

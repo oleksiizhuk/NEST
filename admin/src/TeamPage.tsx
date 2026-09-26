@@ -28,6 +28,8 @@ const TOGGLEABLE: SignalRule[] = [
   'overload',
   'underload',
   'runway',
+  'switching',
+  'unplanned',
 ];
 
 const when = (iso: string) =>
@@ -597,6 +599,13 @@ function PersonCard({
           <span className="chip">Очередь {p.queue.length}</span>
           <span className="chip">Закрыто 14 дн. {p.done14.length}</span>
           {p.github && <span className="chip">PR {p.pulls.length}</span>}
+          {p.load.closed28 && p.load.closed28.done > 0 && (
+            <span className="chip">
+              Баги{' '}
+              {Math.round((p.load.closed28.bugs / p.load.closed28.done) * 100)}%
+              за 4 нед.
+            </span>
+          )}
           {review && (
             <span className="chip">
               Ревью 30 дн. {review.reviewed}

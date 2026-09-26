@@ -70,3 +70,8 @@ export const IconRelease = () => (
     <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
   </svg>
 );
+export const IconQuality = () => (
+  <svg {...base}>
+    <path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z M9 12l2 2 4-4" />
+  </svg>
+);
