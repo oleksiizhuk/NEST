@@ -142,6 +142,21 @@ export const toFact = (issue: JiraIssue): IssueFact => {
   };
 };
 
+// Who had the ticket at `at`: the last change before it, else the person
+// the first later change took it from, else whoever has it now
+export const assigneeAt = (
+  changes: Array<{ at: string; from: string | null; to: string | null }>,
+  at: number,
+  current: string | null,
+): string | null => {
+  const sorted = [...changes].sort(
+    (a, b) => Date.parse(a.at) - Date.parse(b.at),
+  );
+  const before = sorted.filter((c) => Date.parse(c.at) <= at);
+  if (before.length) return before[before.length - 1].to;
+  return sorted.length ? sorted[0].from : current;
+};
+
 // A missing "toString" key would read Object.prototype.toString
 const str = (value: unknown): string | null =>
   typeof value === 'string' ? value : null;
@@ -575,16 +590,32 @@ export class JiraIssueReader implements IProjectSource {
       }
       // When each ticket entered each sprint, from the Sprint field history
       const added = new Map<string, string>();
+      // Assignee changes per ticket, to credit a sprint to whoever had the
+      // ticket then, not whoever has it now
+      const handovers = new Map<
+        string,
+        Array<{ at: string; from: string | null; to: string | null }>
+      >();
       try {
         const logs = await this.changelogs(
           [...new Set(ids.values())],
-          [this.sprintField],
+          [this.sprintField, 'assignee'],
         );
         for (const log of logs) {
           const key = ids.get(log.issueId);
           if (!key) continue;
           for (const change of log.changeHistories ?? [])
             for (const item of change.items ?? []) {
+              if (item.fieldId === 'assignee' || item.field === 'assignee') {
+                const list = handovers.get(key) ?? [];
+                list.push({
+                  at: change.created,
+                  from: str(item.fromString),
+                  to: str(item.toString),
+                });
+                handovers.set(key, list);
+                continue;
+              }
               // Sprint ids, not names: names can hold commas, change or
               // repeat
               const ids = (v: unknown) =>
@@ -605,9 +636,16 @@ export class JiraIssueReader implements IProjectSource {
       } catch {
         // Unknown history: everything counts as planned
       }
-      for (const sprint of data)
-        for (const i of sprint.issues)
+      for (const sprint of data) {
+        const end =
+          sprint.state === 'active' || !sprint.end
+            ? now.getTime()
+            : Date.parse(sprint.end);
+        for (const i of sprint.issues) {
           i.addedAt = added.get(`${i.key}|${sprint.id}`) ?? null;
+          i.assignee = assigneeAt(handovers.get(i.key) ?? [], end, i.assignee);
+        }
+      }
       return sprintView(data, now);
     } catch (error) {
       return {

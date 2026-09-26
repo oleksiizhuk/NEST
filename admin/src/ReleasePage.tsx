@@ -287,7 +287,6 @@ export function ReleasePage({
   if (view?.releaseError)
     return (
       <>
-        view?.releaseError) return (
         <section className="card">
           <h2>Релиз не прочитался</h2>
           <p className="muted">
