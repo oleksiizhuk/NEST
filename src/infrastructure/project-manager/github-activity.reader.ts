@@ -17,6 +17,7 @@ import {
   oneLine,
   shortDate,
 } from '@infrastructure/project-manager/http-json';
+import { PrFact, reviewLoad } from '@application/project-manager/reviews';
 
 const API = 'https://api.github.com';
 // Branch-promotion PRs (dev→staging…) are releases, not work items
@@ -81,6 +82,78 @@ const REVIEWS_QUERY = `query($owner: String!, $name: String!) {
     }
   }
 }`;
+
+// Open and recently merged PRs with who reviewed when, who was asked, and
+// size; one GraphQL call per repo, only for the admin's review numbers
+const REVIEW_LOAD_QUERY = `query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(states: [OPEN, MERGED], first: 60, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      nodes {
+        number
+        isDraft
+        createdAt
+        mergedAt
+        additions
+        deletions
+        changedFiles
+        author { login }
+        reviewRequests(first: 10) {
+          nodes { requestedReviewer { ... on User { login } } }
+        }
+        reviews(first: 40) {
+          nodes { author { __typename login } state submittedAt }
+        }
+        timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) {
+          nodes { ... on ReadyForReviewEvent { createdAt } }
+        }
+      }
+    }
+  }
+}`;
+
+interface LoadNode {
+  number: number;
+  isDraft?: boolean;
+  createdAt: string;
+  mergedAt?: string | null;
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
+  author?: { login?: string } | null;
+  reviewRequests?: {
+    nodes?: Array<{ requestedReviewer?: { login?: string } | null }>;
+  };
+  reviews?: {
+    nodes?: Array<{
+      author?: { __typename?: string; login?: string } | null;
+      state?: string;
+      submittedAt?: string | null;
+    }>;
+  };
+  timelineItems?: { nodes?: Array<{ createdAt?: string }> };
+}
+
+export const toPrFact = (repo: string, n: LoadNode): PrFact => ({
+  repo,
+  number: n.number,
+  author: n.author?.login ?? '?',
+  draft: Boolean(n.isDraft),
+  readyAt: n.timelineItems?.nodes?.[0]?.createdAt || n.createdAt,
+  mergedAt: n.mergedAt ?? null,
+  lines: (n.additions ?? 0) + (n.deletions ?? 0),
+  files: n.changedFiles ?? 0,
+  reviews: (n.reviews?.nodes ?? [])
+    .filter((r) => r.author?.login && r.submittedAt)
+    .filter((r) => r.author?.__typename !== 'Bot')
+    .map((r) => ({
+      login: r.author?.login as string,
+      at: r.submittedAt as string,
+      state: r.state ?? '',
+    })),
+  requested: (n.reviewRequests?.nodes ?? [])
+    .map((r) => r.requestedReviewer?.login ?? '')
+    .filter(Boolean),
+});
 
 interface ReviewNode {
   number: number;
@@ -197,10 +270,16 @@ export class GitHubActivityReader implements IProjectSource {
         t.merged14.push(...w.merged14);
       }
     }
-    const details = { authors: allAuthors } as unknown as Record<
-      string,
-      unknown
-    >;
+    const prFacts = (
+      await Promise.all(
+        this.repos.map((repo) => this.reviewLoadFacts(repo).catch(() => null)),
+      )
+    ).filter((f): f is PrFact[] => f !== null);
+    const details = {
+      authors: allAuthors,
+      // Null when no repo could be read: the page then says so
+      reviews: prFacts.length ? reviewLoad(prFacts.flat(), now) : null,
+    } as unknown as Record<string, unknown>;
     const signals = codeSignals(
       activity.flatMap((a) => a.pulls),
       activity.flatMap((a) => a.runs),
@@ -216,6 +295,23 @@ export class GitHubActivityReader implements IProjectSource {
       Authorization: `Bearer ${this.token}`,
       'X-GitHub-Api-Version': '2022-11-28',
     };
+  }
+
+  private async reviewLoadFacts(repo: string): Promise<PrFact[]> {
+    const { data } = await getJson<{
+      data?: {
+        repository?: { pullRequests?: { nodes?: LoadNode[] } } | null;
+      } | null;
+    }>(`${API}/graphql`, this.headers, {
+      method: 'POST',
+      body: {
+        query: REVIEW_LOAD_QUERY,
+        variables: { owner: this.org, name: repo },
+      },
+    });
+    const nodes = data.data?.repository?.pullRequests?.nodes;
+    if (!nodes) throw new Error('no review data');
+    return nodes.map((n) => toPrFact(repo, n));
   }
 
   // Unknown (undefined) on any failure: the metrics then say so instead of

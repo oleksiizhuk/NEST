@@ -3,7 +3,10 @@ import {
   JiraIssueReader,
   toFact,
 } from '@infrastructure/project-manager/jira-issue.reader';
-import { GitHubActivityReader } from '@infrastructure/project-manager/github-activity.reader';
+import {
+  GitHubActivityReader,
+  toPrFact,
+} from '@infrastructure/project-manager/github-activity.reader';
 import { ConfluencePageReader } from '@infrastructure/project-manager/confluence-page.reader';
 import { storageToText } from '@infrastructure/project-manager/storage-to-text';
 import { pmConfig } from '@infrastructure/project-manager/pm.config';
@@ -333,6 +336,55 @@ describe('Jira reader release errors', () => {
       version: '1.0',
       issues: [],
       error: expect.any(String),
+    });
+  });
+});
+
+describe('GitHub review load facts', () => {
+  it('keeps human reviews with times, requests and size', () => {
+    expect(
+      toPrFact('api', {
+        number: 3,
+        isDraft: false,
+        createdAt: '2026-09-20T10:00:00Z',
+        mergedAt: null,
+        additions: 120,
+        deletions: 30,
+        changedFiles: 4,
+        author: { login: 'ann' },
+        reviewRequests: {
+          nodes: [{ requestedReviewer: { login: 'bob' } }, {}],
+        },
+        reviews: {
+          nodes: [
+            {
+              author: { __typename: 'User', login: 'bob' },
+              state: 'APPROVED',
+              submittedAt: '2026-09-21T10:00:00Z',
+            },
+            {
+              author: { __typename: 'Bot', login: 'ci' },
+              state: 'COMMENTED',
+              submittedAt: '2026-09-21T10:00:00Z',
+            },
+            { author: { login: 'eve' }, state: 'PENDING', submittedAt: null },
+          ],
+        },
+        timelineItems: { nodes: [{ createdAt: '2026-09-20T12:00:00Z' }] },
+      }),
+    ).toEqual({
+      repo: 'api',
+      number: 3,
+      author: 'ann',
+      draft: false,
+      readyAt: '2026-09-20T12:00:00Z',
+      mergedAt: null,
+      lines: 150,
+      files: 4,
+      reviews: [
+        { login: 'bob', at: '2026-09-21T10:00:00Z', state: 'APPROVED' },
+      ],
+      requested: ['bob'],
     });
   });
 });

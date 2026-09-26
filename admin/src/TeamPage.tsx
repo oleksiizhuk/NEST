@@ -531,10 +531,12 @@ function PersonCard({
   stale,
   weeks,
   telegram,
+  review,
   onGithub,
   onAway,
   onTelegram,
 }: {
+  review: { reviewed: number; pending: number } | null;
   p: Person;
   links: Links | null;
   stale: number;
@@ -595,6 +597,12 @@ function PersonCard({
           <span className="chip">Очередь {p.queue.length}</span>
           <span className="chip">Закрыто 14 дн. {p.done14.length}</span>
           {p.github && <span className="chip">PR {p.pulls.length}</span>}
+          {review && (
+            <span className="chip">
+              Ревью 30 дн. {review.reviewed}
+              {review.pending ? ` · ждут ${review.pending}` : ''}
+            </span>
+          )}
         </div>
       </header>
 
@@ -825,6 +833,7 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
                 stale={team.thresholds.staleDays}
                 weeks={team.flow?.weeks ?? []}
                 telegram={team.telegram?.[p.name] ?? null}
+                review={p.github ? team.reviewers?.[p.github] ?? null : null}
                 onTelegram={async (username) => {
                   try {
                     setView(await api.setTelegram(p.name, username));
