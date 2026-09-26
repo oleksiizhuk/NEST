@@ -55,6 +55,8 @@ async function call<T>(
   return data as T;
 }
 
+export type ReviewKind = 'meeting' | 'standup' | 'retro' | 'oneonone';
+
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface Settings {
@@ -211,6 +213,7 @@ export interface TeamView {
     hasDetails: boolean;
     thresholds: Thresholds;
     links: Links;
+    telegram: Record<string, string>;
     flow: WeeklyFlow | null;
     scopeGrowing: boolean;
     unassigned: Array<{
@@ -384,8 +387,26 @@ export const api = {
       at: string;
       sources: Array<{ source: string; ok: boolean; error: string | null }>;
     }>('POST', 'refresh'),
-  teamReview: (force: boolean) =>
-    call<{ text: string; at: string }>('POST', 'team/review', { force }),
+  teamReview: (force: boolean, kind: ReviewKind = 'meeting', person?: string) =>
+    call<{ text: string; at: string }>('POST', 'team/review', {
+      force,
+      kind,
+      person,
+    }),
+  reviewLatest: (kind: ReviewKind, person?: string) =>
+    call<{ notes: { text: string; at: string } | null }>(
+      'POST',
+      'team/review/latest',
+      { kind, person },
+    ).then((r) => r.notes ?? null),
+  setTelegram: (name: string, username: string | null) =>
+    call<TeamView>('PUT', 'team/telegram', { name, username }),
+  nudge: (name: string, text: string, chatId: number) =>
+    call<{ sent: boolean; mention: boolean }>('POST', 'team/nudge', {
+      name,
+      text,
+      chatId,
+    }),
   setGithub: (name: string, login: string | null) =>
     call<TeamView>('PUT', 'team/github', { name, login }),
   setAway: (name: string, until: string | null, note: string | null) =>

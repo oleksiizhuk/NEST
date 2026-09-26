@@ -28,6 +28,8 @@ export interface PmSettings {
   teamThresholds?: TeamThresholds | null;
   // Jira display name → away until (inclusive), so signals stay quiet
   teamAway?: TeamAway | null;
+  // Jira display name → Telegram username, for "Написать в чат"
+  telegramUsernames?: Record<string, string> | null;
   // Релиз: the day scope growth is counted from
   releaseBaseline?: string | null;
   // "Сегодня" items the owner marked done or snoozed, until an ISO time.
@@ -47,6 +49,7 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
   'teamThresholds',
   'teamAway',
   'releaseBaseline',
+  'telegramUsernames',
 ];
 
 export interface IPmSettingsStore {
@@ -207,6 +210,31 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       out.teamAway = map;
     }
   }
+  if (has('telegramUsernames')) {
+    const value = input.telegramUsernames;
+    if (value === null) out.telegramUsernames = null;
+    else if (typeof value !== 'object' || Array.isArray(value))
+      throw new SettingsError('telegramUsernames: an object name → username');
+    else {
+      const map: Record<string, string> = {};
+      for (const [name, raw] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        if (!name.trim() || name.length > 100)
+          throw new SettingsError(`telegramUsernames: bad name "${name}"`);
+        const u = String(raw ?? '')
+          .trim()
+          .replace(/^@/, '')
+          .toLowerCase();
+        if (!USERNAME.test(u))
+          throw new SettingsError(
+            `telegramUsernames: "${u}" is not a Telegram username`,
+          );
+        map[name] = u;
+      }
+      out.telegramUsernames = map;
+    }
+  }
   if (has('releaseBaseline')) {
     const v = input.releaseBaseline;
     if (v === null) out.releaseBaseline = null;
@@ -241,4 +269,7 @@ export const resolveConfig = (base: IPmConfig, s: PmSettings): IPmConfig => ({
   ...(s.teamThresholds != null ? { teamThresholds: s.teamThresholds } : {}),
   ...(s.teamAway != null ? { teamAway: s.teamAway } : {}),
   ...(s.releaseBaseline != null ? { releaseBaseline: s.releaseBaseline } : {}),
+  ...(s.telegramUsernames != null
+    ? { telegramUsernames: s.telegramUsernames }
+    : {}),
 });

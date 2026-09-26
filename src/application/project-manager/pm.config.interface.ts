@@ -41,6 +41,8 @@ export interface IPmConfig {
   // Сотрудники thresholds and absences (admin page)
   teamThresholds?: TeamThresholds;
   teamAway?: TeamAway;
+  // Jira display name → Telegram username (admin page)
+  telegramUsernames?: Record<string, string>;
   // Релиз: scope growth is counted from this day
   releaseBaseline?: string | null;
   // For links on the admin page: Jira site origin and the GitHub org

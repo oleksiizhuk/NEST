@@ -26,6 +26,7 @@ import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-r
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { BuildIndexUseCase } from '@application/project-manager/use-cases/build-index.use-case';
 import { SettingsError } from '@application/project-manager/settings.interface';
+import { ReviewKind } from '@application/project-manager/team-reviews.interface';
 import {
   PmAdminAuth,
   PmAdminGuard,
@@ -58,6 +59,16 @@ export class AdminTeamReviewBody {
   @IsOptional()
   @IsBoolean()
   force?: boolean;
+
+  @IsOptional()
+  @IsIn(['meeting', 'standup', 'retro', 'oneonone'])
+  kind?: 'meeting' | 'standup' | 'retro' | 'oneonone';
+
+  // For a 1:1: the Jira display name
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  person?: string;
 }
 
 export class AdminGithubBody {
@@ -102,6 +113,30 @@ export class AdminBaselineBody {
   @IsString()
   @MaxLength(10)
   date?: string | null;
+}
+
+export class AdminTelegramBody {
+  @IsString()
+  @MaxLength(100)
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(33)
+  username?: string | null;
+}
+
+export class AdminNudgeBody {
+  @IsString()
+  @MaxLength(100)
+  name: string;
+
+  @IsString()
+  @MaxLength(800)
+  text: string;
+
+  @IsInt()
+  chatId: number;
 }
 
 export class AdminChatBody {
@@ -260,13 +295,30 @@ export class PmAdminController {
     }
   }
 
+  // The latest notes of one kind, without calling the model
+  @Post('team/review/latest')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async reviewLatest(@Body() body: AdminTeamReviewBody) {
+    const kind: ReviewKind =
+      body.kind === 'oneonone'
+        ? `oneonone:${body.person ?? ''}`
+        : body.kind ?? 'meeting';
+    // Wrapped: a bare null would go out as an empty body
+    return { notes: await this.team_.latestOf(kind) };
+  }
+
   // Meeting notes by the model (cached for the day unless force)
   @Post('team/review')
   @HttpCode(200)
   @UseGuards(PmAdminGuard)
   async teamReview(@Body() body: AdminTeamReviewBody) {
     try {
-      return await this.team_.review(Boolean(body.force));
+      const kind: ReviewKind =
+        body.kind === 'oneonone'
+          ? `oneonone:${body.person ?? ''}`
+          : body.kind ?? 'meeting';
+      return await this.team_.review(Boolean(body.force), new Date(), kind);
     } catch (error) {
       throw new HttpException(
         (error as Error).message,
@@ -289,6 +341,41 @@ export class PmAdminController {
         req.pmAdmin,
       );
       return this.team();
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  // Links a Jira name to a Telegram username (null removes the link)
+  @Put('team/telegram')
+  @UseGuards(PmAdminGuard)
+  async teamTelegram(
+    @Body() body: AdminTelegramBody,
+    @Req() req: { pmAdmin: number },
+  ) {
+    try {
+      await this.admin.setTelegramUsername(
+        body.name,
+        body.username || null,
+        req.pmAdmin,
+      );
+      return this.team();
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  // Sends the owner's message to a PM group, mentioning the person
+  @Post('team/nudge')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async teamNudge(@Body() body: AdminNudgeBody) {
+    try {
+      return await this.admin.nudge(body.name, body.text, body.chatId);
     } catch (error) {
       if (error instanceof SettingsError)
         throw new BadRequestException(error.message);

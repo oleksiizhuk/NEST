@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, TodayItem, TodayView, Unauthorized } from './api';
 import { Key, RULES } from './signals';
+import { NudgeForm } from './nudge';
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', {
@@ -19,6 +20,7 @@ function Item({
 }) {
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [nudging, setNudging] = useState(false);
   const help = RULES[item.rule];
 
   const hide = async (days: 1 | 7) => {
@@ -68,7 +70,19 @@ function Item({
           </button>
         </blockquote>
       )}
+      {nudging && item.say && (
+        <NudgeForm
+          person={item.person}
+          text={item.say}
+          onDone={() => setNudging(false)}
+        />
+      )}
       <div className="actions">
+        {item.say && !nudging && (
+          <button className="ghost" onClick={() => setNudging(true)}>
+            Написать в чат
+          </button>
+        )}
         <button onClick={() => hide(7)} disabled={busy}>
           Готово
         </button>

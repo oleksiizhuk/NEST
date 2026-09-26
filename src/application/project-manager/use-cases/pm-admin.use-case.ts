@@ -102,6 +102,32 @@ export class PmAdminUseCase {
     this.runtime.invalidate();
   }
 
+  // Jira name → Telegram username on the Сотрудники page
+  async setTelegramUsername(name: string, username: string | null, by: number) {
+    const current = {
+      ...((await this.store.get()).values.telegramUsernames ?? {}),
+    };
+    if (username) current[name] = username;
+    else delete current[name];
+    await this.store.save(cleanSettings({ telegramUsernames: current }), by);
+    this.runtime.invalidate();
+  }
+
+  // "Написать в чат": the owner's message to a PM group the bot works in,
+  // with the person mentioned when their username is linked
+  async nudge(name: string, text: string, chatId: number) {
+    const message = String(text ?? '').trim();
+    if (!message || message.length > 800)
+      throw new SettingsError('text: 1-800 characters');
+    const chat = (await this.groups()).find((g) => g.chatId === chatId && g.on);
+    if (!chat) throw new SettingsError('chat: a PM group the bot works in');
+    // From the store: a link saved a moment ago may not be in the cache
+    const username = (await this.store.get()).values.telegramUsernames?.[name];
+    const to = username ? `@${username}` : name;
+    await this.telegram.sendMessage(chatId, `${to}, ${message}`);
+    return { sent: true, chatId, mention: Boolean(username) };
+  }
+
   // Marks a person away until a date (inclusive); null brings them back
   async setAway(
     name: string,
@@ -214,6 +240,7 @@ export class PmAdminUseCase {
       teamThresholds: DEFAULT_THRESHOLDS,
       teamAway: {},
       releaseBaseline: null,
+      telegramUsernames: {},
       todayHidden: [],
     };
     const overrides: PmSettings = {};

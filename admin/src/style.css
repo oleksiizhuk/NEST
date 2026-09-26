@@ -982,3 +982,60 @@ details.card summary {
 .whatif-result.bad {
   border-color: #d64545;
 }
+
+/* ---------- actions ---------- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 12px;
+  flex-wrap: wrap;
+}
+.tab {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  min-height: 32px;
+}
+.tab.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.nudge {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.nudge textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface, var(--bg));
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  resize: vertical;
+}
+.nudge .actions {
+  margin-top: 0;
+}
+.ok-text {
+  color: var(--ok);
+}
+.oneonone {
+  margin: 8px 0 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.oneonone h3 {
+  margin-top: 0;
+}
