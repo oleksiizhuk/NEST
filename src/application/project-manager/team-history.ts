@@ -25,9 +25,11 @@ export interface ITeamHistory {
 }
 
 export const dayLoad = (snapshot: ProjectSnapshot): DayLoad | null => {
-  const issues = snapshot.section('issues')?.details as unknown as
-    | TeamIssues
-    | undefined;
+  const section = snapshot.section('issues');
+  // A failed Jira read carries the previous snapshot's details: never
+  // record those as this day
+  if (!section?.ok) return null;
+  const issues = section.details as unknown as TeamIssues | undefined;
   if (!issues?.people) return null;
   const people: DayLoad['people'] = {};
   for (const [name, work] of Object.entries(issues.people))

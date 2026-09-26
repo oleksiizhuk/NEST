@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   IProjectSnapshotRepository,
   PROJECT_SNAPSHOT_REPOSITORY,
@@ -29,6 +29,7 @@ import { WeeklyFlow } from '@application/project-manager/load';
 import { ReviewLoad } from '@application/project-manager/reviews';
 import { Areas } from '@application/project-manager/areas';
 import {
+  DayLoad,
   dayLoad,
   ITeamHistory,
   PM_TEAM_HISTORY,
@@ -149,6 +150,8 @@ const describe = (p: PersonView): string =>
 // per-person data. Cached for the day; "force" writes a fresh one.
 @Injectable()
 export class TeamReviewUseCase {
+  private readonly logger = new Logger(TeamReviewUseCase.name);
+
   constructor(
     @Inject(PROJECT_SNAPSHOT_REPOSITORY)
     private readonly snapshots: IProjectSnapshotRepository,
@@ -246,22 +249,29 @@ export class TeamReviewUseCase {
     const list = Array.from({ length: days }, (_, n) =>
       day(new Date(now.getTime() - (days - 1 - n) * 86_400_000)),
     );
-    const stored = this.history
-      ? await this.history.since(list[0]).catch(() => [])
-      : [];
-    const byDay = new Map(stored.map((d) => [d.day, d]));
-    for (const d of list.slice(-21)) {
-      if (byDay.has(d)) continue;
-      const next = new Date(`${d}T00:00:00Z`).getTime() + 86_400_000;
-      const snap = await this.snapshots
-        .findLatestBefore(new Date(next))
-        .catch(() => null);
-      if (!snap || day(snap.createdAt) !== d) continue;
-      const load = dayLoad(snap);
-      if (!load) continue;
-      byDay.set(d, load);
-      await this.history?.save(load).catch(() => undefined);
-    }
+    let stored: DayLoad[] | null = null;
+    if (this.history)
+      stored = await this.history.since(list[0]).catch(() => null);
+    const byDay = new Map((stored ?? []).map((d) => [d.day, d]));
+    // Fill from snapshots only when the store answered; a day that cannot
+    // be filled is saved empty so the next open does not look again
+    if (stored && this.history)
+      for (const d of list.slice(-21)) {
+        if (byDay.has(d)) continue;
+        const next = new Date(`${d}T00:00:00Z`).getTime() + 86_400_000;
+        const snap = await this.snapshots
+          .findLatestBefore(new Date(next))
+          .catch(() => undefined);
+        if (snap === undefined) continue;
+        const load = (snap && day(snap.createdAt) === d && dayLoad(snap)) || {
+          day: d,
+          people: {},
+        };
+        byDay.set(d, load);
+        await this.history
+          .save(load)
+          .catch((error) => this.logger.error(`history backfill: ${error}`));
+      }
     const names = new Set<string>();
     for (const d of byDay.values())
       Object.keys(d.people).forEach((n) => names.add(n));
@@ -269,7 +279,13 @@ export class TeamReviewUseCase {
       days: list,
       people: [...names].sort().map((name) => ({
         name,
-        days: list.map((d) => byDay.get(d)?.people[name] ?? null),
+        // A day with data but without this person means nothing open and
+        // nothing closed lately: zero, not "no data"
+        days: list.map((d) => {
+          const row = byDay.get(d);
+          if (!row || !Object.keys(row.people).length) return null;
+          return row.people[name] ?? { inProgress: 0, queue: 0, closed14: 0 };
+        }),
       })),
     };
   }

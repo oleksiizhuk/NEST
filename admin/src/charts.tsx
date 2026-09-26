@@ -119,9 +119,15 @@ export function Sparkline({
 export function LoadHeatmap({ h }: { h: TeamHistory }) {
   const open = (c: TeamHistory['people'][number]['days'][number]) =>
     c ? c.inProgress + c.queue : null;
+  // The scale tops out at the 90th percentile so one outlier does not make
+  // everyone else look empty
+  const values = h.people
+    .flatMap((p) => p.days.map((c) => open(c) ?? 0))
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
   const max = Math.max(
     1,
-    ...h.people.flatMap((p) => p.days.map((c) => open(c) ?? 0)),
+    values[Math.floor(values.length * 0.9)] ?? values[values.length - 1] ?? 1,
   );
   const weekend = (d: string) => {
     const w = new Date(`${d}T00:00:00Z`).getUTCDay();
@@ -134,8 +140,10 @@ export function LoadHeatmap({ h }: { h: TeamHistory }) {
           <tr>
             <th />
             {h.days.map((d, i) => (
-              <th key={d} className={weekend(d) ? 'we' : ''}>
-                {i % 7 === 0 || i === h.days.length - 1 ? week(d) : ''}
+              <th key={d} className={`day${weekend(d) ? ' we' : ''}`}>
+                {(i % 7 === 0 || i === h.days.length - 1) && (
+                  <span className="lbl">{week(d)}</span>
+                )}
               </th>
             ))}
           </tr>
@@ -153,6 +161,11 @@ export function LoadHeatmap({ h }: { h: TeamHistory }) {
                       v === null ? ' none' : ''
                     }`}
                     style={v ? { opacity: 0.15 + 0.85 * (v / max) } : undefined}
+                    aria-label={
+                      c
+                        ? `${week(h.days[i])}: открыто ${v}`
+                        : `${week(h.days[i])}: нет данных`
+                    }
                     title={
                       c
                         ? `${p.name} · ${week(h.days[i])}: в работе ${

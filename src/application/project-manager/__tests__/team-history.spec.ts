@@ -104,7 +104,13 @@ describe('team history', () => {
         ],
       },
     ]);
-    expect(history.save).toHaveBeenCalledTimes(1);
+    // The snapshot day is filled; the four days without one are saved
+    // empty so the next open does not load snapshots again
+    expect(history.save).toHaveBeenCalledTimes(4);
+    expect(history.save).toHaveBeenCalledWith({
+      day: '2026-09-21',
+      people: {},
+    });
   });
 
   it('saves the day at every refresh without failing it', async () => {
@@ -126,5 +132,11 @@ describe('team history', () => {
     expect(history.save).toHaveBeenCalledWith(
       expect.objectContaining({ day: '2026-09-24' }),
     );
+  });
+
+  it('records nothing from a failed Jira read', () => {
+    const s = snap('2026-09-24T05:00:00Z');
+    (s.sections[0] as any).ok = false;
+    expect(dayLoad(s)).toBeNull();
   });
 });
