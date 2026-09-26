@@ -28,7 +28,7 @@ import {
 import { WeeklyFlow } from '@application/project-manager/load';
 import { ReviewLoad } from '@application/project-manager/reviews';
 import { Areas } from '@application/project-manager/areas';
-import { Hanging } from '@application/project-manager/hanging';
+import { Hanging, hangingAges } from '@application/project-manager/hanging';
 import {
   DayLoad,
   dayLoad,
@@ -292,19 +292,29 @@ export class TeamReviewUseCase {
   }
 
   // Зависшие: every open ticket with its ages
-  async hanging() {
+  async hanging(now = new Date()) {
     const snapshot = await this.snapshots.findLatest();
     if (!snapshot) return null;
     const live = await this.runtime.current();
     const section = snapshot.section('issues');
+    const stored =
+      (section?.details as { hanging?: Hanging | null } | undefined)?.hanging ??
+      null;
     return {
       asOf: snapshot.createdAt,
       // A failed read keeps the previous list: say so on the page
       stale: section ? !section.ok : false,
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
-      hanging:
-        (section?.details as { hanging?: Hanging | null } | undefined)
-          ?.hanging ?? null,
+      hanging: stored
+        ? {
+            releaseVersion: stored.releaseVersion,
+            capped: stored.capped,
+            // Snapshots from before the dates were kept have no created
+            items: stored.items.every((i) => 'created' in i)
+              ? hangingAges(stored.items, now)
+              : [],
+          }
+        : null,
     };
   }
 

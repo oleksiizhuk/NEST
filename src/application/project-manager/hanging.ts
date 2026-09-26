@@ -1,10 +1,10 @@
 import { IssueFact } from '@application/project-manager/metrics';
 
-// Зависшие: every open ticket with how long it has been open, untouched and
-// in its status, so the owner can find what is quietly rotting. Calendar
-// days: "висит 40 дней" is how people talk about it.
+// Зависшие: every open ticket with when it was created, last changed and
+// entered its status. Ages are counted when the page is opened, so a
+// snapshot a few days old still shows how long things have really hung.
 
-export interface HangingItem {
+export interface HangingIssue {
   key: string;
   summary: string;
   type: string;
@@ -13,17 +13,24 @@ export interface HangingItem {
   assignee: string | null;
   priority: string | null;
   inScope: boolean;
-  openDays: number | null;
-  idleDays: number | null;
-  inStatusDays: number | null;
+  created: string | null;
+  updated: string | null;
+  statusSince: string | null;
 }
 
 export interface Hanging {
   releaseVersion: string | null;
-  // The open list hit its limit: the oldest low-priority tickets may be
-  // missing
+  // The list hit its limit; it is read oldest-change first, so what is
+  // missing are the most recently touched tickets
   capped: boolean;
-  items: HangingItem[];
+  items: HangingIssue[];
+}
+
+export interface HangingItem
+  extends Omit<HangingIssue, 'created' | 'updated' | 'statusSince'> {
+  openDays: number | null;
+  idleDays: number | null;
+  inStatusDays: number | null;
 }
 
 const DAY = 86_400_000;
@@ -32,14 +39,13 @@ const days = (iso: string | null | undefined, now: Date) =>
 
 export const hangingWork = (
   open: IssueFact[],
-  now: Date,
   releaseVersion: string | null,
   capped: boolean,
 ): Hanging => ({
   releaseVersion,
   capped,
   items: open
-    .filter((i) => i.category !== 'done' && !/^epic$/i.test(i.type))
+    .filter((i) => i.category !== 'done' && !/^epic$|^эпик$/i.test(i.type))
     .map((i) => ({
       key: i.key,
       summary: (i.summary ?? '').slice(0, 140),
@@ -49,9 +55,19 @@ export const hangingWork = (
       assignee: i.assignee,
       priority: i.priority,
       inScope: releaseVersion ? i.fixVersions.includes(releaseVersion) : false,
-      openDays: days(i.created, now),
-      idleDays: days(i.updated, now),
-      inStatusDays: days(i.statusSince, now),
-    }))
-    .sort((a, b) => (b.idleDays ?? 0) - (a.idleDays ?? 0)),
+      created: i.created,
+      updated: i.updated ?? null,
+      statusSince: i.statusSince,
+    })),
 });
+
+// Ages as of `now`, the longest untouched first
+export const hangingAges = (items: HangingIssue[], now: Date): HangingItem[] =>
+  items
+    .map(({ created, updated, statusSince, ...rest }) => ({
+      ...rest,
+      openDays: days(created, now),
+      idleDays: days(updated, now),
+      inStatusDays: days(statusSince, now),
+    }))
+    .sort((a, b) => (b.idleDays ?? 0) - (a.idleDays ?? 0));

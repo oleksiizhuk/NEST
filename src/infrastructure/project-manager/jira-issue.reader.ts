@@ -17,7 +17,7 @@ import {
 } from '@application/project-manager/load';
 import { ReleaseIssues } from '@application/project-manager/release';
 import { areaView } from '@application/project-manager/areas';
-import { hangingWork } from '@application/project-manager/hanging';
+import { Hanging, hangingWork } from '@application/project-manager/hanging';
 import {
   FLOW_WINDOW_DAYS,
   FlowStages,
@@ -147,6 +147,18 @@ interface Query {
   limit: number;
   fields?: string[];
 }
+
+const HANGING_FIELDS = [
+  'summary',
+  'status',
+  'issuetype',
+  'priority',
+  'assignee',
+  'created',
+  'updated',
+  'statuscategorychangedate',
+  'fixVersions',
+];
 
 // Only what the weekly counts need: these lists never reach the prompt
 const HISTORY_FIELDS = [
@@ -351,12 +363,7 @@ export class JiraIssueReader implements IProjectSource {
       ),
       flow: history ? this.flow(history, now) : null,
       stages,
-      hanging: hangingWork(
-        openFacts,
-        now,
-        this.releaseVersion,
-        caps[0] ?? false,
-      ),
+      hanging: await this.hanging(stages?.lastChange ?? {}),
       areas: history
         ? areaView(
             openFacts,
@@ -471,6 +478,35 @@ export class JiraIssueReader implements IProjectSource {
         }
       }
       return flowStages(histories, this.statusMap, now);
+    } catch {
+      return null;
+    }
+  }
+
+  // Every open ticket, oldest change first, light fields only: a cap then
+  // drops the most recently touched, never the forgotten ones
+  private async hanging(
+    lastChange: Record<string, string>,
+  ): Promise<Hanging | null> {
+    if (!this.scope) return null;
+    try {
+      const limit = 1000;
+      const issues = await this.search({
+        title: 'hanging',
+        jql: `${this.scope} AND statusCategory != Done ORDER BY updated ASC`,
+        limit,
+        fields: HANGING_FIELDS,
+      });
+      return hangingWork(
+        issues.map((i) => {
+          const f = toFact(i);
+          return lastChange[f.key]
+            ? { ...f, statusSince: lastChange[f.key] }
+            : f;
+        }),
+        this.releaseVersion,
+        issues.length >= limit,
+      );
     } catch {
       return null;
     }

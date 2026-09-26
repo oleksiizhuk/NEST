@@ -1,4 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+
+const when = (iso: string) =>
+  new Date(iso).toLocaleString('ru-RU', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
 import { api, HangingItem, HangingView, Unauthorized } from './api';
 import { Key } from './signals';
 
@@ -13,7 +19,7 @@ const GROUPS: Array<{ id: Group; title: string; hint: string }> = [
   {
     id: 'idle',
     title: 'Никто не трогал',
-    hint: 'Ни комментариев, ни изменений дольше порога. Либо задача не нужна (закрыть), либо о ней забыли (назначить срок).',
+    hint: 'В Jira ничего не менялось дольше порога. Либо задача не нужна (закрыть), либо о ней забыли (назначить срок и человека).',
   },
   {
     id: 'backlog',
@@ -90,20 +96,21 @@ export function HangingPage({
       ].sort() as string[],
     [items],
   );
-  const counts = useMemo(
-    () =>
-      Object.fromEntries(
-        GROUPS.map((g) => [
-          g.id,
-          items.filter((i) => matches(g.id, i, DEFAULT[g.id])).length,
-        ]),
-      ) as Record<Group, number>,
-    [items],
-  );
-  const shown = items
-    .filter((i) => matches(group, i, min))
-    .filter((i) => !who || i.assignee === who)
-    .filter((i) => !releaseOnly || i.inScope);
+  // Person and release filters apply to every tab; the current tab uses
+  // the chosen threshold, the others their default
+  const filtered = items
+    .filter((i) => !releaseOnly || i.inScope)
+    .filter((i) => !who || group === 'unassigned' || i.assignee === who);
+  const counts = Object.fromEntries(
+    GROUPS.map((g) => [
+      g.id,
+      filtered
+        .filter((i) => g.id === 'unassigned' || !who || i.assignee === who)
+        .filter((i) => matches(g.id, i, g.id === group ? min : DEFAULT[g.id]))
+        .length,
+    ]),
+  ) as Record<Group, number>;
+  const shown = filtered.filter((i) => matches(group, i, min));
 
   if (error) return <p className="error">{error}</p>;
   if (view === undefined) return <p className="muted">Загрузка…</p>;
@@ -131,6 +138,11 @@ export function HangingPage({
 
   return (
     <>
+      <p className="muted small">
+        Данные из Jira на {when(view.asOf)}; сколько дней висит — на сейчас. «Не
+        трогали» — по последнему изменению в Jira: перенос в новый спринт тоже
+        считается изменением.
+      </p>
       {view.stale && (
         <p className="warn-line small">
           Последнее обновление не прочитало Jira — список от предыдущего раза.
@@ -138,8 +150,8 @@ export function HangingPage({
       )}
       {view.hanging.capped && (
         <p className="muted small">
-          Открытых задач больше 400: часть старого бэклога с низким приоритетом
-          может не попасть в список.
+          Открытых задач 1000 или больше: в список не попали самые недавно
+          изменённые — зависшие все здесь.
         </p>
       )}
       <div className="tabs" role="tablist">
@@ -176,17 +188,19 @@ export function HangingPage({
             </select>
           </label>
         )}
-        <label className="small">
-          Кто
-          <select value={who} onChange={(e) => setWho(e.target.value)}>
-            <option value="">все</option>
-            {people.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
+        {group !== 'unassigned' && (
+          <label className="small">
+            Кто
+            <select value={who} onChange={(e) => setWho(e.target.value)}>
+              <option value="">все</option>
+              {people.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {view.hanging.releaseVersion && (
           <label className="check small">
             <input
