@@ -75,3 +75,9 @@ export const IconQuality = () => (
     <path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z M9 12l2 2 4-4" />
   </svg>
 );
+export const IconHanging = () => (
+  <svg {...base}>
+    <circle cx="12" cy="13" r="8" />
+    <path d="M12 9v4l2.5 2.5M9 2h6" />
+  </svg>
+);

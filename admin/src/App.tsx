@@ -9,6 +9,7 @@ import { TodayPage } from './TodayPage';
 import { FlowPage } from './FlowPage';
 import { ReleasePage } from './ReleasePage';
 import { QualityPage } from './QualityPage';
+import { HangingPage } from './HangingPage';
 import { DataPage } from './DataPage';
 import {
   IconChats,
@@ -23,6 +24,7 @@ import {
   IconFlow,
   IconRelease,
   IconQuality,
+  IconHanging,
 } from './icons';
 
 type State = 'loading' | 'login' | 'ready';
@@ -31,6 +33,7 @@ type PageId =
   | 'release'
   | 'flow'
   | 'quality'
+  | 'hanging'
   | 'overview'
   | 'team'
   | 'data'
@@ -72,6 +75,12 @@ const PAGES: Array<{
     title: 'Поток',
     icon: <IconFlow />,
     lead: 'Где задачи ждут: время на этапах, стареющие задачи, возвраты, передачи и блоки.',
+  },
+  {
+    id: 'hanging',
+    title: 'Зависшие',
+    icon: <IconHanging />,
+    lead: 'Старые задачи, которые давно висят: давно в работе, никто не трогал, старый бэклог, без исполнителя.',
   },
   {
     id: 'quality',
@@ -307,6 +316,7 @@ export function App() {
           {page === 'team' && <TeamPage onUnauthorized={logout} />}
           {page === 'release' && <ReleasePage onUnauthorized={logout} />}
           {page === 'flow' && <FlowPage onUnauthorized={logout} />}
+          {page === 'hanging' && <HangingPage onUnauthorized={logout} />}
           {page === 'quality' && <QualityPage onUnauthorized={logout} />}
           {page === 'data' && <DataPage onUnauthorized={logout} />}
           {page === 'chats' && <ChatsPanel onUnauthorized={logout} />}
