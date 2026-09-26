@@ -894,3 +894,91 @@ details.card summary {
   cursor: pointer;
   font-weight: 600;
 }
+
+/* ---------- release ---------- */
+.verdict.ok {
+  border-left: 3px solid var(--ok);
+}
+.verdict.warn {
+  border-left: 3px solid #e0a400;
+}
+.verdict.bad {
+  border-left: 3px solid #d64545;
+}
+.verdict-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.verdict-head h2 {
+  margin: 0;
+}
+.badge {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.badge.ok {
+  color: var(--ok);
+}
+.badge.warn {
+  color: #b77a00;
+}
+.badge.bad {
+  color: #d64545;
+}
+.badge.muted {
+  color: var(--muted);
+}
+.burn {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.burn.scope {
+  stroke: var(--muted);
+}
+.burn.done {
+  stroke: var(--accent);
+}
+.hit {
+  fill: transparent;
+}
+.hit:hover {
+  fill: var(--accent-soft);
+  opacity: 0.5;
+}
+.whatif {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.whatif label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+.whatif label.check {
+  flex-direction: row;
+}
+.whatif input[type='range'] {
+  padding: 0;
+}
+.whatif-result {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.whatif-result.ok {
+  border-color: var(--ok);
+}
+.whatif-result.bad {
+  border-color: #d64545;
+}

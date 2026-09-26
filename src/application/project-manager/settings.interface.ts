@@ -28,6 +28,8 @@ export interface PmSettings {
   teamThresholds?: TeamThresholds | null;
   // Jira display name → away until (inclusive), so signals stay quiet
   teamAway?: TeamAway | null;
+  // Релиз: the day scope growth is counted from
+  releaseBaseline?: string | null;
   // "Сегодня" items the owner marked done or snoozed, until an ISO time.
   // Written by its own endpoint, not through the settings form.
   todayHidden?: Array<{ id: string; until: string }> | null;
@@ -44,6 +46,7 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
   'githubLogins',
   'teamThresholds',
   'teamAway',
+  'releaseBaseline',
 ];
 
 export interface IPmSettingsStore {
@@ -197,6 +200,17 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       out.teamAway = map;
     }
   }
+  if (has('releaseBaseline')) {
+    const v = input.releaseBaseline;
+    if (v === null) out.releaseBaseline = null;
+    else if (
+      typeof v !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(v) ||
+      isNaN(Date.parse(v))
+    )
+      throw new SettingsError('releaseBaseline: date YYYY-MM-DD');
+    else out.releaseBaseline = v;
+  }
   if (has('pmInOwnerGroups')) {
     if (nil('pmInOwnerGroups')) out.pmInOwnerGroups = null;
     else if (typeof input.pmInOwnerGroups !== 'boolean')
@@ -223,4 +237,5 @@ export const resolveConfig = (base: IPmConfig, s: PmSettings): IPmConfig => ({
   ...(s.githubLogins != null ? { githubLogins: s.githubLogins } : {}),
   ...(s.teamThresholds != null ? { teamThresholds: s.teamThresholds } : {}),
   ...(s.teamAway != null ? { teamAway: s.teamAway } : {}),
+  ...(s.releaseBaseline != null ? { releaseBaseline: s.releaseBaseline } : {}),
 });

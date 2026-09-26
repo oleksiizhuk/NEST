@@ -15,8 +15,17 @@ import {
 import { loadKnowledge } from '@application/project-manager/knowledge-loader';
 import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
 import { todayLine } from '@application/project-manager/release-clock';
-import { buildTeam, PersonView } from '@application/project-manager/team';
+import {
+  buildTeam,
+  PersonView,
+  TeamCode,
+} from '@application/project-manager/team';
 import { FlowStages } from '@application/project-manager/stages';
+import {
+  ReleaseIssues,
+  releaseView,
+} from '@application/project-manager/release';
+import { WeeklyFlow } from '@application/project-manager/load';
 import {
   ITeamReviews,
   PM_TEAM_REVIEWS,
@@ -121,6 +130,32 @@ export class TeamReviewUseCase {
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       // The per-ticket dates are only needed at refresh
       stages: stages ? { ...stages, lastChange: undefined } : null,
+    };
+  }
+
+  // Релиз: forecast, scope growth, critical path, people, Jira vs code
+  async release(now = new Date()) {
+    const snapshot = await this.snapshots.findLatest();
+    if (!snapshot) return null;
+    const live = await this.runtime.current();
+    const issues = snapshot.section('issues')?.details as
+      | { release?: ReleaseIssues | null; flow?: WeeklyFlow | null }
+      | undefined;
+    const code = snapshot.section('code')?.details as unknown as
+      | TeamCode
+      | undefined;
+    return {
+      asOf: snapshot.createdAt,
+      links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
+      hasCode: Boolean(code),
+      release: issues?.release
+        ? releaseView(issues.release, now, {
+            releaseDate: live.releaseDate,
+            baseline: live.releaseBaseline ?? null,
+            code: code ?? null,
+            flow: issues.flow ?? null,
+          })
+        : null,
     };
   }
 

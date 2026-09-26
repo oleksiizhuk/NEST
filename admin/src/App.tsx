@@ -7,6 +7,7 @@ import { ChatsPanel } from './ChatsPanel';
 import { TeamPage } from './TeamPage';
 import { TodayPage } from './TodayPage';
 import { FlowPage } from './FlowPage';
+import { ReleasePage } from './ReleasePage';
 import { DataPage } from './DataPage';
 import {
   IconChats,
@@ -19,11 +20,13 @@ import {
   IconSettings,
   IconToday,
   IconFlow,
+  IconRelease,
 } from './icons';
 
 type State = 'loading' | 'login' | 'ready';
 type PageId =
   | 'today'
+  | 'release'
   | 'flow'
   | 'overview'
   | 'team'
@@ -54,6 +57,12 @@ const PAGES: Array<{
     title: 'Сотрудники',
     icon: <IconTeam />,
     lead: 'Кто над чем работает, идёт ли в нужную сторону и что сказать на митинге.',
+  },
+  {
+    id: 'release',
+    title: 'Релиз',
+    icon: <IconRelease />,
+    lead: 'Успеваем ли к дате, что добавили по ходу, что всех держит и где Jira расходится с кодом.',
   },
   {
     id: 'flow',
@@ -287,6 +296,7 @@ export function App() {
           {page === 'today' && <TodayPage onUnauthorized={logout} />}
           {page === 'overview' && usage && <UsagePanel usage={usage} />}
           {page === 'team' && <TeamPage onUnauthorized={logout} />}
+          {page === 'release' && <ReleasePage onUnauthorized={logout} />}
           {page === 'flow' && <FlowPage onUnauthorized={logout} />}
           {page === 'data' && <DataPage onUnauthorized={logout} />}
           {page === 'chats' && <ChatsPanel onUnauthorized={logout} />}

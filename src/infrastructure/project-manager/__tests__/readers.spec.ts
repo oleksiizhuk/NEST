@@ -241,6 +241,70 @@ describe('Jira reader status history', () => {
   });
 });
 
+describe('Jira reader release', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('keeps every release ticket with when the version was put on it', async () => {
+    const ticket = {
+      id: '7',
+      key: 'ABC-7',
+      fields: {
+        summary: 'Pay',
+        status: { name: 'Done', statusCategory: { key: 'done' } },
+        issuetype: { name: 'Story' },
+        reporter: { displayName: 'Client' },
+        created: '2026-09-01T09:00:00.000+0000',
+        resolutiondate: '2026-09-20T09:00:00.000+0000',
+        fixVersions: [{ name: 'MVP "2"' }],
+      },
+    };
+    const fetchMock = jest.fn((url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      if (url.endsWith('/changelog/bulkfetch'))
+        return json({
+          issueChangeLogs: body.fieldIds.includes('fixVersions')
+            ? [
+                {
+                  issueId: '7',
+                  changeHistories: [
+                    {
+                      created: '2026-09-10T09:00:00.000+0000',
+                      items: [{ fieldId: 'fixVersions', toString: 'MVP "2"' }],
+                    },
+                  ],
+                },
+              ]
+            : [],
+        });
+      return json({
+        issues: String(body.jql).includes('fixVersion =') ? [ticket] : [],
+        isLast: true,
+      });
+    });
+    global.fetch = fetchMock as any;
+    const { details } = await new JiraIssueReader(
+      env({
+        JIRA_BASE_URL: 'https://x.atlassian.net',
+        PM_JIRA_PROJECTS: 'ABC',
+        PM_RELEASE_VERSION: 'MVP "2"',
+      }),
+    ).fetch(new Date('2026-09-24T10:00:00Z'));
+    const jql = fetchMock.mock.calls
+      .map(([, init]) => JSON.parse((init as any).body).jql)
+      .find((q) => String(q).includes('fixVersion ='));
+    expect(jql).toBe(
+      'project in (ABC) AND fixVersion = "MVP \\"2\\"" ORDER BY created ASC',
+    );
+    expect((details as any).release.issues[0]).toMatchObject({
+      key: 'ABC-7',
+      reporter: 'Client',
+      doneAt: '2026-09-20T09:00:00.000+0000',
+      addedAt: '2026-09-10T09:00:00.000+0000',
+    });
+  });
+});
+
 describe('Jira reader caps', () => {
   const realFetch = global.fetch;
   afterEach(() => (global.fetch = realFetch));

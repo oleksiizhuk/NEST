@@ -270,6 +270,71 @@ export interface FlowView {
   } | null;
 }
 
+export interface ReleaseData {
+  version: string;
+  releaseDate: string | null;
+  workingDaysLeft: number | null;
+  capped: boolean;
+  scope: { total: number; done: number; open: number; inProgress: number };
+  burnup: Array<{ day: string; scope: number; done: number }>;
+  pace: { perDay: number | null; best: number | null; worst: number | null };
+  eta: {
+    date: string | null;
+    early: string | null;
+    late: string | null;
+    daysLate: number | null;
+    verdict: 'on-track' | 'at-risk' | 'late' | 'unknown';
+  };
+  creep: {
+    baseline: string;
+    atBaseline: number;
+    added: Array<{
+      key: string;
+      summary: string;
+      type: string;
+      priority: string | null;
+      reporter: string | null;
+      at: string;
+      done: boolean;
+    }>;
+    addedLast7: number;
+    percent: number | null;
+  };
+  critical: Array<{
+    key: string;
+    summary: string;
+    assignee: string | null;
+    priority: string | null;
+    waiting: number;
+    blockedBy: string[];
+  }>;
+  people: Array<{
+    name: string;
+    open: number;
+    share: number;
+    pace: number | null;
+    daysNeeded: number | null;
+    risk: boolean;
+  }>;
+  mismatches: Array<{
+    key: string;
+    kind: 'merged-not-done' | 'progress-no-pr' | 'done-no-pr';
+    detail: string;
+  }>;
+  open: Array<{
+    key: string;
+    priority: string | null;
+    assignee: string | null;
+  }>;
+}
+
+export interface ReleaseView {
+  asOf: string;
+  links: Links;
+  hasCode: boolean;
+  release: ReleaseData | null;
+}
+
 export type IndexSource = 'jira' | 'confluence' | 'figma' | 'github';
 
 export interface IndexJob {
@@ -325,6 +390,9 @@ export const api = {
     call<TeamView>('PUT', 'team/away', { name, until, note }),
   today: () => call<TodayView>('GET', 'today'),
   flow: () => call<FlowView | null>('GET', 'flow'),
+  release: () => call<ReleaseView | null>('GET', 'release'),
+  setBaseline: (date: string | null) =>
+    call<ReleaseView | null>('PUT', 'release/baseline', { date }),
   hideToday: (id: string, days: 1 | 7) =>
     call<TodayView>('POST', 'today/hide', { id, days }),
   setChat: (chatId: number, on: boolean | 'auto') =>
