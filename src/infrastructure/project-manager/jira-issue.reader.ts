@@ -16,6 +16,7 @@ import {
   weeklyFlow,
 } from '@application/project-manager/load';
 import { ReleaseIssues } from '@application/project-manager/release';
+import { areaView } from '@application/project-manager/areas';
 import {
   FLOW_WINDOW_DAYS,
   FlowStages,
@@ -130,6 +131,7 @@ export const toFact = (issue: JiraIssue): IssueFact => {
     doneAt: f.resolutiondate ?? f.statuscategorychangedate ?? null,
     statusSince: f.statuscategorychangedate ?? null,
     due: f.duedate ?? null,
+    components: names(f.components),
   };
 };
 
@@ -147,6 +149,7 @@ interface Query {
 // Only what the weekly counts need: these lists never reach the prompt
 const HISTORY_FIELDS = [
   'status',
+  'components',
   'issuetype',
   'assignee',
   'created',
@@ -346,6 +349,15 @@ export class JiraIssueReader implements IProjectSource {
       ),
       flow: history ? this.flow(history, now) : null,
       stages,
+      areas: history
+        ? areaView(
+            openFacts,
+            closed.map(toFact),
+            history.created.map(toFact),
+            now,
+            caps[0] || history.capped,
+          )
+        : null,
       release: await this.release(),
     } as unknown as Record<string, unknown>;
     return caps.some(Boolean)

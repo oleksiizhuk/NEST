@@ -8,6 +8,7 @@ import { TeamPage } from './TeamPage';
 import { TodayPage } from './TodayPage';
 import { FlowPage } from './FlowPage';
 import { ReleasePage } from './ReleasePage';
+import { QualityPage } from './QualityPage';
 import { DataPage } from './DataPage';
 import {
   IconChats,
@@ -21,6 +22,7 @@ import {
   IconToday,
   IconFlow,
   IconRelease,
+  IconQuality,
 } from './icons';
 
 type State = 'loading' | 'login' | 'ready';
@@ -28,6 +30,7 @@ type PageId =
   | 'today'
   | 'release'
   | 'flow'
+  | 'quality'
   | 'overview'
   | 'team'
   | 'data'
@@ -69,6 +72,12 @@ const PAGES: Array<{
     title: 'Поток',
     icon: <IconFlow />,
     lead: 'Где задачи ждут: время на этапах, стареющие задачи, возвраты, передачи и блоки.',
+  },
+  {
+    id: 'quality',
+    title: 'Качество',
+    icon: <IconQuality />,
+    lead: 'Где появляются баги и какие области знает только один человек.',
   },
   {
     id: 'data',
@@ -298,6 +307,7 @@ export function App() {
           {page === 'team' && <TeamPage onUnauthorized={logout} />}
           {page === 'release' && <ReleasePage onUnauthorized={logout} />}
           {page === 'flow' && <FlowPage onUnauthorized={logout} />}
+          {page === 'quality' && <QualityPage onUnauthorized={logout} />}
           {page === 'data' && <DataPage onUnauthorized={logout} />}
           {page === 'chats' && <ChatsPanel onUnauthorized={logout} />}
           {page === 'settings' && settings && (

@@ -268,6 +268,13 @@ export class PmAdminController {
     return this.team_.flow();
   }
 
+  // Качество: bugs by area and areas only one person knows
+  @Get('areas')
+  @UseGuards(PmAdminGuard)
+  areas() {
+    return this.team_.areas();
+  }
+
   // Релиз: will it land on the date, what grew, what the rest waits on
   @Get('release')
   @UseGuards(PmAdminGuard)

@@ -25,6 +25,8 @@ export interface IssueFact {
   // When it entered its current status category
   statusSince: string | null;
   due: string | null;
+  // Jira components, for the areas page
+  components?: string[];
 }
 
 export interface IssueMetricsOptions {
@@ -64,7 +66,9 @@ const keys = (items: IssueFact[]): string =>
 const isHigh = (i: IssueFact): boolean =>
   HIGH_PRIORITIES.has((i.priority ?? '').toLowerCase());
 
-const isBug = (i: IssueFact): boolean => /bug|defect/i.test(i.type);
+// One test for bugs everywhere (snapshot metrics, Качество, cards)
+export const isBug = (i: IssueFact): boolean =>
+  /bug|defect|incident|баг|ошибк/i.test(i.type);
 
 export const isBlocker = (i: IssueFact): boolean =>
   BLOCKER_PRIORITIES.has((i.priority ?? '').toLowerCase()) ||

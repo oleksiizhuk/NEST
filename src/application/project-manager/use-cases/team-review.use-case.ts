@@ -27,6 +27,7 @@ import {
 } from '@application/project-manager/release';
 import { WeeklyFlow } from '@application/project-manager/load';
 import { ReviewLoad } from '@application/project-manager/reviews';
+import { Areas } from '@application/project-manager/areas';
 import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity';
 import {
   ITeamReviews,
@@ -228,6 +229,34 @@ export class TeamReviewUseCase {
 
   async latest() {
     return this.reviews.latest();
+  }
+
+  // Качество: bugs and single-owner risk by area
+  async areas() {
+    const snapshot = await this.snapshots.findLatest();
+    if (!snapshot) return null;
+    const live = await this.runtime.current();
+    const areas =
+      (
+        snapshot.section('issues')?.details as
+          | { areas?: Areas | null }
+          | undefined
+      )?.areas ?? null;
+    return {
+      asOf: snapshot.createdAt,
+      links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
+      // Per-person counts stay on the cards, not in an area table
+      areas: areas
+        ? {
+            // The main closer is named only where it is a risk
+            areas: areas.areas.map((a) =>
+              a.busRisk ? a : { ...a, owner: null, backup: null },
+            ),
+            noAreaShare: areas.noAreaShare,
+            capped: areas.capped ?? false,
+          }
+        : null,
+    };
   }
 
   private reviewsOf(snapshot: ProjectSnapshot): ReviewLoad | null {
