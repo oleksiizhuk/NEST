@@ -578,11 +578,13 @@ function PersonCard({
   weeks,
   telegram,
   review,
+  sprint,
   onGithub,
   onAway,
   onTelegram,
 }: {
   review: { reviewed: number; pending: number } | null;
+  sprint: { committed: number; done: number } | null;
   p: Person;
   links: Links | null;
   stale: number;
@@ -648,6 +650,11 @@ function PersonCard({
               Баги{' '}
               {Math.round((p.load.closed28.bugs / p.load.closed28.done) * 100)}%
               за 4 нед.
+            </span>
+          )}
+          {sprint && sprint.committed > 0 && (
+            <span className="chip" title="Последние 3 закрытых спринта">
+              Спринты: {sprint.done} из {sprint.committed}
             </span>
           )}
           {review && (
@@ -888,6 +895,7 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
                 weeks={team.flow?.weeks ?? []}
                 telegram={team.telegram?.[p.name] ?? null}
                 review={p.github ? team.reviewers?.[p.github] ?? null : null}
+                sprint={team.sprints?.[p.name] ?? null}
                 onTelegram={async (username) => {
                   try {
                     setView(await api.setTelegram(p.name, username));

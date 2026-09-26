@@ -28,6 +28,7 @@ import {
 import { WeeklyFlow } from '@application/project-manager/load';
 import { ReviewLoad } from '@application/project-manager/reviews';
 import { Areas } from '@application/project-manager/areas';
+import { Sprints } from '@application/project-manager/sprints';
 import { Hanging, hangingAges } from '@application/project-manager/hanging';
 import {
   DayLoad,
@@ -176,6 +177,13 @@ export class TeamReviewUseCase {
       }),
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       telegram: live.telegramUsernames ?? {},
+      // Last three closed sprints: committed and done per person
+      sprints:
+        (
+          snapshot.section('issues')?.details as
+            | { sprints?: Sprints | null }
+            | undefined
+        )?.sprints?.people ?? {},
       // Per GitHub login: reviews given in 30 days and requests waiting
       reviewers: Object.fromEntries(
         (this.reviewsOf(snapshot)?.reviewers ?? []).map((r) => [
@@ -226,6 +234,14 @@ export class TeamReviewUseCase {
       asOf: snapshot.createdAt,
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       hasCode: Boolean(code),
+      sprintsError:
+        (issues as { sprints?: Sprints | null } | undefined)?.sprints?.error ??
+        null,
+      sprints: (() => {
+        const sp = (issues as { sprints?: Sprints | null } | undefined)
+          ?.sprints;
+        return sp && !sp.error ? sp.rows : null;
+      })(),
       releaseError: issues?.release?.error ?? null,
       release:
         issues?.release && !issues.release.error

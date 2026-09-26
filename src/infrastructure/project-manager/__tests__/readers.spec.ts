@@ -442,6 +442,96 @@ describe('GitHub review load paging', () => {
   });
 });
 
+describe('Jira reader sprints', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('reads board sprints and when tickets entered them', async () => {
+    global.fetch = jest.fn((url: string, init?: any) => {
+      if (url.includes('/board/7/sprint'))
+        return json({
+          isLast: true,
+          values: [
+            {
+              id: 10,
+              name: 'Sprint 1',
+              state: 'closed',
+              startDate: '2026-09-01T09:00:00Z',
+              completeDate: '2026-09-14T17:00:00Z',
+            },
+          ],
+        });
+      if (url.includes('/sprint/10/issue'))
+        return json({
+          total: 2,
+          issues: [
+            {
+              id: '1',
+              key: 'ABC-1',
+              fields: {
+                issuetype: { name: 'Story' },
+                status: { statusCategory: { key: 'done' } },
+                assignee: { displayName: 'Ann' },
+                resolutiondate: '2026-09-10T00:00:00Z',
+              },
+            },
+            {
+              id: '2',
+              key: 'ABC-2',
+              fields: {
+                issuetype: { name: 'Sub-task', subtask: true },
+                status: { statusCategory: { key: 'new' } },
+              },
+            },
+          ],
+        });
+      if (url.endsWith('/changelog/bulkfetch')) {
+        const body = JSON.parse(init.body);
+        return json({
+          issueChangeLogs: body.fieldIds.includes('customfield_10020')
+            ? [
+                {
+                  issueId: '1',
+                  changeHistories: [
+                    {
+                      created: '2026-09-05T00:00:00Z',
+                      items: [
+                        {
+                          fieldId: 'customfield_10020',
+                          // A name with a comma: matching goes by id
+                          fromString: 'Sprint 10, Payments',
+                          toString: 'Sprint 10, Payments, Sprint 1',
+                          from: '99',
+                          to: '99, 10',
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ]
+            : [],
+        });
+      }
+      return json({ issues: [], isLast: true });
+    }) as any;
+    const { details } = await new JiraIssueReader(
+      env({
+        JIRA_BASE_URL: 'https://x.atlassian.net',
+        PM_JIRA_PROJECTS: 'ABC',
+        PM_JIRA_BOARD_ID: '7',
+      }),
+    ).fetch(new Date('2026-09-24T10:00:00Z'));
+    expect((details as any).sprints.rows).toEqual([
+      expect.objectContaining({
+        name: 'Sprint 1',
+        committed: 0,
+        added: 1,
+        doneAdded: 1,
+      }),
+    ]);
+  });
+});
+
 describe('Jira reader caps', () => {
   const realFetch = global.fetch;
   afterEach(() => (global.fetch = realFetch));
