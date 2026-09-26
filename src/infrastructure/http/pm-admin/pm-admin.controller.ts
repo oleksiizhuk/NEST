@@ -97,6 +97,13 @@ export class AdminTodayHideBody {
   days: 1 | 7;
 }
 
+export class AdminBaselineBody {
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  date?: string | null;
+}
+
 export class AdminChatBody {
   @IsInt()
   chatId: number;
@@ -224,6 +231,33 @@ export class PmAdminController {
   @UseGuards(PmAdminGuard)
   flow() {
     return this.team_.flow();
+  }
+
+  // Релиз: will it land on the date, what grew, what the rest waits on
+  @Get('release')
+  @UseGuards(PmAdminGuard)
+  release() {
+    return this.team_.release();
+  }
+
+  // Scope growth is counted from this day; null = the last 30 days
+  @Put('release/baseline')
+  @UseGuards(PmAdminGuard)
+  async releaseBaseline(
+    @Body() body: AdminBaselineBody,
+    @Req() req: { pmAdmin: number },
+  ) {
+    try {
+      await this.admin.update(
+        { releaseBaseline: body.date ?? null },
+        req.pmAdmin,
+      );
+      return this.team_.release();
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
   }
 
   // Meeting notes by the model (cached for the day unless force)

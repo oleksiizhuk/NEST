@@ -15,6 +15,7 @@ import {
   WeeklyFlow,
   weeklyFlow,
 } from '@application/project-manager/load';
+import { ReleaseIssues } from '@application/project-manager/release';
 import {
   FLOW_WINDOW_DAYS,
   FlowStages,
@@ -211,6 +212,7 @@ export class JiraIssueReader implements IProjectSource {
   private readonly releaseVersion: string | null;
   private readonly history: Query[];
   private readonly statusMap: Record<string, Stage>;
+  private readonly scope: string;
 
   constructor(config: ConfigService) {
     this.baseUrl = (
@@ -239,6 +241,7 @@ export class JiraIssueReader implements IProjectSource {
       .map((p) => p.trim())
       .filter(Boolean);
     const scope = projects.length ? `project in (${projects.join(', ')})` : '';
+    this.scope = scope;
     this.queries = scope
       ? [
           {
@@ -343,6 +346,7 @@ export class JiraIssueReader implements IProjectSource {
       ),
       flow: history ? this.flow(history, now) : null,
       stages,
+      release: await this.release(),
     } as unknown as Record<string, unknown>;
     return caps.some(Boolean)
       ? { text, signals, details }
@@ -452,7 +456,80 @@ export class JiraIssueReader implements IProjectSource {
     }
   }
 
-  private async changelogs(keys: string[]): Promise<
+  // Every ticket of the release version, any status, with when the version
+  // was put on it; a failure leaves the Релиз page empty
+  private async release(): Promise<ReleaseIssues | null> {
+    if (!this.releaseVersion || !this.scope) return null;
+    // JQL string: backslash and quote escaped, not dropped
+    const version = this.releaseVersion
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"');
+    try {
+      const limit = 500;
+      const issues = await this.search({
+        title: 'release',
+        jql: `${this.scope} AND fixVersion = "${version}" ORDER BY created ASC`,
+        limit,
+      });
+      const added = new Map<string, string>();
+      try {
+        const logs = await this.changelogs(
+          issues.map((i) => i.key),
+          ['fixVersions'],
+        );
+        const keyOf = new Map(issues.map((i) => [i.id ?? i.key, i.key]));
+        for (const log of logs) {
+          const key = keyOf.get(log.issueId);
+          if (!key) continue;
+          for (const change of log.changeHistories ?? [])
+            for (const item of change.items ?? [])
+              if (str(item.toString) === this.releaseVersion) {
+                const prev = added.get(key);
+                if (!prev || Date.parse(change.created) > Date.parse(prev))
+                  added.set(key, change.created);
+              }
+        }
+      } catch {
+        // Without the changelog "added" falls back to created
+      }
+      return {
+        version: this.releaseVersion,
+        capped: issues.length >= limit,
+        issues: issues.map((i) => {
+          const f = toFact(i);
+          return {
+            key: f.key,
+            summary: f.summary.slice(0, 140),
+            type: f.type,
+            status: f.status,
+            category: f.category,
+            priority: f.priority,
+            assignee: f.assignee,
+            reporter: i.fields.reporter?.displayName ?? null,
+            created: f.created,
+            doneAt: f.category === 'done' ? f.doneAt : null,
+            statusSince: f.statusSince,
+            blockedBy: f.blockedBy ?? [],
+            addedAt: added.get(f.key) ?? f.created,
+            stage: this.stageName(f.status, f.category),
+          };
+        }),
+      };
+    } catch (error) {
+      // Shown on the page as a read error, not as "release not set"
+      return {
+        version: this.releaseVersion,
+        capped: false,
+        issues: [],
+        error: (error as Error).message.slice(0, 200),
+      };
+    }
+  }
+
+  private async changelogs(
+    keys: string[],
+    fieldIds = ['status', 'assignee'],
+  ): Promise<
     Array<{
       issueId: string;
       changeHistories?: Array<{
@@ -481,7 +558,7 @@ export class JiraIssueReader implements IProjectSource {
             method: 'POST',
             body: {
               issueIdsOrKeys: keys.slice(at, at + 1000),
-              fieldIds: ['status', 'assignee'],
+              fieldIds,
               maxResults: 1000,
               ...(nextPageToken ? { nextPageToken } : {}),
             },

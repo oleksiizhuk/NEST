@@ -65,3 +65,8 @@ export const IconFlow = () => (
     <path d="M3 6h5l3 6h4l3-6h3M3 18h5l3-6M15 12l3 6h3" />
   </svg>
 );
+export const IconRelease = () => (
+  <svg {...base}>
+    <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
+  </svg>
+);

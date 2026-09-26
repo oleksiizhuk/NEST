@@ -213,6 +213,7 @@ export class PmAdminUseCase {
       githubLogins: {},
       teamThresholds: DEFAULT_THRESHOLDS,
       teamAway: {},
+      releaseBaseline: null,
       todayHidden: [],
     };
     const overrides: PmSettings = {};

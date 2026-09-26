@@ -277,6 +277,12 @@ describe('buildTeam', () => {
     expect(() =>
       cleanSettings({ teamAway: { Ann: { until: '1 Oct' } } }),
     ).toThrow('YYYY-MM-DD');
+    expect(() =>
+      cleanSettings({ teamAway: { Ann: { until: '2026-02-31' } } }),
+    ).toThrow('YYYY-MM-DD');
+    expect(() => cleanSettings({ releaseBaseline: '2026-02-31' })).toThrow(
+      'releaseBaseline',
+    );
   });
 
   it('validates GitHub links', () => {

@@ -28,6 +28,8 @@ export interface PmSettings {
   teamThresholds?: TeamThresholds | null;
   // Jira display name → away until (inclusive), so signals stay quiet
   teamAway?: TeamAway | null;
+  // Релиз: the day scope growth is counted from
+  releaseBaseline?: string | null;
   // "Сегодня" items the owner marked done or snoozed, until an ISO time.
   // Written by its own endpoint, not through the settings form.
   todayHidden?: Array<{ id: string; until: string }> | null;
@@ -44,6 +46,7 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
   'githubLogins',
   'teamThresholds',
   'teamAway',
+  'releaseBaseline',
 ];
 
 export interface IPmSettingsStore {
@@ -67,6 +70,13 @@ export interface IPmSettingsStore {
 export class SettingsError extends Error {}
 
 const USERNAME = /^[a-z0-9_]{4,32}$/;
+
+// YYYY-MM-DD that is a real day (Date.parse accepts 2026-02-31)
+const isDay = (v: unknown): v is string =>
+  typeof v === 'string' &&
+  /^\d{4}-\d{2}-\d{2}$/.test(v) &&
+  !isNaN(Date.parse(v)) &&
+  new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
 
 const usernames = (value: unknown, field: string): string[] => {
   if (!Array.isArray(value))
@@ -187,7 +197,7 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
         if (!name.trim() || name.length > 100)
           throw new SettingsError(`teamAway: bad name "${name}"`);
         const until = String(raw?.until ?? '');
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(until) || isNaN(Date.parse(until)))
+        if (!isDay(until))
           throw new SettingsError(`teamAway: date YYYY-MM-DD for ${name}`);
         const note = raw?.note == null ? '' : String(raw.note).trim();
         if (note.length > 60)
@@ -196,6 +206,13 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       }
       out.teamAway = map;
     }
+  }
+  if (has('releaseBaseline')) {
+    const v = input.releaseBaseline;
+    if (v === null) out.releaseBaseline = null;
+    else if (!isDay(v))
+      throw new SettingsError('releaseBaseline: date YYYY-MM-DD');
+    else out.releaseBaseline = v;
   }
   if (has('pmInOwnerGroups')) {
     if (nil('pmInOwnerGroups')) out.pmInOwnerGroups = null;
@@ -223,4 +240,5 @@ export const resolveConfig = (base: IPmConfig, s: PmSettings): IPmConfig => ({
   ...(s.githubLogins != null ? { githubLogins: s.githubLogins } : {}),
   ...(s.teamThresholds != null ? { teamThresholds: s.teamThresholds } : {}),
   ...(s.teamAway != null ? { teamAway: s.teamAway } : {}),
+  ...(s.releaseBaseline != null ? { releaseBaseline: s.releaseBaseline } : {}),
 });
