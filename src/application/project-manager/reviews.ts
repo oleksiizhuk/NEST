@@ -44,6 +44,8 @@ export interface ReviewLoad {
   size: { medianLines: number | null; big: number; bigShare: number };
   noReview: Array<{ repo: string; number: number; author: string }>;
   manyRounds: Array<{ repo: string; number: number; rounds: number }>;
+  // Repos that could not be read at the last refresh
+  missing?: string[];
   // Open PRs waiting longest for a first review
   waiting: Array<{
     repo: string;
@@ -85,8 +87,15 @@ export const reviewLoad = (prs: PrFact[], now: Date): ReviewLoad => {
   for (const pr of [...merged, ...open]) {
     const list = humans(pr);
     const first = list[0];
-    if (first) {
-      const h = hours(pr.readyAt, Date.parse(first.at));
+    // An open PR nobody reviewed yet counts with its wait so far (a lower
+    // bound), or the longest waits would never show
+    const until = first
+      ? Date.parse(first.at)
+      : pr.mergedAt
+      ? null
+      : now.getTime();
+    if (until !== null) {
+      const h = hours(pr.readyAt, until);
       firstWaits.push(h);
       const w = waitsBy.get(pr.author) ?? [];
       w.push(h);
@@ -103,12 +112,11 @@ export const reviewLoad = (prs: PrFact[], now: Date): ReviewLoad => {
   }
 
   const pending = new Map<string, number>();
-  for (const pr of open) {
-    const done = new Set(humans(pr).map((r) => r.login));
+  // GitHub removes a reviewer from the requests once they review, so a
+  // login still there was asked (again) and is what the author waits for
+  for (const pr of open)
     for (const who of pr.requested)
-      if (!done.has(who) && !isBot(who))
-        pending.set(who, (pending.get(who) ?? 0) + 1);
-  }
+      if (!isBot(who)) pending.set(who, (pending.get(who) ?? 0) + 1);
   const logins = new Set([...reviewedBy.keys(), ...pending.keys()]);
   const reviewers = [...logins]
     .map((login) => {
@@ -170,7 +178,18 @@ export const reviewLoad = (prs: PrFact[], now: Date): ReviewLoad => {
       .map((p) => ({
         repo: p.repo,
         number: p.number,
-        rounds: humans(p).filter((r) => r.state === 'CHANGES_REQUESTED').length,
+        // The most change requests from one reviewer: two people asking in
+        // the same round is still one round
+        rounds: Math.max(
+          0,
+          ...humans(p)
+            .filter((r) => r.state === 'CHANGES_REQUESTED')
+            .reduce(
+              (m, r) => m.set(r.login, (m.get(r.login) ?? 0) + 1),
+              new Map<string, number>(),
+            )
+            .values(),
+        ),
       }))
       .filter((p) => p.rounds >= 2)
       .sort((a, b) => b.rounds - a.rounds)

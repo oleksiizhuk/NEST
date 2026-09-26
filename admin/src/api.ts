@@ -244,6 +244,7 @@ export interface ReviewLoad {
   size: { medianLines: number | null; big: number; bigShare: number };
   noReview: Array<{ repo: string; number: number; author: string }>;
   manyRounds: Array<{ repo: string; number: number; rounds: number }>;
+  missing?: string[];
   waiting: Array<{
     repo: string;
     number: number;

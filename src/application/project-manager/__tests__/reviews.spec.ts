@@ -61,8 +61,9 @@ describe('reviewLoad', () => {
       { login: 'bob', pending: 1, reviewed: 2, share: 1 },
       { login: 'eve', pending: 1, reviewed: 0, share: 0 },
     ]);
-    // Ann's #1 waited 4 h, Cid's #2 2 h; own comments and bots do not count
-    expect(r.firstReview).toEqual({ p50: 2, p85: 4 });
+    // Ann's #1 waited 4 h, Cid's #2 2 h, and open #5 has waited 24 h so
+    // far; own comments and bots do not count
+    expect(r.firstReview).toEqual({ p50: 4, p85: 24 });
     expect(r.authors.find((a) => a.login === 'cid')).toEqual({
       login: 'cid',
       merged: 2,
@@ -82,5 +83,34 @@ describe('reviewLoad', () => {
     ]);
     // Two reviews are too few to call it a concentration
     expect(r.concentration).toBeNull();
+  });
+
+  it('counts a re-requested reviewer as pending and rounds per reviewer', () => {
+    const r = reviewLoad(
+      [
+        pr(8, {
+          requested: ['bob', 'team:backend'],
+          reviews: [
+            {
+              login: 'bob',
+              at: '2026-09-21T10:00:00Z',
+              state: 'CHANGES_REQUESTED',
+            },
+            {
+              login: 'eve',
+              at: '2026-09-21T11:00:00Z',
+              state: 'CHANGES_REQUESTED',
+            },
+          ],
+        }),
+      ],
+      NOW,
+    );
+    expect(r.reviewers.find((x) => x.login === 'bob')?.pending).toBe(1);
+    expect(r.reviewers.find((x) => x.login === 'team:backend')?.pending).toBe(
+      1,
+    );
+    // Two people asking once each is one round
+    expect(r.manyRounds).toEqual([]);
   });
 });

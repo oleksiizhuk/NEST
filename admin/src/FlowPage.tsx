@@ -93,7 +93,8 @@ function Reviews({
         <div className="tile">
           <span className="tile-value">{h(r.firstReview.p50)}</span>
           <span className="small muted">
-            обычно ждут первого ревью (85% — до {h(r.firstReview.p85)})
+            обычно ждут первого ревью (85% — до {h(r.firstReview.p85)});
+            открытые без ревью считаются с тем, сколько уже ждут
           </span>
         </div>
         <div className="tile">
@@ -106,6 +107,12 @@ function Reviews({
           </span>
         </div>
       </div>
+      {r.missing && r.missing.length > 0 && (
+        <p className="warn-line small">
+          Не прочитались репозитории: {r.missing.join(', ')} — цифры ниже без
+          них.
+        </p>
+      )}
       {r.concentration && (
         <p className="warn-line small">
           {who(r.concentration.login)} делает{' '}

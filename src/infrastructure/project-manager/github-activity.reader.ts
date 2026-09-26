@@ -17,7 +17,11 @@ import {
   oneLine,
   shortDate,
 } from '@infrastructure/project-manager/http-json';
-import { PrFact, reviewLoad } from '@application/project-manager/reviews';
+import {
+  PrFact,
+  REVIEW_WINDOW_DAYS,
+  reviewLoad,
+} from '@application/project-manager/reviews';
 
 const API = 'https://api.github.com';
 // Branch-promotion PRs (dev→staging…) are releases, not work items
@@ -85,27 +89,33 @@ const REVIEWS_QUERY = `query($owner: String!, $name: String!) {
 
 // Open and recently merged PRs with who reviewed when, who was asked, and
 // size; one GraphQL call per repo, only for the admin's review numbers
-const REVIEW_LOAD_QUERY = `query($owner: String!, $name: String!) {
-  repository(owner: $owner, name: $name) {
-    pullRequests(states: [OPEN, MERGED], first: 60, orderBy: {field: UPDATED_AT, direction: DESC}) {
-      nodes {
+const PR_LOAD_FIELDS = `
         number
         isDraft
         createdAt
+        updatedAt
         mergedAt
+        headRefName
         additions
         deletions
         changedFiles
         author { login }
         reviewRequests(first: 10) {
-          nodes { requestedReviewer { ... on User { login } } }
+          nodes { requestedReviewer { ... on User { login } ... on Team { slug } } }
         }
         reviews(first: 40) {
           nodes { author { __typename login } state submittedAt }
         }
         timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) {
           nodes { ... on ReadyForReviewEvent { createdAt } }
-        }
+        }`;
+
+// Open PRs (all, up to 100) and merged ones page by page back to the window
+const REVIEW_LOAD_QUERY = `query($owner: String!, $name: String!, $states: [PullRequestState!], $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(states: $states, first: 50, after: $after, orderBy: {field: UPDATED_AT, direction: DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {${PR_LOAD_FIELDS}
       }
     }
   }
@@ -115,13 +125,17 @@ interface LoadNode {
   number: number;
   isDraft?: boolean;
   createdAt: string;
+  updatedAt?: string;
+  headRefName?: string;
   mergedAt?: string | null;
   additions?: number;
   deletions?: number;
   changedFiles?: number;
   author?: { login?: string } | null;
   reviewRequests?: {
-    nodes?: Array<{ requestedReviewer?: { login?: string } | null }>;
+    nodes?: Array<{
+      requestedReviewer?: { login?: string; slug?: string } | null;
+    }>;
   };
   reviews?: {
     nodes?: Array<{
@@ -150,8 +164,13 @@ export const toPrFact = (repo: string, n: LoadNode): PrFact => ({
       at: r.submittedAt as string,
       state: r.state ?? '',
     })),
+  // A team request shows as "team:slug"
   requested: (n.reviewRequests?.nodes ?? [])
-    .map((r) => r.requestedReviewer?.login ?? '')
+    .map(
+      (r) =>
+        r.requestedReviewer?.login ??
+        (r.requestedReviewer?.slug ? `team:${r.requestedReviewer.slug}` : ''),
+    )
     .filter(Boolean),
 });
 
@@ -211,6 +230,12 @@ export class GitHubActivityReader implements IProjectSource {
   }
 
   async fetch(now = new Date()): Promise<SourceResult> {
+    // Started now so it runs alongside the activity calls
+    const reviewFacts = Promise.all(
+      this.repos.map((repo) =>
+        this.reviewLoadFacts(repo, now).catch(() => null),
+      ),
+    );
     const activity = await Promise.all(
       this.repos.map((repo) =>
         this.repo(repo, now).catch(
@@ -270,15 +295,18 @@ export class GitHubActivityReader implements IProjectSource {
         t.merged14.push(...w.merged14);
       }
     }
-    const prFacts = (
-      await Promise.all(
-        this.repos.map((repo) => this.reviewLoadFacts(repo).catch(() => null)),
-      )
-    ).filter((f): f is PrFact[] => f !== null);
+    const loaded = await reviewFacts;
+    const prFacts = loaded.filter((f): f is PrFact[] => f !== null);
     const details = {
       authors: allAuthors,
-      // Null when no repo could be read: the page then says so
-      reviews: prFacts.length ? reviewLoad(prFacts.flat(), now) : null,
+      // Null when no repo could be read; partial results name what is
+      // missing so they are not read as the whole team
+      reviews: prFacts.length
+        ? {
+            ...reviewLoad(prFacts.flat(), now),
+            missing: this.repos.filter((_, i) => loaded[i] === null),
+          }
+        : null,
     } as unknown as Record<string, unknown>;
     const signals = codeSignals(
       activity.flatMap((a) => a.pulls),
@@ -297,21 +325,57 @@ export class GitHubActivityReader implements IProjectSource {
     };
   }
 
-  private async reviewLoadFacts(repo: string): Promise<PrFact[]> {
-    const { data } = await getJson<{
-      data?: {
-        repository?: { pullRequests?: { nodes?: LoadNode[] } } | null;
-      } | null;
-    }>(`${API}/graphql`, this.headers, {
-      method: 'POST',
-      body: {
-        query: REVIEW_LOAD_QUERY,
-        variables: { owner: this.org, name: repo },
-      },
-    });
-    const nodes = data.data?.repository?.pullRequests?.nodes;
-    if (!nodes) throw new Error('no review data');
-    return nodes.map((n) => toPrFact(repo, n));
+  private async reviewLoadFacts(repo: string, now: Date): Promise<PrFact[]> {
+    const page = async (states: string[], after: string | null) => {
+      const { data } = await getJson<{
+        data?: {
+          repository?: {
+            pullRequests?: {
+              nodes?: LoadNode[];
+              pageInfo?: { hasNextPage?: boolean; endCursor?: string };
+            };
+          } | null;
+        } | null;
+      }>(`${API}/graphql`, this.headers, {
+        method: 'POST',
+        body: {
+          query: REVIEW_LOAD_QUERY,
+          variables: { owner: this.org, name: repo, states, after },
+        },
+      });
+      const prs = data.data?.repository?.pullRequests;
+      if (!prs?.nodes) throw new Error('no review data');
+      return prs;
+    };
+    const since = now.getTime() - REVIEW_WINDOW_DAYS * 86_400_000;
+    const nodes: LoadNode[] = [];
+    // Open: two pages cover any sane repo
+    let after: string | null = null;
+    for (let n = 0; n < 2; n += 1) {
+      const prs = await page(['OPEN'], after);
+      nodes.push(...(prs.nodes ?? []));
+      if (!prs.pageInfo?.hasNextPage) break;
+      after = prs.pageInfo.endCursor ?? null;
+    }
+    // Merged: newest updates first, until they fall before the window
+    after = null;
+    for (let n = 0; n < 6; n += 1) {
+      const prs = await page(['MERGED'], after);
+      const list = prs.nodes ?? [];
+      nodes.push(...list);
+      const last = list[list.length - 1];
+      if (
+        !prs.pageInfo?.hasNextPage ||
+        !last?.updatedAt ||
+        Date.parse(last.updatedAt) < since
+      )
+        break;
+      after = prs.pageInfo.endCursor ?? null;
+    }
+    // Promotions (dev → staging → main) are not reviewable work
+    return nodes
+      .filter((n) => !PROMOTION_HEADS.has(n.headRefName ?? ''))
+      .map((n) => toPrFact(repo, n));
   }
 
   // Unknown (undefined) on any failure: the metrics then say so instead of

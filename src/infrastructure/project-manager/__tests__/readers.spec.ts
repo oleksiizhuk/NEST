@@ -353,7 +353,11 @@ describe('GitHub review load facts', () => {
         changedFiles: 4,
         author: { login: 'ann' },
         reviewRequests: {
-          nodes: [{ requestedReviewer: { login: 'bob' } }, {}],
+          nodes: [
+            { requestedReviewer: { login: 'bob' } },
+            { requestedReviewer: { slug: 'backend' } },
+            {},
+          ],
         },
         reviews: {
           nodes: [
@@ -384,8 +388,57 @@ describe('GitHub review load facts', () => {
       reviews: [
         { login: 'bob', at: '2026-09-21T10:00:00Z', state: 'APPROVED' },
       ],
-      requested: ['bob'],
+      requested: ['bob', 'team:backend'],
     });
+  });
+});
+
+describe('GitHub review load paging', () => {
+  const realFetch = global.fetch;
+  afterEach(() => (global.fetch = realFetch));
+
+  it('pages merged PRs back to the window and drops promotions', async () => {
+    const node = (number: number, over: any = {}) => ({
+      number,
+      createdAt: '2026-09-20T10:00:00Z',
+      updatedAt: '2026-09-22T10:00:00Z',
+      mergedAt: '2026-09-22T10:00:00Z',
+      headRefName: `feature/${number}`,
+      author: { login: 'ann' },
+      ...over,
+    });
+    const bodies: any[] = [];
+    global.fetch = jest.fn((_url: string, init: any) => {
+      const body = JSON.parse(init.body);
+      bodies.push(body.variables);
+      const { states, after } = body.variables;
+      const page = (nodes: any[], hasNextPage: boolean) =>
+        json({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes,
+                pageInfo: { hasNextPage, endCursor: 'c' },
+              },
+            },
+          },
+        });
+      if (states[0] === 'OPEN')
+        return page([node(1, { mergedAt: null })], false);
+      if (!after)
+        return page([node(2), node(3, { headRefName: 'staging' })], true);
+      return page([node(4, { updatedAt: '2026-06-01T00:00:00Z' })], true);
+    }) as any;
+    const reader = new GitHubActivityReader(
+      env({ PM_GITHUB_TOKEN: 't', PM_GITHUB_ORG: 'o', PM_GITHUB_REPOS: 'api' }),
+    );
+    const facts = await (reader as any).reviewLoadFacts(
+      'api',
+      new Date('2026-09-24T10:00:00Z'),
+    );
+    expect(facts.map((f: any) => f.number)).toEqual([1, 2, 4]);
+    // Stopped after the page that reached past the window
+    expect(bodies.filter((b) => b.states[0] === 'MERGED')).toHaveLength(2);
   });
 });
 
