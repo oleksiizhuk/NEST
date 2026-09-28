@@ -7,6 +7,7 @@ const when = (iso: string) =>
   });
 import { api, HangingItem, HangingView, Unauthorized } from './api';
 import { Key } from './signals';
+import { NoData } from './empty';
 
 type Group = 'progress' | 'idle' | 'backlog' | 'unassigned' | 'all';
 
@@ -116,13 +117,10 @@ export function HangingPage({
   if (view === undefined) return <p className="muted">Загрузка…</p>;
   if (!view?.hanging)
     return (
-      <section className="card">
-        <h2>Списка пока нет</h2>
-        <p className="muted">
-          Он собирается при обновлении данных из Jira. Обновите данные на
-          странице «Сотрудники».
-        </p>
-      </section>
+      <NoData
+        onUnauthorized={onUnauthorized}
+        onDone={() => window.location.reload()}
+      />
     );
 
   const meta = GROUPS.find((g) => g.id === group) ?? GROUPS[0];
@@ -224,9 +222,9 @@ export function HangingPage({
                   <th>Задача</th>
                   <th>Статус</th>
                   <th>Кто</th>
-                  <th>Открыта</th>
-                  <th>Не трогали</th>
-                  <th>В статусе</th>
+                  <th>Создана, дн. назад</th>
+                  <th>Без изменений, дн.</th>
+                  <th>В нынешнем статусе, дн.</th>
                 </tr>
               </thead>
               <tbody>

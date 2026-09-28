@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { Fragment, ReactNode, useCallback, useEffect, useState } from 'react';
 import { api, session, SettingsView, Unauthorized, Usage } from './api';
 import { SettingsForm } from './SettingsForm';
 import { UsagePanel } from './UsagePanel';
@@ -11,6 +11,7 @@ import { ReleasePage } from './ReleasePage';
 import { QualityPage } from './QualityPage';
 import { HangingPage } from './HangingPage';
 import { AdminsPanel } from './AdminsPanel';
+import { showGuide } from './guide';
 import { DataPage } from './DataPage';
 import {
   IconChats,
@@ -41,71 +42,84 @@ type PageId =
   | 'chats'
   | 'settings';
 
+type Group = 'Команда' | 'Релиз и процесс' | 'Бот';
+
 const PAGES: Array<{
   id: PageId;
   title: string;
   icon: ReactNode;
   lead: string;
+  group: Group;
 }> = [
   {
     id: 'today',
     title: 'Сегодня',
     icon: <IconToday />,
-    lead: 'Главные 3–5 дел по команде на сегодня: кто, что, почему и что сказать.',
-  },
-  {
-    id: 'overview',
-    title: 'Обзор',
-    icon: <IconOverview />,
-    lead: 'Вопросы за сегодня, оценки ответов и расход.',
+    lead: 'Главные 3–5 дел по команде на сегодня: кто, что случилось и что сказать.',
+    group: 'Команда',
   },
   {
     id: 'team',
     title: 'Сотрудники',
     icon: <IconTeam />,
-    lead: 'Кто над чем работает, идёт ли в нужную сторону и что сказать на митинге.',
-  },
-  {
-    id: 'release',
-    title: 'Релиз',
-    icon: <IconRelease />,
-    lead: 'Успеваем ли к дате, что добавили по ходу, что всех держит и где Jira расходится с кодом.',
-  },
-  {
-    id: 'flow',
-    title: 'Поток',
-    icon: <IconFlow />,
-    lead: 'Где задачи ждут: время на этапах, стареющие задачи, возвраты, передачи и блоки.',
+    lead: 'Кто над чем работает, всё ли в порядке и что обсудить на встрече.',
+    group: 'Команда',
   },
   {
     id: 'hanging',
     title: 'Зависшие',
     icon: <IconHanging />,
-    lead: 'Старые задачи, которые давно висят: давно в работе, никто не трогал, старый бэклог, без исполнителя.',
+    lead: 'Задачи, которые давно висят. Удобно для уборки раз в неделю–месяц.',
+    group: 'Команда',
+  },
+  {
+    id: 'release',
+    title: 'Релиз',
+    icon: <IconRelease />,
+    lead: 'Успеваем ли к дате выпуска и что можно отложить.',
+    group: 'Релиз и процесс',
+  },
+  {
+    id: 'flow',
+    title: 'Поток',
+    icon: <IconFlow />,
+    lead: 'Где задачи ждут дольше всего на пути от разработки до готово.',
+    group: 'Релиз и процесс',
   },
   {
     id: 'quality',
     title: 'Качество',
     icon: <IconQuality />,
-    lead: 'Где появляются баги и какие области знает только один человек.',
+    lead: 'Где появляются баги и какие части продукта знает только один человек.',
+    group: 'Релиз и процесс',
   },
   {
-    id: 'data',
-    title: 'Данные',
-    icon: <IconData />,
-    lead: 'Полный сбор задач, документации, дизайна и PR — без затрат на модель.',
+    id: 'overview',
+    title: 'Вопросы боту',
+    icon: <IconOverview />,
+    lead: 'Кто и сколько спрашивает бота, как оценивают ответы.',
+    group: 'Бот',
   },
   {
     id: 'chats',
     title: 'Чаты',
     icon: <IconChats />,
-    lead: 'Где бот работает менеджером, куда идут сводка и уведомления.',
+    lead: 'В каких группах бот работает менеджером, куда идут сводка и уведомления.',
+    group: 'Бот',
+  },
+  {
+    id: 'data',
+    title: 'Данные',
+    icon: <IconData />,
+    lead: 'Сбор задач, документации, дизайна и кода, из которых бот берёт ответы.',
+    group: 'Бот',
   },
   {
     id: 'settings',
     title: 'Доступы и лимиты',
     icon: <IconSettings />,
-    lead: 'Кто может писать, подтверждать и сколько спрашивать.',
+    lead: 'Кто может писать боту, заходить сюда и сколько вопросов в день.',
+    group: 'Бот',
   },
 ];
 
@@ -131,6 +145,7 @@ export function App() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [page, setPage] = useState<PageId>(pageFromHash);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [guideTick, setGuideTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -250,23 +265,38 @@ export function App() {
           </button>
         </div>
         <nav className="nav">
-          {PAGES.map((p) => (
-            <a
-              key={p.id}
-              href={`#/${p.id}`}
-              className={`nav-item${p.id === page ? ' active' : ''}`}
-              aria-current={p.id === page ? 'page' : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                go(p.id);
-              }}
-            >
-              {p.icon}
-              <span>{p.title}</span>
-            </a>
+          {PAGES.map((p, i) => (
+            <Fragment key={p.id}>
+              {(i === 0 || PAGES[i - 1].group !== p.group) && (
+                <div className="nav-group">{p.group}</div>
+              )}
+              <a
+                href={`#/${p.id}`}
+                className={`nav-item${p.id === page ? ' active' : ''}`}
+                aria-current={p.id === page ? 'page' : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  go(p.id);
+                }}
+              >
+                {p.icon}
+                <span>{p.title}</span>
+              </a>
+            </Fragment>
           ))}
         </nav>
         <div className="sidebar-foot">
+          <button
+            className="nav-item subtle"
+            onClick={() => {
+              showGuide();
+              setGuideTick((t) => t + 1);
+              go('today');
+            }}
+          >
+            <span className="nav-spacer" />
+            <span>Как пользоваться</span>
+          </button>
           <button className="nav-item" onClick={logout}>
             <IconLogout />
             <span>Выйти</span>
@@ -312,7 +342,9 @@ export function App() {
 
           {error && <p className="error">{error}</p>}
 
-          {page === 'today' && <TodayPage onUnauthorized={logout} />}
+          {page === 'today' && (
+            <TodayPage key={guideTick} onUnauthorized={logout} />
+          )}
           {page === 'overview' && usage && <UsagePanel usage={usage} />}
           {page === 'team' && <TeamPage onUnauthorized={logout} />}
           {page === 'release' && <ReleasePage onUnauthorized={logout} />}

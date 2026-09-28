@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, Chat, Unauthorized } from './api';
 
 const MODE: Record<Chat['mode'], string> = {
-  fixed: 'Включён в Vercel',
+  fixed: 'Включён постоянно',
   on: 'Включён вручную',
   off: 'Выключен вручную',
   auto: 'Включён: вы в этой группе',
@@ -57,7 +57,7 @@ export function ChatsPanel({ onUnauthorized }: { onUnauthorized: () => void }) {
         Группы, где бот видел сообщения, и что для каждой включено. В режиме
         менеджера чату открыты данные проекта; без него бот вежливо отвечает,
         что работает только в чатах команды. Сводка по утрам идёт в чаты,
-        включённые вручную или через Vercel; уведомления — в чаты из списка
+        включённые вручную или постоянно; уведомления — в чаты из списка
         получателей.
       </p>
       {error && <p className="error">{error}</p>}

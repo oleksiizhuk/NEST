@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, TodayItem, TodayView, Unauthorized } from './api';
 import { Key, RULES } from './signals';
+import { NoData } from './empty';
+import { Guide } from './guide';
 import { NudgeForm } from './nudge';
 
 const when = (iso: string) =>
@@ -84,10 +86,10 @@ function Item({
           </button>
         )}
         <button onClick={() => hide(7)} disabled={busy}>
-          Готово
+          Разобрался — скрыть на неделю
         </button>
         <button className="ghost" onClick={() => hide(1)} disabled={busy}>
-          Отложить на сутки
+          Напомнить завтра
         </button>
       </div>
     </article>
@@ -117,22 +119,26 @@ export function TodayPage({ onUnauthorized }: { onUnauthorized: () => void }) {
 
   if (!view.asOf)
     return (
-      <section className="card">
-        <h2>Данных пока нет</h2>
-        <p className="muted">
-          Снимок проекта ещё не собран. Откройте «Сотрудники» и обновите данные.
-        </p>
-      </section>
+      <>
+        <Guide />
+        <NoData
+          onUnauthorized={onUnauthorized}
+          onDone={() => {
+            api.today().then(setView).catch(handle);
+          }}
+        />
+      </>
     );
 
   return (
     <>
+      <Guide />
       {error && <p className="error">{error}</p>}
       <p className="muted small">
         По данным на {when(view.asOf)}
-        {view.releaseVersion ? ` · релиз ${view.releaseVersion}` : ''}. «Готово»
-        прячет пункт на неделю, «Отложить» — на сутки; если проблема останется в
-        данных, пункт вернётся.
+        {view.releaseVersion ? ` · релиз ${view.releaseVersion}` : ''}. Кнопки
+        только прячут пункт здесь — в Jira ничего не меняется. Если проблема
+        останется, пункт вернётся.
       </p>
       {view.items.length ? (
         <div className="today">

@@ -6,7 +6,7 @@ export function UsagePanel({ usage }: { usage: Usage }) {
   const { feedback } = usage;
   return (
     <section className="card">
-      <h2>Сегодня ({usage.day}, UTC)</h2>
+      <h2>Вопросы сегодня ({usage.day})</h2>
       <div className="stats">
         <div>
           <span className="stat">{fmt(feedback.answers)}</span>
@@ -54,7 +54,7 @@ export function UsagePanel({ usage }: { usage: Usage }) {
                     {q.count}
                     {usage.limit ? ` из ${usage.limit}` : ''}
                     {usage.limit && q.count > usage.limit
-                      ? ' · упёрся в лимит'
+                      ? ' · лимит исчерпан'
                       : ''}
                   </div>
                 </td>

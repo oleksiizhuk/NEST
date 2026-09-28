@@ -73,6 +73,9 @@ export function NudgeForm({
           ))}
         </select>
       )}
+      <p className="small">
+        Сообщение увидит вся выбранная группа, {person} будет упомянут(а).
+      </p>
       <textarea
         value={message}
         maxLength={800}
@@ -85,15 +88,15 @@ export function NudgeForm({
           type="submit"
           disabled={state === 'sending' || chatId === null || !message.trim()}
         >
-          {state === 'sending' ? 'Отправляю…' : `Отправить: ${person}`}
+          {state === 'sending' ? 'Отправляю…' : 'Отправить в группу'}
         </button>
         <button type="button" className="ghost" onClick={onDone}>
           Отмена
         </button>
       </div>
       <p className="muted small">
-        Сообщение уйдёт от бота в выбранную группу с упоминанием человека, если
-        его Telegram привязан на странице «Сотрудники».
+        Бот упомянет человека через @, если его Telegram привязан на странице
+        «Сотрудники».
       </p>
     </form>
   );

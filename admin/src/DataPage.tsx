@@ -5,7 +5,7 @@ const NAMES: Record<IndexSource, string> = {
   jira: 'Задачи (Jira)',
   confluence: 'Документация (Confluence)',
   figma: 'Дизайн (Figma)',
-  github: 'Pull requests (GitHub)',
+  github: 'PR — изменения кода (GitHub)',
 };
 const WHAT: Record<IndexSource, string> = {
   jira: 'все задачи в любом статусе: описание, автор, исполнитель, комментарии',
@@ -161,7 +161,7 @@ export function DataPage({ onUnauthorized }: { onUnauthorized: () => void }) {
         <div className="actions">
           <button onClick={collect} disabled={running}>
             {running
-              ? 'Собираю… можно не закрывать, займёт несколько минут'
+              ? 'Собираю… не уходите со страницы — это займёт несколько минут'
               : 'Собрать всё'}
           </button>
           {running && (

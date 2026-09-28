@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, AreasView, Unauthorized } from './api';
 import { Key } from './signals';
+import { NoData } from './empty';
 
 const trend = (now: number, before: number) =>
   now > before ? '↑' : now < before ? '↓' : '→';
@@ -29,21 +30,20 @@ export function QualityPage({
   const a = view?.areas;
   if (!view || !a)
     return (
-      <section className="card">
-        <h2>Данных по областям пока нет</h2>
-        <p className="muted">
-          Они собираются при обновлении данных из истории Jira за 12 недель.
-        </p>
-      </section>
+      <NoData
+        onUnauthorized={onUnauthorized}
+        onDone={() => window.location.reload()}
+      />
     );
 
   const risky = a.areas.filter((r) => r.busRisk);
   return (
     <>
       <p className="muted small">
-        Области — это компоненты Jira. Всё считается по областям и по команде,
-        не по людям: баг в области — повод посмотреть на процесс, а не искать
-        виноватого.
+        Область — поле «Компонент» в задаче Jira (например «Оплата», «Мобильное
+        приложение»); его ставит тот, кто заводит задачу. Всё считается по
+        областям и по команде, не по людям: баг в области — повод посмотреть на
+        процесс, а не искать виноватого.
       </p>
       {a.capped && (
         <p className="muted small">
@@ -109,7 +109,9 @@ export function QualityPage({
                   <td>{r.name}</td>
                   <td>
                     {r.bugsNew} {trend(r.bugsNew, r.bugsBefore)}{' '}
-                    <span className="muted small">(было {r.bugsBefore})</span>
+                    <span className="muted small">
+                      (2 недели до этого: {r.bugsBefore})
+                    </span>
                   </td>
                   <td>
                     {r.openBugs}
