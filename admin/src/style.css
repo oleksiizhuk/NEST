@@ -1361,6 +1361,15 @@ select.tab {
   padding: 12px 18px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
+/* News that came in while the window was folded */
+.dock-fab-answer {
+  outline: 2px solid var(--ok);
+  outline-offset: 2px;
+}
+.dock-fab-failed {
+  outline: 2px solid var(--bad);
+  outline-offset: 2px;
+}
 .dock {
   position: fixed;
   right: 20px;

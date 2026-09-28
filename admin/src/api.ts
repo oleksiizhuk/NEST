@@ -4,6 +4,14 @@ const SESSION_KEY = 'pm-admin-session';
 
 export class Unauthorized extends Error {}
 
+// Any other failed call, with its status, so a caller can tell "gone" (404)
+// from a passing failure
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
 export const session = {
   get(): string | null {
     try {
@@ -50,11 +58,7 @@ async function call<T>(
     const message = Array.isArray(data.message)
       ? data.message.join('; ')
       : data.message;
-    // The status rides along so a caller can tell "gone" (404) from a
-    // passing failure
-    throw Object.assign(new Error(message || `Ошибка ${res.status}`), {
-      status: res.status,
-    });
+    throw new ApiError(message || `Ошибка ${res.status}`, res.status);
   }
   return data as T;
 }

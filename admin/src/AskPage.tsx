@@ -1,34 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, Topic, TopicList, TopicMessage, Unauthorized } from './api';
+import {
+  api,
+  ApiError,
+  Topic,
+  TopicList,
+  TopicMessage,
+  Unauthorized,
+} from './api';
 import { modelCallBody, TokenBadge, useConfirm } from './confirm';
+import {
+  claimWaiting,
+  failureFor,
+  isConfirmed,
+  markConfirmed,
+  publish,
+  releaseWaiting,
+  useTopicNews,
+  useWaiting,
+} from './topicStore';
 
 const STARTERS = ['Почему так?', 'Это плохо или хорошо?', 'Что с этим делать?'];
-
-// Topics whose first paid question was confirmed in this visit, shared by
-// the page and the window so one topic never asks twice
-const confirmedTopics = { current: new Set<string>() };
-
-// The page and the window are two separate views of the same topics. The
-// question being answered and news of changed topics are shared, so one
-// view never offers a second question the server would refuse, and an
-// answer, a new topic or a deletion shows up in both.
-interface TopicNews {
-  id: string;
-  topic?: Topic;
-  removed?: boolean;
-  // A question that failed: the view showing its topic puts it back
-  failed?: { question: string; error: string };
-}
-const shared = {
-  waiting: null as { id: string; text: string } | null,
-  listeners: new Set<(news?: TopicNews) => void>(),
-};
-const publish = (news?: TopicNews) =>
-  shared.listeners.forEach((listener) => listener(news));
-const setSharedWaiting = (waiting: typeof shared.waiting) => {
-  shared.waiting = waiting;
-  publish();
-};
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', {
@@ -39,13 +30,15 @@ const when = (iso: string) =>
   });
 
 // Спросить бота: conversations by topic, each opened from a signal, a page
-// or blank. Every question is one model call.
+// or blank. Every question is one model call. The page and the window are
+// two views kept in step through topicStore.
 export function AskPage({
   topicId,
   onOpen,
   onUnauthorized,
   variant = 'page',
   active = true,
+  focusKey = 0,
 }: {
   topicId: string | null;
   onOpen: (id: string | null) => void;
@@ -55,21 +48,24 @@ export function AskPage({
   // False while the view is hidden: an open confirmation is cancelled, so
   // it cannot hold the keyboard from behind the page
   active?: boolean;
+  // Changes when the view wants the question box focused as soon as the
+  // topic is on screen (the window opened, a signal opened a topic)
+  focusKey?: number;
 }) {
   const [modal, ask, cancelConfirm] = useConfirm();
-  const confirmed = confirmedTopics;
   const [showTopics, setShowTopics] = useState(false);
   const [list, setList] = useState<TopicList | null>(null);
   const [topic, setTopic] = useState<Topic | null>(null);
   const [draft, setDraft] = useState('');
-  // The question being answered and its topic (shared with the other
-  // view), shown until the answer arrives; switching topics meanwhile
-  // leaves it running there
-  const [, rerender] = useState(0);
-  const waiting = shared.waiting;
+  // The question being answered (in either view) and its topic, shown until
+  // the answer arrives; switching topics meanwhile leaves it running there
+  const waiting = useWaiting();
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  // The topic on screen now, for answers that arrive after a switch
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  const newTopicRef = useRef<HTMLButtonElement>(null);
+  const wantFocus = useRef(false);
+  // The topic on screen now, for news that arrives after a switch
   const shown = useRef(topicId);
   shown.current = topicId;
   const pending = waiting?.id === topicId ? waiting.text : null;
@@ -80,37 +76,55 @@ export function AskPage({
   };
 
   const loadList = () => api.topics().then(setList).catch(handle);
-  // The latest callbacks for the shared listener, subscribed once
-  const onOpenRef = useRef(onOpen);
-  onOpenRef.current = onOpen;
-  const loadListRef = useRef(loadList);
-  loadListRef.current = loadList;
+
+  // A failed question comes back into the box, never over what the person
+  // is typing now
+  const restore = (question: string, message: string) => {
+    setDraft((d) => (d.trim() ? d : question));
+    setError(message);
+  };
+
+  const focusBox = () => {
+    if (!wantFocus.current || !active || !boxRef.current) return;
+    boxRef.current.focus();
+    wantFocus.current = false;
+  };
 
   useEffect(() => {
     loadList();
-    const listener = (news?: TopicNews) => {
-      rerender((n) => n + 1);
-      if (!news) return;
-      loadListRef.current();
-      if (news.id !== shown.current) return;
-      if (news.removed) onOpenRef.current(null);
-      else if (news.topic) setTopic(news.topic);
-      else if (news.failed) {
-        setDraft(news.failed.question);
-        setError(news.failed.error);
-      }
-    };
-    shared.listeners.add(listener);
-    return () => {
-      shared.listeners.delete(listener);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useTopicNews((news) => {
+    loadList();
+    if (news.id !== shown.current) return;
+    if (news.kind === 'removed') {
+      onOpen(null);
+      // The deleted thread took the focused button with it
+      if (active) setTimeout(() => newTopicRef.current?.focus(), 0);
+    } else if (news.kind === 'answered') {
+      setTopic(news.topic);
+      // Answered at last: an old failure and its copy of the question go
+      setError(null);
+      setDraft((d) => (d.trim() === news.question ? '' : d));
+    } else if (news.kind === 'failed') restore(news.question, news.error);
+  });
 
   useEffect(() => {
     if (!active) cancelConfirm();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
+
+  useEffect(() => {
+    wantFocus.current = true;
+    focusBox();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusKey]);
+
+  useEffect(() => {
+    focusBox();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topic?.id, active]);
 
   useEffect(() => {
     setTopic(null);
@@ -122,14 +136,23 @@ export function AskPage({
       .topic(topicId)
       .then((t) => {
         if (!live) return;
-        setTopic(t);
+        // An answer that arrived while this was loading is newer: keep it
+        setTopic((prev) =>
+          prev?.id === t.id && prev.messages.length > t.messages.length
+            ? prev
+            : t,
+        );
+        const failed = failureFor(t.id);
+        if (failed) restore(failed.question, failed.error);
         // Opened from elsewhere (a new topic): the list does not have it yet
         if (list && !list.topics.some((x) => x.id === t.id)) loadList();
       })
       .catch((e) => {
+        // Late news of a topic already left: not this screen's business
+        if (!live) return;
         // A remembered topic deleted meanwhile: start clean, not stuck on
         // it. Anything else (network, 5xx) keeps the topic for a retry.
-        if (variant === 'dock' && (e as { status?: number }).status === 404)
+        if (variant === 'dock' && e instanceof ApiError && e.status === 404)
           onOpen(null);
         else handle(e);
       });
@@ -149,7 +172,7 @@ export function AskPage({
     const id = topic.id;
     // The first question of a topic asks once; the rest of the topic is
     // one conversation the person already agreed to
-    if (!confirmed.current.has(id)) {
+    if (!isConfirmed(id)) {
       const ok = await ask({
         title: 'Задать вопрос боту?',
         body: modelCallBody(
@@ -161,31 +184,41 @@ export function AskPage({
         confirm: 'Спросить',
       });
       if (!ok) return;
-      confirmed.current.add(id);
+      markConfirmed(id);
     }
-    // Re-checked after the confirmation: the other view may have sent one
-    if (shared.waiting) return;
-    setSharedWaiting({ id, text: question });
+    // The other view may have sent one while this asked for confirmation
+    if (!claimWaiting({ id, text: question })) {
+      setError('Бот ещё отвечает на другой вопрос — дождитесь ответа.');
+      return;
+    }
     setError(null);
     setDraft('');
     try {
       const answered = await api.askTopic(id, question);
       // Both views: whichever shows this topic gets the answer
-      publish({ id, topic: answered });
+      publish({ kind: 'answered', id, topic: answered, question });
     } catch (e) {
-      // Keep the question so it can be sent again, in its own topic and in
-      // whichever view shows it now (the one that sent may be gone)
+      // Kept with its topic: whichever view shows it now gets it back, and
+      // so does the next one to open it (the one that sent may be gone)
+      publish({
+        kind: 'failed',
+        id,
+        question,
+        error:
+          e instanceof Unauthorized
+            ? 'Сессия закончилась — войдите снова и отправьте вопрос ещё раз.'
+            : (e as Error).message,
+      });
       if (e instanceof Unauthorized) onUnauthorized();
-      else publish({ id, failed: { question, error: (e as Error).message } });
     } finally {
-      setSharedWaiting(null);
+      releaseWaiting();
     }
   };
 
   const create = async () => {
     try {
       const t = await api.createTopic('Новая тема', null);
-      publish({ id: t.id });
+      publish({ kind: 'created', id: t.id });
       onOpen(t.id);
     } catch (e) {
       handle(e);
@@ -196,7 +229,7 @@ export function AskPage({
     try {
       await api.removeTopic(id);
       // Every view showing it leaves it, and both lists drop it
-      publish({ id, removed: true });
+      publish({ kind: 'removed', id });
     } catch (e) {
       handle(e);
     }
@@ -217,7 +250,7 @@ export function AskPage({
           >
             {showTopics ? 'Скрыть темы' : 'Все темы'}
           </button>
-          <button className="link small" onClick={create}>
+          <button ref={newTopicRef} className="link small" onClick={create}>
             Новая тема
           </button>
         </div>
@@ -226,7 +259,12 @@ export function AskPage({
         className="ask-topics card"
         hidden={variant === 'dock' && !showTopics}
       >
-        <button onClick={create}>Новая тема</button>
+        <button
+          ref={variant === 'dock' ? undefined : newTopicRef}
+          onClick={create}
+        >
+          Новая тема
+        </button>
         {list && list.topics.length === 0 && (
           <p className="muted small">
             Тем пока нет. Нажмите «спросить бота» у сигнала или вверху любого
@@ -240,6 +278,9 @@ export function AskPage({
                 href={`#/ask/${t.id}`}
                 onClick={(e) => {
                   e.preventDefault();
+                  // The list folds away under the focused link: the
+                  // question box takes over once the topic is on screen
+                  wantFocus.current = true;
                   onOpen(t.id);
                   setShowTopics(false);
                 }}
@@ -346,6 +387,7 @@ export function AskPage({
               }}
             >
               <textarea
+                ref={boxRef}
                 value={draft}
                 rows={3}
                 maxLength={4000}
@@ -376,7 +418,11 @@ export function AskPage({
             </form>
           </>
         )}
-        {error && <p className="error small">{error}</p>}
+        {error && (
+          <p className="error small" role="alert">
+            {error}
+          </p>
+        )}
       </section>
     </div>
   );
