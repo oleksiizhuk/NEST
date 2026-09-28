@@ -52,9 +52,10 @@ export interface IMcpTaskRepository {
     owner: string,
     event: McpTaskEvent,
   ): Promise<McpTask | null>;
-  // Closes an open task that ran out of rounds or attempts — only while no
-  // round runs and no answer waits for its report (shouldEscalate, atomic)
-  escalate(id: string, now: Date): Promise<void>;
+  // Closes an open task that ran out of rounds or attempts, while no round
+  // runs and no answer waits for its report (callers check the caps with
+  // shouldEscalate first). False when a concurrent call changed the task.
+  escalate(id: string, now: Date): Promise<boolean>;
   // The owner's open tasks, most recently touched first
   listOpen(owner: string, limit: number): Promise<McpTask[]>;
 }

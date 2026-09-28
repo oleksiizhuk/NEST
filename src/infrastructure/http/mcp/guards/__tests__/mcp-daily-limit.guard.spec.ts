@@ -79,23 +79,41 @@ describe('McpDailyLimitGuard', () => {
     ).rejects.toBeInstanceOf(HttpException);
   });
 
-  it('counts every paid call in a batch, and an unnamed call as paid', async () => {
+  it('counts a batch in cost units: by model, planning cheap, unknown dear', async () => {
     const model = modelReturning(3);
-    const guard = new McpDailyLimitGuard(configWith('5'), model);
+    const guard = new McpDailyLimitGuard(configWith('50'), model);
+    const call = (name?: string, model?: string) => ({
+      method: 'tools/call',
+      params: { name, arguments: model ? { model } : {} },
+    });
     await guard.canActivate(
       ctxWith([
-        { method: 'tools/call', params: { name: 'ask_advice' } },
-        { method: 'tools/call', params: { name: 'start_task' } },
-        { method: 'tools/call' },
+        call('ask_advice', 'sonnet'), // 1
+        call('ask_advice'), // opus by default: 2
+        call('ask_advice', 'fable'), // 4
+        call('start_task'), // 1
+        call(), // unknown: 4
         { method: 'tools/list' },
       ]),
     );
     expect(model.findOneAndUpdate).toHaveBeenCalledTimes(1);
     expect(model.findOneAndUpdate).toHaveBeenCalledWith(
       { day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
-      { $inc: { count: 3 } },
+      { $inc: { count: 12 } },
       { upsert: true, new: true },
     );
+  });
+
+  it('reads a fractional or negative limit as a typo, never as off', async () => {
+    for (const value of ['0.5', '-3']) {
+      const guard = new McpDailyLimitGuard(
+        configWith(value),
+        modelReturning(250),
+      );
+      await expect(guard.canActivate(toolCall)).rejects.toBeInstanceOf(
+        HttpException,
+      );
+    }
   });
 
   it('allows a tools/call at or below the limit and counts it', async () => {
@@ -104,7 +122,7 @@ describe('McpDailyLimitGuard', () => {
     await expect(guard.canActivate(toolCall)).resolves.toBe(true);
     expect(model.findOneAndUpdate).toHaveBeenCalledWith(
       { day: expect.any(String) },
-      { $inc: { count: 1 } },
+      { $inc: { count: 2 } },
       { upsert: true, new: true },
     );
   });

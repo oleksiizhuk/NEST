@@ -156,7 +156,8 @@ export function createMcpServer(
         'either asks for missing material (NEED_INFO) or answers with a ' +
         '"How to verify" check. `model`: sonnet (fast, cheap), opus ' +
         '(default), fable (hardest problems). Prompt, context and answers ' +
-        'are never stored; a task keeps its goal and one-line notes.',
+        'are never stored; a task keeps its goal, a checklist and short ' +
+        'masked notes.',
       inputSchema: {
         task_id: OPTIONAL_TASK_ID,
         prompt: z

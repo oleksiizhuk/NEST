@@ -61,6 +61,7 @@ describe('StartTaskUseCase', () => {
     await tasks.create('t-0000000003', 'kiro', 'still gathering', []);
     tasks.now = () => new Date(Date.now() - 2 * 86_400_000);
     await answered('t-0000000004', 'kiro', 'abandoned');
+    await tasks.create('t-0000000005', 'kiro', 'never gathered', []);
     tasks.now = () => new Date();
 
     const reply = await useCase.execute({ goal: 'new bug', owner: 'kiro' });
@@ -69,6 +70,8 @@ describe('StartTaskUseCase', () => {
     expect(reply).not.toContain('someone else');
     expect(reply).not.toContain('still gathering');
     expect(reply).toContain('"abandoned"');
+    // A checklist nobody gathered for over a day hangs too
+    expect(reply).toContain('"never gathered"');
   });
 
   it('rejects an empty goal', async () => {

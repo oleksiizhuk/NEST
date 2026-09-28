@@ -135,7 +135,9 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     const t = this.rows.get(id);
     if (t?.isOpen && !t.awaitingReport && !t.roundInFlight(now)) {
       this.put(t, { status: 'escalated' });
+      return true;
     }
+    return false;
   }
 
   // Test helper: one full round, claimed and answered

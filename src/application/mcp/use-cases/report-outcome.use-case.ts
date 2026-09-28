@@ -12,6 +12,7 @@ import {
 } from '@domain/mcp-task/mcp-task.entity';
 import {
   closedText,
+  currentStateText,
   escalatedText,
   reportInFlightText,
   reportedText,
@@ -59,7 +60,9 @@ export class ReportOutcomeUseCase {
     if (!task) {
       const existing = await this.tasks.findById(id, owner);
       if (!existing) return unknownText(id);
-      if (existing.roundInFlight(now)) return reportInFlightText(existing);
+      // Refused by the idle filter: a round was running at the write, even
+      // if it has finished by now
+      if (existing.isOpen) return reportInFlightText(existing);
       if (existing.status === 'escalated' && request.status === 'solved') {
         const solved = await this.tasks.resolveEscalated(id, owner, event);
         if (solved) return reportedText(solved);
@@ -67,8 +70,9 @@ export class ReportOutcomeUseCase {
       return closedText(existing);
     }
     if (task.shouldEscalate(now)) {
-      await this.tasks.escalate(id, now);
-      return escalatedText(task);
+      if (await this.tasks.escalate(id, now)) return escalatedText(task);
+      const current = await this.tasks.findById(id, owner);
+      if (current) return currentStateText(current, now);
     }
     return reportedText(task);
   }

@@ -21,9 +21,11 @@ import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case
 import {
   answerFooter,
   closedText,
+  currentStateText,
   escalatedText,
   inFlightText,
   needInfoFooter,
+  needsReminder,
   failedCallText,
   noAnswerFooter,
   reportFirstText,
@@ -73,6 +75,8 @@ export class AskClaudeUseCase {
     const material = (context?.length ?? 0) + rest.join('\n').trim().length;
 
     let id = request.taskId?.trim().toLowerCase();
+    // Opened here, not by start_task: the caller never saw its reminders
+    const implicit = !id;
     if (!id) {
       if (material < THIN_CONTEXT_CHARS) {
         return this.startTask.execute({
@@ -147,9 +151,10 @@ export class AskClaudeUseCase {
       }),
     );
 
+    const waiting = implicit ? await this.othersWaiting(owner, task.id) : [];
     const footer = result.needInfo
       ? needInfoFooter(task)
-      : answerFooter(task, unreported);
+      : answerFooter(task, unreported, waiting);
     return `${result.text}\n\n${footer}`;
   }
 
@@ -173,7 +178,21 @@ export class AskClaudeUseCase {
       return inFlightText(task);
     }
     if (task.awaitingReport) return reportFirstText(task);
-    await this.tasks.escalate(id, now);
-    return escalatedText(task);
+    if (await this.tasks.escalate(id, now)) return escalatedText(task);
+    // A parallel call changed the task first: answer from what it is now
+    const current = await this.tasks.findById(id, owner);
+    return current ? currentStateText(current, now) : unknownText(id);
+  }
+
+  // A reminder is a courtesy: it must never cost the caller the answer
+  private async othersWaiting(owner: string, id: string) {
+    try {
+      const now = new Date();
+      return (await this.tasks.listOpen(owner, 20))
+        .filter((t) => t.id !== id && needsReminder(t, now))
+        .slice(0, 3);
+    } catch {
+      return [];
+    }
   }
 }

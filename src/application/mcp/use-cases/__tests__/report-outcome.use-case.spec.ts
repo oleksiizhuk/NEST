@@ -76,6 +76,19 @@ describe('ReportOutcomeUseCase', () => {
     expect(reply).toContain('still running');
   });
 
+  it('still says wait when the running round finished between the refusal and the re-read', async () => {
+    jest.spyOn(tasks, 'report').mockResolvedValueOnce(null);
+
+    const reply = await useCase.execute({
+      taskId: ID,
+      status: 'solved',
+      details: 'x',
+    });
+
+    expect(reply).toContain('still running');
+    expect(reply).not.toContain('already closed');
+  });
+
   it("does not touch another client's task", async () => {
     const reply = await useCase.execute({
       taskId: ID,

@@ -13,7 +13,7 @@ import {
   MAX_REPLY_NOTE_CHARS,
   McpTask,
 } from '@domain/mcp-task/mcp-task.entity';
-import { startedText } from '@application/mcp/task-protocol';
+import { needsReminder, startedText } from '@application/mcp/task-protocol';
 import { McpToolError } from '@application/mcp/mcp-tool.error';
 
 const CHECKLIST_ITEM_CHARS = MAX_REPLY_NOTE_CHARS;
@@ -49,8 +49,9 @@ export class StartTaskUseCase {
       McpTask.clean(c, CHECKLIST_ITEM_CHARS, true),
     );
     // Old ones too: an abandoned task is exactly the one that hangs
+    const now = new Date();
     const waiting = (await this.tasks.listOpen(owner, 20))
-      .filter((t) => t.awaitingReport)
+      .filter((t) => needsReminder(t, now))
       .slice(0, 3);
     const task = await this.tasks.create(
       McpTask.newId(),

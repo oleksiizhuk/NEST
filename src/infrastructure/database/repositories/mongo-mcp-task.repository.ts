@@ -153,8 +153,8 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     return doc ? McpTaskMapper.toDomain(doc) : null;
   }
 
-  async escalate(id: string, now: Date): Promise<void> {
-    await this.tasks.updateOne(
+  async escalate(id: string, now: Date): Promise<boolean> {
+    const result = await this.tasks.updateOne(
       {
         taskId: id,
         status: { $in: OPEN_TASK_STATUSES.filter((s) => s !== 'answered') },
@@ -162,6 +162,7 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
       },
       { $set: { status: 'escalated' } },
     );
+    return result.modifiedCount > 0;
   }
 
   async listOpen(owner: string, limit: number): Promise<McpTask[]> {

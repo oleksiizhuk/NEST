@@ -101,6 +101,43 @@ describe('AskClaudeUseCase', () => {
     expect(reply).toContain(`report_outcome { task_id: "${task.id}"`);
   });
 
+  it('lists other unreported tasks under an answer to a task it opened itself', async () => {
+    await tasks.answerRound(ID);
+
+    const reply = await useCase.execute({ prompt: 'new bug', context: CODE });
+
+    expect(reply).toContain(`- ${ID}: "fix login"`);
+    const followUp = await useCase.execute({ prompt: 'b', taskId: ID });
+    expect(followUp).not.toContain('Your other open tasks');
+  });
+
+  it('warns on the last round that a failure goes to a person', async () => {
+    for (let i = 1; i < MAX_TASK_ROUNDS; i++) {
+      await useCase.execute({ prompt: 'a', taskId: ID });
+      await report('not_solved');
+    }
+
+    const reply = await useCase.execute({ prompt: 'a', taskId: ID });
+
+    expect(reply).toContain('This was the last round');
+  });
+
+  it('answers from the real state when a parallel call beat the escalation', async () => {
+    for (let i = 0; i < MAX_TASK_ROUNDS; i++) {
+      await useCase.execute({ prompt: 'a', taskId: ID });
+    }
+    await report('not_solved');
+    jest.spyOn(tasks, 'escalate').mockImplementation(async () => {
+      await report('solved');
+      return false;
+    });
+
+    const reply = await useCase.execute({ prompt: 'a', taskId: ID });
+
+    expect(reply).toContain('already closed (solved)');
+    expect(reply).not.toContain('STOP');
+  });
+
   it('masks credentials in a goal taken from the question', async () => {
     await useCase.execute({
       prompt: 'Why does AWS_SECRET_KEY=abc123 fail <b>',

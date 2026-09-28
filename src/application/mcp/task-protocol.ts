@@ -30,10 +30,15 @@ export const checklistText = (task: McpTask): string =>
 
 export const waitingText = (tasks: McpTask[]): string =>
   [
-    'Your tasks still waiting for a report — call report_outcome for each ' +
+    'Your other open tasks without a report — call report_outcome for each ' +
       '("abandoned" if you dropped it):',
     ...tasks.map((t) => `- ${t.id}: "${t.goal}"`),
   ].join('\n');
+
+// Tasks to remind about: an answer waiting for its report, or anything open
+// and idle for over a day (a checklist nobody gathered)
+export const needsReminder = (task: McpTask, now: Date): boolean =>
+  task.awaitingReport || task.isStale(now);
 
 // start_task, or ask_advice without a task and without material to work on
 export const startedText = (
@@ -75,7 +80,11 @@ export const needInfoFooter = (task: McpTask): string =>
         `again with task_id "${task.id}" and them in context.`,
   ].join('\n');
 
-export const answerFooter = (task: McpTask, unreported: boolean): string =>
+export const answerFooter = (
+  task: McpTask,
+  unreported: boolean,
+  waiting: McpTask[] = [],
+): string =>
   [
     '---',
     round(task),
@@ -88,8 +97,21 @@ export const answerFooter = (task: McpTask, unreported: boolean): string =>
     'NEXT STEP: apply the change, run the "How to verify" check, then call ' +
       `${reportCall(task.id)}. Report even if it did not work. If this was ` +
       'only a question with nothing to apply, report "solved" with details ' +
-      '"answered".',
+      '"answered".' +
+      (task.onLastRound
+        ? ' This was the last round: if it does not work, report ' +
+          '"not_solved" and tell the user a person needs to take over.'
+        : ''),
+    ...(waiting.length ? ['', waitingText(waiting)] : []),
   ].join('\n');
+
+// What a task's current state asks of the caller, when a write lost a race
+export const currentStateText = (task: McpTask, now: Date): string => {
+  if (!task.isOpen) return closedText(task);
+  if (task.roundInFlight(now)) return inFlightText(task);
+  if (task.awaitingReport) return reportFirstText(task);
+  return reportedText(task);
+};
 
 export const noAnswerFooter = (task: McpTask): string =>
   [

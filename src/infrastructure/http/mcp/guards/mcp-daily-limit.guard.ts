@@ -13,16 +13,21 @@ import { Request } from 'express';
 import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
 import { FREE_TOOLS } from '@infrastructure/mcp/mcp-server.factory';
 
-// Paid calls per UTC day when MCP_DAILY_LIMIT is not set
+// The daily cap is in cost units, not calls, so it bounds spend: a call
+// weighs what its model costs. start_task plans on sonnet. An unknown tool
+// or model weighs the most — better one unit too many than a way around.
 export const DEFAULT_DAILY_LIMIT = 200;
-// report_outcome / list_open_tasks per paid call before they are refused
+const MODEL_UNITS: Record<string, number> = { sonnet: 1, opus: 2, fable: 4 };
+const DEFAULT_MODEL_UNITS = MODEL_UNITS.opus;
+const MAX_UNITS = MODEL_UNITS.fable;
+// report_outcome / list_open_tasks per unit before they are refused
 const FREE_CALLS_PER_PAID = 10;
 
 // A leaked MCP_TOKEN would otherwise buy unlimited paid model calls (a
-// financial DoS). This caps calls per UTC day with a shared Mongo counter,
-// incremented atomically so concurrent serverless invocations still count.
-// The cap is off unless MCP_DAILY_LIMIT is a positive number and the Mongo
-// model is available (so unit tests without a database are unaffected).
+// financial DoS). This caps cost units per UTC day with a shared Mongo
+// counter, incremented atomically so concurrent serverless invocations
+// still count. MCP_DAILY_LIMIT unset = DEFAULT_DAILY_LIMIT; exactly 0 = off.
+// Without the Mongo model (unit tests without a database) it passes.
 @Injectable()
 export class McpDailyLimitGuard implements CanActivate {
   constructor(
@@ -66,7 +71,8 @@ export class McpDailyLimitGuard implements CanActivate {
       const count = await this.incrementForDay(this.usage, day, paid);
       if (count > limit) {
         throw new HttpException(
-          `Daily /mcp call limit of ${limit} reached. Try again tomorrow (UTC).`,
+          `Daily /mcp budget of ${limit} units reached (sonnet 1, opus 2, ` +
+            'fable 4 per call). Try again tomorrow (UTC).',
           HttpStatus.TOO_MANY_REQUESTS,
         );
       }
@@ -78,10 +84,20 @@ export class McpDailyLimitGuard implements CanActivate {
   // do not bound spend (a caller can open new tasks), so the day needs one
   private static limitFrom(value?: string): number {
     const n = Number(value);
-    if (value === undefined || value === '' || !Number.isFinite(n) || n < 0) {
+    if (value === undefined || value.trim() === '' || !Number.isFinite(n)) {
       return DEFAULT_DAILY_LIMIT;
     }
-    return Math.floor(n);
+    if (n === 0) return 0;
+    // A fraction or a negative number is a typo, not a request to switch
+    // the cap off
+    return n < 0 ? DEFAULT_DAILY_LIMIT : Math.max(1, Math.floor(n));
+  }
+
+  private static units(tool: string, model: unknown): number {
+    if (tool === 'start_task') return MODEL_UNITS.sonnet;
+    if (tool !== 'ask_advice') return MAX_UNITS;
+    if (model === undefined) return DEFAULT_MODEL_UNITS;
+    return MODEL_UNITS[String(model)] ?? MAX_UNITS;
   }
 
   private static toolCalls(context: ExecutionContext): {
@@ -97,13 +113,12 @@ export class McpDailyLimitGuard implements CanActivate {
       if (!m || typeof m !== 'object') continue;
       const { method, params } = m as {
         method?: unknown;
-        params?: { name?: unknown };
+        params?: { name?: unknown; arguments?: { model?: unknown } };
       };
       if (method !== 'tools/call') continue;
-      // An unknown or missing name counts as paid: better one call too many
-      // than a way around the cap
-      if (FREE_TOOLS.includes(String(params?.name ?? ''))) free += 1;
-      else paid += 1;
+      const name = String(params?.name ?? '');
+      if (FREE_TOOLS.includes(name)) free += 1;
+      else paid += McpDailyLimitGuard.units(name, params?.arguments?.model);
     }
     return { paid, free };
   }
