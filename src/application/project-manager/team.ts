@@ -822,7 +822,7 @@ export const buildTeam = (
           ? null
           : ratio >= 1.5 && total - mid >= 2
           ? 'over'
-          : ratio <= 0.5
+          : ratio <= 0.5 && !d.waiting.length
           ? 'under'
           : 'normal';
       const load: PersonLoad = {

@@ -184,6 +184,8 @@ describe('honest load', () => {
     const dee = buildTeam(snap, {}, NOW).people[0];
     expect(dee.load.pace).not.toBeNull();
     expect(dee.signals.map((s) => s.rule)).not.toContain('runway');
+    // Nor "underloaded" on the load bar: the QA work may be their own
+    expect(dee.load.badge).not.toBe('under');
     expect(t.teamSignals[0].text).toMatch(/^3 задачи ждут/);
   });
 });
