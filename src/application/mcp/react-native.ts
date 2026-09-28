@@ -17,28 +17,35 @@ export const RN_RUNTIME = 'Expo Go or a development build (expo-dev-client)';
 
 // The right log for each failure
 export const RN_LOGS =
-  'Metro / the red screen for a JS error; the Xcode build log for an iOS ' +
-  'build failure; the Xcode debug console, the device crash report or ' +
-  '`xcrun simctl spawn booted log stream --predicate \'process == "<App>"\'` ' +
-  'for an iOS crash; the Gradle output for an Android build failure; ' +
-  '`adb logcat --pid=$(adb shell pidof -s <applicationId>)` for an Android ' +
-  'crash (the app only, not the whole device)';
+  'JS: the red screen / LogBox, plus the Metro terminal (Expo CLI) or React ' +
+  'Native DevTools (press j; bare RN 0.77+ no longer prints console.log in ' +
+  'Metro), and in a release build logcat tag ReactNativeJS; iOS build: the ' +
+  'Xcode build log; iOS crash: the Xcode debug console, on a simulator ' +
+  "`xcrun simctl spawn booted log stream --predicate 'process == " +
+  '"<executable name>"\'`, on a device Console.app or Xcode > Devices > ' +
+  'View Device Logs, from TestFlight / App Store Xcode Organizer > ' +
+  'Crashes; Android build: the Gradle output; Android crash at ' +
+  'launch: `adb logcat -b crash` (or `adb logcat AndroidRuntime:E ' +
+  'ReactNativeJS:V *:S`), in a running app `adb logcat --pid=<pid>` from ' +
+  '`adb shell pidof -s <applicationId>`';
 
-// The same, short enough for one checklist line
+// Short form of RN_LOGS, for one checklist line
 export const RN_LOGS_SHORT =
-  'Metro / red screen for JS; Xcode build log, debug console or crash ' +
-  'report for iOS; Gradle output or adb logcat for Android';
+  'red screen and Metro or React Native DevTools for JS; Xcode build log, ' +
+  'debug console or device logs for iOS; Gradle output or adb logcat -b ' +
+  'crash for Android';
 
-// The same, short enough for one checklist line
+export const RN_NATIVE_CONFIG =
+  'app.json / app.config.js (with expo-build-properties), eas.json, ios/Podfile, Podfile.properties.json, ' +
+  'Gemfile, ios/.xcode.env(.local), Info.plist, *.entitlements, ' +
+  'AppDelegate, android/build.gradle (sdk and Kotlin versions), ' +
+  'android/settings.gradle, android/gradle/wrapper/gradle-wrapper.properties, ' +
+  'android/app/build.gradle, android/gradle.properties (newArchEnabled, ' +
+  'hermesEnabled), android/app/proguard-rules.pro, AndroidManifest.xml, ' +
+  'MainApplication, metro.config.js, babel.config.js, react-native.config.js';
+
+// Short form of RN_NATIVE_CONFIG, for one checklist line
 export const RN_NATIVE_CONFIG_SHORT =
   'app.json / app.config.js, Podfile, Info.plist, AppDelegate, ' +
   'android/app/build.gradle, gradle.properties, AndroidManifest.xml, ' +
   'MainApplication, metro / babel config';
-
-export const RN_NATIVE_CONFIG =
-  'app.json / app.config.js, eas.json, ios/Podfile, Podfile.properties.json, ' +
-  'Info.plist, *.entitlements, AppDelegate, android/build.gradle (sdk and ' +
-  'Kotlin versions), android/app/build.gradle, android/gradle.properties ' +
-  '(newArchEnabled, hermesEnabled), android/app/proguard-rules.pro, ' +
-  'AndroidManifest.xml, MainApplication, metro.config.js, babel.config.js, ' +
-  'react-native.config.js';

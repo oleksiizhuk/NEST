@@ -45,6 +45,8 @@ describe('ReportOutcomeUseCase', () => {
 
     expect(tasks.rows.get(ID).isOpen).toBe(true);
     expect(reply).toContain('Recorded: not_solved (round 1 of');
+    // Context is never kept: the next round needs the code again
+    expect(reply).toContain('nothing from earlier rounds is kept');
     expect(reply).toContain(`call ask_advice with task_id "${ID}"`);
   });
 

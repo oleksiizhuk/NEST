@@ -67,7 +67,8 @@ const INSTRUCTIONS =
   '"answered".\n' +
   '5. Always call report_outcome: solved, not_solved or partial, with what ' +
   'you ran and saw (abandoned if you drop the task). If it is not solved, ' +
-  'call ask_advice again with the same task_id and the new output.\n' +
+  'call ask_advice again with the same task_id, the code involved again ' +
+  'and the new output.\n' +
   `A task has ${MAX_TASK_ROUNDS} rounds; after that, hand it to the user. ` +
   'Every reply ends with a NEXT STEP line: do exactly that. ' +
   'list_open_tasks shows what is waiting for your report.';
@@ -160,8 +161,8 @@ export function createMcpServer(
         'suggest an implementation, debug a JS or native error. Question in ' +
         '`prompt`; the collected files, diff, logs and docs in `context`. Without a task_id and ' +
         'without code you get a checklist instead of an answer. The reply ' +
-        'either asks for missing material (NEED_INFO) or answers with a ' +
-        '"How to verify" check. `model`: sonnet (fast, cheap), opus ' +
+        'either asks for missing material (NEED_INFO) or answers (with a ' +
+        '"How to verify" check when there is a change). `model`: sonnet (fast, cheap), opus ' +
         '(default), fable (hardest problems). Prompt, context and answers ' +
         'are never stored; a task keeps its goal, a checklist and short ' +
         'masked notes.',

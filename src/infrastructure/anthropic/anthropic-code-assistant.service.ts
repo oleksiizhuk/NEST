@@ -56,6 +56,9 @@ type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 const EFFORT_LEVELS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 const DEFAULT_EFFORT: Effort = 'high';
 
+// HYPOTHESIS is looked for among this many last non-blank, non-fence lines
+// (How to verify may end with a command or a note after it)
+const HYPOTHESIS_TAIL_LINES = 6;
 const PLAN_MODEL: AssistantModel = 'sonnet';
 const PLAN_MAX_TOKENS = 2048;
 
@@ -239,9 +242,11 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     }
     let hypothesis: string | undefined;
     let seen = 0;
-    // How to verify comes before it and may end with a command or a note,
-    // so look a few lines up
-    for (let i = lines.length - 1; i >= 0 && seen < 6; i--) {
+    for (
+      let i = lines.length - 1;
+      i >= 0 && seen < HYPOTHESIS_TAIL_LINES;
+      i--
+    ) {
       if (!lines[i].trim() || isFence(lines[i])) continue;
       seen += 1;
       if (/^HYPOTHESIS\s*:\s*\S/i.test(bare(lines[i]))) {

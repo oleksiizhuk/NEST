@@ -129,10 +129,13 @@ describe('McpController (streamable HTTP)', () => {
     expect(instructions).toContain(RN_VERSIONS);
     expect(instructions).toContain(RN_LOGS_SHORT);
     expect(instructions).toContain('nothing you sent earlier is kept');
+    expect(instructions).toContain('the code involved again');
+    expect(instructions).toContain('report solved with details');
     const described = (name: string) =>
       tools.find((t) => t.name === name)?.description ?? '';
     expect(described('start_task')).toContain('React Native');
     expect(described('ask_advice')).toContain('React Native');
+    expect(described('ask_advice')).toContain('when there is a change');
   });
 
   it('runs a task from start to a report', async () => {

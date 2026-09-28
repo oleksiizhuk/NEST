@@ -121,7 +121,8 @@ export const currentStateText = (task: McpTask, now: Date): string => {
   if (task.status === 'gathering') {
     return (
       `Task ${task.id} is waiting for material: collect what was asked ` +
-      `for, then call ask_advice with task_id "${task.id}".`
+      `for, then call ask_advice with task_id "${task.id}" and the code ` +
+      'involved again (nothing from earlier rounds is kept).'
     );
   }
   return reportedText(task);
