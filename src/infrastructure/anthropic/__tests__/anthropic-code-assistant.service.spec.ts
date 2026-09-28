@@ -217,6 +217,14 @@ describe('AnthropicCodeAssistantService', () => {
       ]);
       expect(request.system).toContain('NEED_INFO');
       expect(request.system).toContain('HYPOTHESIS:');
+      // The bridge serves React Native work: what to ask for and how to check
+      // are mobile-specific
+      expect(request.system).toContain('senior React Native engineer');
+      expect(request.system).toMatch(/adb logcat/);
+      expect(request.system).toMatch(/Metro restart with the cache cleared/);
+      // Generated native folders are never edited by hand
+      expect(request.system).toMatch(/never edit them/);
+      expect(request.system).toMatch(/never show in Expo Go/);
     });
 
     it('reads NEED_INFO and HYPOTHESIS lines in the formats models use', () => {
@@ -320,8 +328,17 @@ describe('AnthropicCodeAssistantService', () => {
       mockFinalMessage.mockRejectedValueOnce(
         Object.assign(new Error('bad'), { status: 400 }),
       );
+      const plan = (mockStream.mock.calls[0][0] as any).system as string;
+      expect(plan).toMatch(/React Native app/);
+      expect(plan).toMatch(/or bare/);
+      expect(plan).toMatch(
+        /Never invent an error for a goal that is not a bug/,
+      );
+
       const fallback = await service.plan({ goal: 'fix login' });
       expect(fallback.length).toBeGreaterThanOrEqual(3);
+      expect(fallback.join('\n')).toMatch(/package\.json: Expo/);
+      expect(fallback.join('\n')).toMatch(/iOS, Android, both/);
     });
   });
 

@@ -48,13 +48,16 @@ export interface McpUseCases {
 
 // Sent to the client at initialize; IDE agents put it in their system prompt
 const INSTRUCTIONS =
-  'This server helps you solve hard coding problems with a senior engineer ' +
-  'and keeps each problem as a task until it is solved. Follow this ' +
-  'protocol:\n' +
+  'This server helps you solve React Native problems (iOS and Android, Expo ' +
+  'or bare) with a senior React Native engineer and keeps each problem as ' +
+  'a task until it is solved. Follow this protocol:\n' +
   '1. start_task with the goal. You get a task_id and a checklist of what ' +
   'to collect.\n' +
   '2. Collect the checklist from the codebase and docs: read the files, ' +
-  'run the commands, open the docs. Then call ask_advice with the task_id, ' +
+  'run the commands, open the docs. Always include package.json (RN and ' +
+  'Expo versions); for a bug also which platform fails and the right log ' +
+  '(Metro, Xcode, adb logcat or Gradle). Then call ask_advice with the ' +
+  'task_id, ' +
   'your question in prompt and what you collected in context.\n' +
   '3. If the reply asks for more (NEED_INFO), collect exactly that and call ' +
   'ask_advice again with the same task_id.\n' +
@@ -119,10 +122,11 @@ export function createMcpServer(
     {
       title: 'Start a task',
       description:
-        'Call this first for any bug to fix or change to make. Opens a ' +
-        'task and returns its task_id and a checklist of what to collect ' +
-        '(code, errors, docs, versions, constraints, how to verify) before ' +
-        'asking. Also lists earlier tasks still waiting for your report.',
+        'Call this first for any React Native bug to fix or change to make. ' +
+        'Opens a task and returns its task_id and a checklist of what to ' +
+        'collect before asking (Expo or bare and versions, the platform, the ' +
+        'code, the right log, native config, how to verify). Also lists ' +
+        'earlier tasks still waiting for your report.',
       inputSchema: {
         goal: z
           .string()
@@ -145,13 +149,13 @@ export function createMcpServer(
   server.registerTool(
     'ask_advice',
     {
-      title: 'Ask for coding advice',
+      title: 'Ask for React Native advice',
       description:
         'Pass the task_id from start_task, do the NEXT STEP at the end of ' +
         'the reply, and finish with report_outcome. ' +
-        'Asks an expert engineer: explain code, review a diff, suggest an ' +
-        'implementation, debug an error. Question in `prompt`; the collected ' +
-        'files, diff, logs and docs in `context`. Without a task_id and ' +
+        'Asks a senior React Native engineer: explain code, review a diff, ' +
+        'suggest an implementation, debug a JS or native error. Question in ' +
+        '`prompt`; the collected files, diff, logs and docs in `context`. Without a task_id and ' +
         'without code you get a checklist instead of an answer. The reply ' +
         'either asks for missing material (NEED_INFO) or answers with a ' +
         '"How to verify" check. `model`: sonnet (fast, cheap), opus ' +
