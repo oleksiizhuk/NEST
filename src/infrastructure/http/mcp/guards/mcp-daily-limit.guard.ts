@@ -3,22 +3,24 @@ import {
   ExecutionContext,
   HttpException,
   HttpStatus,
+  Inject,
   Injectable,
   Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { Request } from 'express';
-import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
 import { FREE_TOOLS } from '@infrastructure/mcp/mcp-server.factory';
 import { AssistantModel } from '@application/mcp/code-assistant.service.interface';
 import {
   FREE_CALLS_PER_PAID,
-  mcpDailyLimit,
+  MCP_DAILY_BUDGET,
   usageDay,
   usageKey,
 } from '@application/mcp/mcp-budget';
+import {
+  IMcpUsageRepository,
+  MCP_USAGE_REPOSITORY,
+} from '@domain/mcp-task/mcp-usage.repository.interface';
 
 // The daily cap is in cost units, not calls, so it bounds spend: a call
 // weighs what its model costs. start_task plans on sonnet. An unknown tool
@@ -36,22 +38,22 @@ const MAX_UNITS = MODEL_UNITS.fable;
 // A leaked MCP_TOKEN would otherwise buy unlimited paid model calls (a
 // financial DoS). This caps cost units per UTC day with a shared Mongo
 // counter, incremented atomically so concurrent serverless invocations
-// still count. MCP_DAILY_LIMIT unset = DEFAULT_DAILY_LIMIT; exactly 0 = off.
-// Without the Mongo model (unit tests without a database) it passes.
+// still count. The budget (MCP_DAILY_BUDGET) is 0 when switched off.
+// Without a usage repository (unit tests without a database) it passes.
 @Injectable()
 export class McpDailyLimitGuard implements CanActivate {
   constructor(
     private readonly configService: ConfigService,
+    @Inject(MCP_DAILY_BUDGET)
+    private readonly limit: number,
     @Optional()
-    @InjectModel(McpUsageDocument.name)
-    private readonly usage?: Model<McpUsageDocument>,
+    @Inject(MCP_USAGE_REPOSITORY)
+    private readonly usage?: IMcpUsageRepository,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const limit = mcpDailyLimit(
-      this.configService.get<string>('MCP_DAILY_LIMIT'),
-    );
-    if (!this.usage || limit === 0) {
+    const { limit, usage } = this;
+    if (!usage || limit === 0) {
       return true; // cap switched off with MCP_DAILY_LIMIT=0
     }
 
@@ -68,35 +70,35 @@ export class McpDailyLimitGuard implements CanActivate {
     // Counted before the call, on purpose: each attempt reaches the paid API,
     // so a hard DoS cap must count attempts (including failures and client
     // retries), not only completions. A retried model call can bill twice.
+    // A refused call spends nothing: what it counted is given back, and paid
+    // units are kept apart as refused, so the stats tell spend from
+    // hammering.
     const day = usageDay(new Date());
+    const freeKey = usageKey(day, 'free');
+    const paidKey = usageKey(day, 'paid');
     // Free first: a batch refused on the free cap must not use paid quota
     if (free) {
       const freeLimit = limit * FREE_CALLS_PER_PAID;
-      const count = await this.incrementForDay(
-        this.usage,
-        usageKey(day, 'free'),
-        free,
-      );
-      if (count > freeLimit) {
+      if ((await usage.increment(freeKey, free)) > freeLimit) {
+        await usage.giveBack(freeKey, free);
         throw new HttpException(
           `Daily /mcp limit of ${freeLimit} task calls reached. Try again tomorrow (UTC).`,
           HttpStatus.TOO_MANY_REQUESTS,
         );
       }
     }
-    if (paid) {
-      const count = await this.incrementForDay(
-        this.usage,
-        usageKey(day, 'paid'),
-        paid,
+    if (paid && (await usage.increment(paidKey, paid)) > limit) {
+      await usage.giveBack(paidKey, paid);
+      // The batch's free calls never run either
+      if (free) await usage.giveBack(freeKey, free);
+      await usage
+        .increment(usageKey(day, 'refused'), paid)
+        .catch(() => undefined);
+      throw new HttpException(
+        `Daily /mcp budget of ${limit} units reached (sonnet 1, opus 2, ` +
+          'fable 4 per call). Try again tomorrow (UTC).',
+        HttpStatus.TOO_MANY_REQUESTS,
       );
-      if (count > limit) {
-        throw new HttpException(
-          `Daily /mcp budget of ${limit} units reached (sonnet 1, opus 2, ` +
-            'fable 4 per call). Try again tomorrow (UTC).',
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
     }
     return true;
   }
@@ -149,32 +151,5 @@ export class McpDailyLimitGuard implements CanActivate {
         );
     }
     return { paid, free };
-  }
-
-  // An upsert against the unique `day` index can race two first-of-day inserts
-  // into a duplicate-key error (E11000); the loser retries and, the row now
-  // existing, the $inc simply applies.
-  private async incrementForDay(
-    usage: Model<McpUsageDocument>,
-    day: string,
-    by: number,
-  ): Promise<number> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const doc = await usage.findOneAndUpdate(
-          { day },
-          { $inc: { count: by } },
-          { upsert: true, new: true },
-        );
-        return doc.count;
-      } catch (error) {
-        if ((error as { code?: number }).code === 11000 && attempt === 0) {
-          continue;
-        }
-        throw error;
-      }
-    }
-    /* istanbul ignore next: the loop either returns or throws above */
-    return Number.POSITIVE_INFINITY;
   }
 }

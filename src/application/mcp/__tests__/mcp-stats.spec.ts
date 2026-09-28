@@ -1,4 +1,8 @@
-import { clampStatsDays, computeMcpStats } from '@application/mcp/mcp-stats';
+import {
+  clampStatsDays,
+  computeMcpStats,
+  statsSince,
+} from '@application/mcp/mcp-stats';
 import {
   McpStartedVia,
   McpTask,
@@ -65,7 +69,13 @@ describe('computeMcpStats', () => {
   // Open tasks of any age: one started long before the period
   const old = task('t0', 'cursor', 'answered', [answer], { idleHours: 400 });
   const open = [old, ...started.filter((t) => t.isOpen)];
-  const stats = computeMcpStats({ started, open, now, days: 7 });
+  const stats = computeMcpStats({
+    started,
+    open,
+    now,
+    since: statsSince(now, 7),
+    days: 7,
+  });
 
   it('counts what started in the period and how it started', () => {
     expect(stats.started).toMatchObject({
@@ -148,13 +158,42 @@ describe('computeMcpStats', () => {
     // The caller's own array is left in its order
     expect(open[0].id).toBe('t0');
 
-    const long = task('t9', 'kiro', 'gathering', [], { goal: 'x'.repeat(500) });
-    const one = computeMcpStats({ started: [], open: [long], now, days: 1 });
+    const long = task('t9', 'kiro', 'gathering', [], {
+      goal: 'x'.repeat(500),
+      idleHours: 30,
+    });
+    const one = computeMcpStats({
+      started: [],
+      open: [long],
+      now,
+      since: statsSince(now, 1),
+      days: 1,
+    });
     expect(one.open.stuck[0].goal).toHaveLength(120);
   });
 
+  it('leaves out of "stuck" and of reportedShare what is still in play', () => {
+    const fresh = task('t8', 'kiro', 'answered', [answer], { idleHours: 0 });
+    const stats = computeMcpStats({
+      started: [fresh],
+      open: [fresh],
+      now,
+      since: statsSince(now, 1),
+      days: 1,
+    });
+    expect(stats.open.stuck).toEqual([]);
+    expect(stats.open.waitingForReport).toBe(1);
+    expect(stats.started.reportedShare).toBeNull();
+  });
+
   it('reports no shares for an empty period instead of dividing by zero', () => {
-    const empty = computeMcpStats({ started: [], open: [], now, days: 1 });
+    const empty = computeMcpStats({
+      started: [],
+      open: [],
+      now,
+      since: statsSince(now, 1),
+      days: 1,
+    });
     expect(empty.started.total).toBe(0);
     expect(empty.outcomes.solvedShare).toBeNull();
     expect(empty.started.reportedShare).toBeNull();

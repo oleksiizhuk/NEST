@@ -9,13 +9,9 @@ import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks
 import { MCP_TASK_REPOSITORY } from '@domain/mcp-task/mcp-task.repository.interface';
 import { MCP_USAGE_REPOSITORY } from '@domain/mcp-task/mcp-usage.repository.interface';
 import { MongoMcpUsageRepository } from '@infrastructure/database/repositories/mongo-mcp-usage.repository';
-import {
-  GetMcpStatsUseCase,
-  MCP_DAILY_BUDGET,
-} from '@application/mcp/use-cases/get-mcp-stats.use-case';
-import { mcpDailyLimit } from '@application/mcp/mcp-budget';
+import { GetMcpStatsUseCase } from '@application/mcp/use-cases/get-mcp-stats.use-case';
+import { mcpDailyBudgetProvider } from '@infrastructure/http/mcp/mcp-budget.provider';
 import { McpStatsController } from '@infrastructure/http/mcp/mcp-stats.controller';
-import { ConfigService } from '@nestjs/config';
 import { MongoMcpTaskRepository } from '@infrastructure/database/repositories/mongo-mcp-task.repository';
 import {
   McpTaskDocument,
@@ -50,12 +46,7 @@ import {
     { provide: MCP_TASK_REPOSITORY, useClass: MongoMcpTaskRepository },
     { provide: MCP_USAGE_REPOSITORY, useClass: MongoMcpUsageRepository },
     GetMcpStatsUseCase,
-    {
-      provide: MCP_DAILY_BUDGET,
-      useFactory: (config: ConfigService) =>
-        mcpDailyLimit(config.get<string>('MCP_DAILY_LIMIT')),
-      inject: [ConfigService],
-    },
+    mcpDailyBudgetProvider,
     AskClaudeUseCase,
     StartTaskUseCase,
     ReportOutcomeUseCase,

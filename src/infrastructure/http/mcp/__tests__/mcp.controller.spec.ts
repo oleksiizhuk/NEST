@@ -17,15 +17,13 @@ import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks
 import { CODE_ASSISTANT_SERVICE } from '@application/mcp/code-assistant.service.interface';
 import { MCP_TASK_REPOSITORY } from '@domain/mcp-task/mcp-task.repository.interface';
 import { MCP_USAGE_REPOSITORY } from '@domain/mcp-task/mcp-usage.repository.interface';
-import {
-  GetMcpStatsUseCase,
-  MCP_DAILY_BUDGET,
-} from '@application/mcp/use-cases/get-mcp-stats.use-case';
+import { GetMcpStatsUseCase } from '@application/mcp/use-cases/get-mcp-stats.use-case';
+import { MCP_DAILY_BUDGET } from '@application/mcp/mcp-budget';
 import { McpStatsController } from '@infrastructure/http/mcp/mcp-stats.controller';
 import { InMemoryTaskRepository } from '@application/mcp/__tests__/in-memory-task.repository';
 
 const TOKEN = 'test-mcp-token';
-const STATS_TOKEN = 'test-stats-token';
+const STATS_TOKEN = 'owner-stats-token-0123456789abcdef';
 
 // End-to-end over a real socket: the same MCP client library an IDE uses
 // talks to the controller, so the transport wiring is what gets tested
@@ -54,8 +52,8 @@ describe('McpController (streamable HTTP)', () => {
       controllers: [McpController, McpStatsController],
       providers: [
         McpTokenGuard,
-        // Daily-limit guard with no Mongo model injected (optional): with
-        // MCP_DAILY_LIMIT unset the cap is off, so it is a pass-through here.
+        // Daily-limit guard on the stub counter below, which never passes
+        // the 200-unit budget
         McpDailyLimitGuard,
         AskClaudeUseCase,
         StartTaskUseCase,
@@ -65,7 +63,11 @@ describe('McpController (streamable HTTP)', () => {
         { provide: MCP_TASK_REPOSITORY, useValue: tasks },
         {
           provide: MCP_USAGE_REPOSITORY,
-          useValue: { usageOn: async () => ({ units: 7, free: 2 }) },
+          useValue: {
+            increment: async () => 1,
+            giveBack: async () => undefined,
+            usageOn: async () => ({ units: 7, free: 2, refused: 0 }),
+          },
         },
         GetMcpStatsUseCase,
         { provide: MCP_DAILY_BUDGET, useValue: 200 },
@@ -280,7 +282,9 @@ describe('McpController (streamable HTTP)', () => {
     expect((await blank.json()).period.days).toBe(7);
     expect(body.started.total).toBe(1);
     expect(body.byClient[0].client).toBe('kiro');
-    expect(body.open.stuck[0].goal).toBe('fix login');
+    // Just opened: counted as open, not yet stuck
+    expect(body.open.total).toBe(1);
+    expect(body.open.stuck).toEqual([]);
     expect(body.budget).toMatchObject({
       limit: 200,
       used: 7,

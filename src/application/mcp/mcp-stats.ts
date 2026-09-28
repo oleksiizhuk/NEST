@@ -29,7 +29,8 @@ interface Discipline {
   // known; older tasks do not say)
   skippedStart: number;
   skippedStartShare: Share;
-  // Of the tasks that got an answer, the share reported on
+  // Of the tasks that got an answer, the share reported on. An answer
+  // under a day old is still in play and not counted either way.
   reportedShare: Share;
   // Still open and nobody touched them for over a day
   silentlyDropped: number;
@@ -71,7 +72,7 @@ export interface McpStats {
     total: number;
     waitingForReport: number;
     idleOverDay: number;
-    // The longest idle first
+    // Open and untouched for over a day, the longest idle first
     stuck: {
       id: string;
       client: string;
@@ -105,7 +106,9 @@ const count = (tasks: McpTask[], test: (t: McpTask) => boolean) =>
 const discipline = (tasks: McpTask[], now: Date): Discipline => {
   const known = tasks.filter((t) => t.startedVia !== null);
   const skipped = count(known, (t) => t.startedVia === 'ask_advice');
-  const answered = tasks.filter((t) => has(t, 'answer'));
+  const answered = tasks.filter(
+    (t) => has(t, 'answer') && !(t.awaitingReport && !t.isStale(now)),
+  );
   return {
     skippedStart: skipped,
     skippedStartShare: share(skipped, known.length),
@@ -126,9 +129,11 @@ export const computeMcpStats = (input: {
   // Open tasks of any age
   open: McpTask[];
   now: Date;
+  // The period's start, as the tasks were read from it
+  since: Date;
   days: number;
 }): McpStats => {
-  const { started, open, now, days } = input;
+  const { started, open, now, since, days } = input;
   const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<
     McpTaskStatus,
     number
@@ -150,7 +155,7 @@ export const computeMcpStats = (input: {
   return {
     period: {
       days,
-      from: statsSince(now, days).toISOString(),
+      from: since.toISOString(),
       to: now.toISOString(),
     },
     started: { total: started.length, byStatus, ...own },
@@ -188,7 +193,8 @@ export const computeMcpStats = (input: {
       total: open.length,
       waitingForReport: count(open, (t) => t.awaitingReport),
       idleOverDay: count(open, (t) => t.isStale(now)),
-      stuck: [...open]
+      stuck: open
+        .filter((t) => t.isStale(now))
         .sort((a, b) => idle(b) - idle(a))
         .slice(0, STUCK_LIMIT)
         .map((t) => ({

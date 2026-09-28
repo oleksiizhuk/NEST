@@ -5,8 +5,10 @@ import { McpTask } from '@domain/mcp-task/mcp-task.entity';
 
 describe('GetMcpStatsUseCase', () => {
   const now = new Date('2026-09-28T12:00:00Z');
-  const usage = (units: number, free = 0) => ({
-    usageOn: jest.fn().mockResolvedValue({ units, free }),
+  const usage = (units: number, free = 0, refused = 0) => ({
+    increment: jest.fn(),
+    giveBack: jest.fn(),
+    usageOn: jest.fn().mockResolvedValue({ units, free, refused }),
   });
 
   it('counts tasks started in the period, open tasks of any age, and splits spend from refusals', async () => {
@@ -15,7 +17,7 @@ describe('GetMcpStatsUseCase', () => {
     await tasks.create('t-0000000001', 'kiro', 'recent', []);
     tasks.now = () => new Date('2026-09-10T12:00:00Z');
     await tasks.create('t-0000000002', 'kiro', 'old and still open', []);
-    const counters = usage(214, 30);
+    const counters = usage(199, 30, 4);
 
     const report = await new GetMcpStatsUseCase(tasks, counters, 200).execute({
       days: 7,
@@ -29,13 +31,13 @@ describe('GetMcpStatsUseCase', () => {
     expect(report.budget).toEqual({
       day: '2026-09-28',
       limit: 200,
-      used: 200,
-      refused: 14,
-      left: 0,
+      used: 199,
+      refused: 4,
+      left: 1,
       freeCalls: 30,
       freeLimit: 2000,
     });
-    expect(report.capped).toBe(false);
+    expect(report.capped).toEqual({ started: false, open: false });
   });
 
   it('shows no usage when the budget is off: nothing is counted then', async () => {
@@ -48,23 +50,39 @@ describe('GetMcpStatsUseCase', () => {
     expect(report.period.days).toBe(7);
   });
 
-  it('says when a list was cut, and counts only up to the cap', async () => {
+  it('says which list was cut, and counts only up to the cap', async () => {
     const many = Array.from(
       { length: 5001 },
       (_, i) =>
-        new McpTask(`t-${i}`, 'kiro', 'g', [], 'solved', 1, [], now, now),
+        new McpTask(`t-${i}`, 'kiro', 'g', [], 'gathering', 1, [], now, now),
     );
     const tasks = {
-      listCreatedSince: jest.fn().mockResolvedValue(many),
-      listOpenAnyOwner: jest.fn().mockResolvedValue([]),
+      listCreatedSince: jest.fn().mockResolvedValue([]),
+      listOpenAnyOwner: jest.fn().mockResolvedValue(many),
     } as unknown as IMcpTaskRepository;
 
     const report = await new GetMcpStatsUseCase(tasks, usage(0), 200).execute({
       now,
     });
 
-    expect(tasks.listCreatedSince).toHaveBeenCalledWith(expect.any(Date), 5001);
-    expect(report.capped).toBe(true);
-    expect(report.started.total).toBe(5000);
+    expect(tasks.listOpenAnyOwner).toHaveBeenCalledWith(5001);
+    expect(report.capped).toEqual({ started: false, open: true });
+    expect(report.open.total).toBe(5000);
+
+    const started = {
+      listCreatedSince: jest.fn().mockResolvedValue(many),
+      listOpenAnyOwner: jest.fn().mockResolvedValue([]),
+    } as unknown as IMcpTaskRepository;
+    const byStart = await new GetMcpStatsUseCase(
+      started,
+      usage(0),
+      200,
+    ).execute({ now });
+    expect(started.listCreatedSince).toHaveBeenCalledWith(
+      expect.any(Date),
+      5001,
+    );
+    expect(byStart.capped).toEqual({ started: true, open: false });
+    expect(byStart.started.total).toBe(5000);
   });
 });

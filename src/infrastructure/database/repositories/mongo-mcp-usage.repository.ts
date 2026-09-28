@@ -8,7 +8,7 @@ import {
 import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
 import { usageKey } from '@application/mcp/mcp-budget';
 
-// Reads the counters McpDailyLimitGuard keeps (keys from mcp-budget)
+// The /mcp daily counters: written by McpDailyLimitGuard, read by the stats
 @Injectable()
 export class MongoMcpUsageRepository implements IMcpUsageRepository {
   constructor(
@@ -16,11 +16,50 @@ export class MongoMcpUsageRepository implements IMcpUsageRepository {
     private readonly usage: Model<McpUsageDocument>,
   ) {}
 
+  // An upsert against the unique `day` index can race two first-of-day
+  // inserts into a duplicate-key error (E11000); the loser retries and, the
+  // row now existing, the $inc simply applies.
+  async increment(key: string, by: number): Promise<number> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const doc = await this.usage.findOneAndUpdate(
+          { day: key },
+          { $inc: { count: by } },
+          { upsert: true, new: true },
+        );
+        return doc.count;
+      } catch (error) {
+        if ((error as { code?: number }).code === 11000 && attempt === 0) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    /* istanbul ignore next: the loop either returns or throws above */
+    return Number.POSITIVE_INFINITY;
+  }
+
+  // A failed give-back leaves the count high: the safe side
+  async giveBack(key: string, by: number): Promise<void> {
+    await this.usage
+      .updateOne({ day: key }, { $inc: { count: -by } })
+      .catch(() => undefined);
+  }
+
   async usageOn(day: string): Promise<McpDayUsage> {
-    const paid = usageKey(day, 'paid');
-    const free = usageKey(day, 'free');
-    const rows = await this.usage.find({ day: { $in: [paid, free] } }).lean();
+    const keys = {
+      units: usageKey(day, 'paid'),
+      free: usageKey(day, 'free'),
+      refused: usageKey(day, 'refused'),
+    };
+    const rows = await this.usage
+      .find({ day: { $in: Object.values(keys) } })
+      .lean();
     const count = (key: string) => rows.find((r) => r.day === key)?.count ?? 0;
-    return { units: count(paid), free: count(free) };
+    return {
+      units: count(keys.units),
+      free: count(keys.free),
+      refused: count(keys.refused),
+    };
   }
 }

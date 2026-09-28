@@ -2,6 +2,9 @@
 // live. The daily-limit guard writes the counters and the stats read them,
 // so both take the keys from here.
 
+// The budget in units, read once from MCP_DAILY_LIMIT at startup; 0 = off
+export const MCP_DAILY_BUDGET = 'MCP_DAILY_BUDGET';
+
 // Units per UTC day when MCP_DAILY_LIMIT is not set
 export const DEFAULT_DAILY_LIMIT = 200;
 // report_outcome / list_open_tasks per unit of budget
@@ -24,6 +27,7 @@ export function mcpDailyLimit(value?: string): number {
 // YYYY-MM-DD in UTC: one counter per day
 export const usageDay = (now: Date) => now.toISOString().slice(0, 10);
 
-// The counter row for a day: paid units, or calls to the free tools
-export const usageKey = (day: string, kind: 'paid' | 'free') =>
-  kind === 'paid' ? day : `${day}:free`;
+// The counter row for a day: paid units, calls to the free tools, or units
+// asked for past the budget and refused (they spend nothing)
+export const usageKey = (day: string, kind: 'paid' | 'free' | 'refused') =>
+  kind === 'paid' ? day : `${day}:${kind}`;

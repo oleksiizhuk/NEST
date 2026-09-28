@@ -37,12 +37,14 @@ describe('McpTokenGuard', () => {
   });
 });
 
+const OWNER = 'owner-stats-token-0123456789abcdef';
+
 describe('McpStatsTokenGuard', () => {
   it('takes the stats token only', () => {
     const guard = new McpStatsTokenGuard(
-      config({ MCP_TOKEN: 'ide', MCP_STATS_TOKEN: 'owner' }),
+      config({ MCP_TOKEN: 'ide', MCP_STATS_TOKEN: OWNER }),
     );
-    expect(guard.canActivate(ctx('Bearer owner'))).toBe(true);
+    expect(guard.canActivate(ctx(`Bearer ${OWNER}`))).toBe(true);
     expect(() => guard.canActivate(ctx('Bearer ide'))).toThrow(
       UnauthorizedException,
     );
@@ -55,11 +57,20 @@ describe('McpStatsTokenGuard', () => {
     );
   });
 
-  it('is closed when the stats token is the IDE token, which would hand IDEs the stats', () => {
+  it('is closed when the stats token is the IDE token, even with stray whitespace', () => {
     const guard = new McpStatsTokenGuard(
-      config({ MCP_TOKEN: 'same', MCP_STATS_TOKEN: 'same' }),
+      config({ MCP_TOKEN: `${OWNER}\n`, MCP_STATS_TOKEN: OWNER }),
     );
-    expect(() => guard.canActivate(ctx('Bearer same'))).toThrow(
+    expect(() => guard.canActivate(ctx(`Bearer ${OWNER}`))).toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('is closed when the stats token is too short to resist guessing', () => {
+    const guard = new McpStatsTokenGuard(
+      config({ MCP_TOKEN: 'ide', MCP_STATS_TOKEN: 'stats1' }),
+    );
+    expect(() => guard.canActivate(ctx('Bearer stats1'))).toThrow(
       UnauthorizedException,
     );
   });
