@@ -71,6 +71,9 @@ export const ONE_ON_ONE_REQUEST =
 
 const DAY = (d: Date) => d.toISOString().slice(0, 10);
 
+// Model calls from the admin page per UTC day (meeting, standup, retro, 1:1)
+export const DAILY_REVIEW_LIMIT = 20;
+
 // Numbers from the Поток data for the retro
 const flowLines = (stages: FlowStages | null | undefined): string => {
   if (!stages) return 'Flow data: not collected yet.';
@@ -379,6 +382,12 @@ export class TeamReviewUseCase {
   async review(force: boolean, now = new Date(), kind: ReviewKind = 'meeting') {
     const cached = await this.reviews.latest(kind);
     if (!force && cached && DAY(cached.at) === DAY(now)) return cached;
+    // Whatever the page asks, at most this many model calls per UTC day
+    const dayStart = new Date(`${DAY(now)}T00:00:00Z`);
+    if ((await this.reviews.countSince(dayStart)) >= DAILY_REVIEW_LIMIT)
+      throw new Error(
+        `На сегодня уже подготовлено ${DAILY_REVIEW_LIMIT} разборов — это дневной предел. Готовые разборы открываются бесплатно.`,
+      );
     const snapshot = await this.snapshots.findLatest();
     if (!snapshot) throw new Error('Нет снимка проекта: обновите данные.');
     const live = await this.runtime.current();

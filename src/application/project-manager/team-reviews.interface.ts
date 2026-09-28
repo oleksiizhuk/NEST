@@ -8,4 +8,6 @@ export type ReviewKind = 'meeting' | 'standup' | 'retro' | `oneonone:${string}`;
 export interface ITeamReviews {
   latest(kind?: ReviewKind): Promise<{ text: string; at: Date } | null>;
   save(text: string, at: Date, kind?: ReviewKind): Promise<void>;
+  // Notes written since `since`, all kinds: the daily cap on model calls
+  countSince(since: Date): Promise<number>;
 }

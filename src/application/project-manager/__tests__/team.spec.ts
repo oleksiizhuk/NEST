@@ -310,6 +310,7 @@ describe('TeamReviewUseCase', () => {
     const reviews = {
       latest: jest.fn().mockResolvedValue(latest),
       save: jest.fn(),
+      countSince: jest.fn().mockResolvedValue(0),
     };
     const useCase = new TeamReviewUseCase(
       { findLatest: jest.fn().mockResolvedValue(snapshot()) } as any,
@@ -369,5 +370,14 @@ describe('TeamReviewUseCase', () => {
     await expect(useCase.review(true, NOW, 'oneonone:Nobody')).rejects.toThrow(
       'Такого человека',
     );
+  });
+
+  it('stops at the daily cap of model calls, whatever the page asks', async () => {
+    const { useCase, ai, reviews } = build(null);
+    reviews.countSince.mockResolvedValue(20);
+    await expect(useCase.review(true, NOW, 'retro')).rejects.toThrow(
+      'дневной предел',
+    );
+    expect(ai.digest).not.toHaveBeenCalled();
   });
 });
