@@ -33,6 +33,12 @@ const MAX_TOKENS = 16384;
 // single attempt can never overrun Vercel's 300s limit.
 const REQUEST_TIMEOUT_MS = 250_000;
 const MAX_RETRIES = 0;
+// Our own single retry instead: an overloaded or rate-limited API usually
+// answers within seconds, so one more try fits when the failure came fast.
+// The retry gets only what is left of REQUEST_TIMEOUT_MS, never a fresh one.
+const RETRY_STATUSES = [429, 500, 502, 503, 529];
+const RETRY_WINDOW_MS = 30_000;
+const RETRY_DELAY_MS = 2_000;
 
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 const EFFORT_LEVELS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -100,10 +106,8 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     const startedAt = Date.now();
     this.logger.log(`ask_advice via ${modelId} (effort ${this.effort})`);
 
-    // Streaming so a long answer cannot trip the SDK's request timeout;
-    // finalMessage() collects it into one Message
-    const response = await this.client.messages
-      .stream({
+    const response = await this.send(
+      {
         model: modelId,
         max_tokens: MAX_TOKENS,
         // Plain string: the prompt is short and every call is unique, so
@@ -113,8 +117,9 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
         thinking: { type: 'adaptive' },
         output_config: { effort: this.effort },
         messages: [{ role: 'user', content }],
-      })
-      .finalMessage();
+      },
+      startedAt,
+    );
 
     this.logger.log(
       `ask_advice done: ${modelId} ${response.stop_reason} ` +
@@ -143,6 +148,32 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
       return `${text}\n\n[answer truncated at ${MAX_TOKENS} tokens — ask for a narrower piece]`;
     }
     return text;
+  }
+
+  // Streaming so a long answer cannot trip the SDK's request timeout;
+  // finalMessage() collects it into one Message
+  private async send(
+    body: Anthropic.MessageStreamParams,
+    startedAt: number,
+  ): Promise<Anthropic.Message> {
+    for (let attempt = 0; ; attempt++) {
+      const left = startedAt + REQUEST_TIMEOUT_MS - Date.now();
+      try {
+        return await this.client.messages
+          .stream(body, { timeout: left })
+          .finalMessage();
+      } catch (error) {
+        const status = (error as { status?: unknown }).status;
+        const retry =
+          attempt === 0 &&
+          typeof status === 'number' &&
+          RETRY_STATUSES.includes(status) &&
+          Date.now() - startedAt < RETRY_WINDOW_MS;
+        if (!retry) throw error;
+        this.logger.warn(`Anthropic answered ${status}, retrying once`);
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+      }
+    }
   }
 
   private extractText(response: Anthropic.Message): string {

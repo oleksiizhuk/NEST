@@ -182,4 +182,64 @@ describe('AnthropicCodeAssistantService', () => {
 
     expect(answer).toBe('Claude declined to answer this request: policy');
   });
+
+  describe('retry', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    const run = async (service: AnthropicCodeAssistantService) => {
+      // Settled up front so a rejection is never unhandled while the fake
+      // clock runs
+      const pending = service.ask({ prompt: 'x' }).then(
+        (value) => ({ value }),
+        (error: Error) => ({ error }),
+      );
+      await jest.advanceTimersByTimeAsync(2000);
+      const result = await pending;
+      if ('error' in result) throw result.error;
+      return result.value;
+    };
+
+    it('retries once when the API is overloaded, with only the time left', async () => {
+      mockFinalMessage
+        .mockRejectedValueOnce(
+          Object.assign(new Error('busy'), { status: 529 }),
+        )
+        .mockResolvedValueOnce(textMessage('ok'));
+
+      const answer = await run(
+        new AnthropicCodeAssistantService(configWith({})),
+      );
+
+      expect(answer).toBe('ok');
+      expect(mockStream).toHaveBeenCalledTimes(2);
+      const [first, second] = mockStream.mock.calls.map(
+        (c) => (c as unknown[])[1] as { timeout: number },
+      );
+      expect(first.timeout).toBeLessThanOrEqual(250000);
+      expect(second.timeout).toBeLessThan(first.timeout);
+    });
+
+    it('gives up after the second failure', async () => {
+      mockFinalMessage.mockRejectedValue(
+        Object.assign(new Error('busy'), { status: 429 }),
+      );
+
+      await expect(
+        run(new AnthropicCodeAssistantService(configWith({}))),
+      ).rejects.toThrow('busy');
+      expect(mockStream).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry a client error', async () => {
+      mockFinalMessage.mockRejectedValue(
+        Object.assign(new Error('bad'), { status: 400 }),
+      );
+
+      await expect(
+        run(new AnthropicCodeAssistantService(configWith({}))),
+      ).rejects.toThrow('bad');
+      expect(mockStream).toHaveBeenCalledTimes(1);
+    });
+  });
 });
