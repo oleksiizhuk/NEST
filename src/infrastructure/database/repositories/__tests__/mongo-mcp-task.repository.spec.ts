@@ -38,23 +38,29 @@ describe('MongoMcpTaskRepository', () => {
     );
   });
 
-  it('claims a round only on an open task under the cap with no round running', async () => {
+  it('claims a round only on an open task under both caps with no round running', async () => {
     const now = new Date('2026-09-28T12:00:00Z');
-    model.findOneAndUpdate.mockReturnValue(
-      lean(row({ rounds: 3, inFlightSince: now })),
+    model.findOneAndUpdate
+      .mockReturnValueOnce(lean(null))
+      .mockReturnValueOnce(lean(row({ rounds: 3, inFlightSince: now })));
+
+    const task = await repo.claimRound('t-0000000001', 'kiro', 5, now);
+
+    const open = { taskId: 't-0000000001', owner: 'kiro', status: OPEN };
+    // First: take over a round whose function died, without counting it
+    expect(model.findOneAndUpdate).toHaveBeenNthCalledWith(
+      1,
+      { ...open, inFlightSince: { $lt: new Date('2026-09-28T11:55:00Z') } },
+      { $set: { inFlightSince: now } },
+      { new: true },
     );
-
-    const task = await repo.claimRound('t-0000000001', 5, now);
-
-    expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+    expect(model.findOneAndUpdate).toHaveBeenNthCalledWith(
+      2,
       {
-        taskId: 't-0000000001',
-        status: OPEN,
+        ...open,
         rounds: { $lt: 5 },
-        $or: [
-          { inFlightSince: null },
-          { inFlightSince: { $lt: new Date('2026-09-28T11:55:00Z') } },
-        ],
+        failures: { $not: { $gte: 3 } },
+        inFlightSince: null,
       },
       { $inc: { rounds: 1 }, $set: { inFlightSince: now } },
       { new: true },
@@ -62,12 +68,22 @@ describe('MongoMcpTaskRepository', () => {
     expect(task.rounds).toBe(3);
     expect(task.owner).toBe('kiro');
     expect(task.inFlightSince).toEqual(now);
-    expect(task.history[0].at).toEqual(new Date('2026-09-28T10:00:00Z'));
+  });
+
+  it('returns the taken-over round without a second update', async () => {
+    model.findOneAndUpdate.mockReturnValueOnce(lean(row({ rounds: 2 })));
+
+    const task = await repo.claimRound('t-0000000001', 'kiro', 5, new Date());
+
+    expect(model.findOneAndUpdate).toHaveBeenCalledTimes(1);
+    expect(task.rounds).toBe(2);
   });
 
   it('returns null when no round could be claimed', async () => {
     model.findOneAndUpdate.mockReturnValue(lean(null));
-    expect(await repo.claimRound('t-0000000001', 5, new Date())).toBeNull();
+    expect(
+      await repo.claimRound('t-0000000001', 'kiro', 5, new Date()),
+    ).toBeNull();
   });
 
   it('records a reply and a report only while the task is open, capping history', async () => {
@@ -76,9 +92,10 @@ describe('MongoMcpTaskRepository', () => {
       kind: 'need_info' as const,
       note: 'send a.ts',
     };
-    await repo.recordReply('t-0000000001', 'need_info', event);
+    const claimedAt = new Date('2026-09-28T12:00:00Z');
+    await repo.recordReply('t-0000000001', claimedAt, 'need_info', event);
     expect(model.updateOne).toHaveBeenCalledWith(
-      { taskId: 't-0000000001', status: OPEN },
+      { taskId: 't-0000000001', status: OPEN, inFlightSince: claimedAt },
       {
         $set: { status: 'gathering', inFlightSince: null },
         $push: { history: { $each: [event], $slice: -20 } },
@@ -91,9 +108,9 @@ describe('MongoMcpTaskRepository', () => {
       kind: 'report' as const,
       outcome: 'solved' as const,
     };
-    const task = await repo.report('t-0000000001', 'solved', report);
+    const task = await repo.report('t-0000000001', 'kiro', 'solved', report);
     expect(model.findOneAndUpdate).toHaveBeenCalledWith(
-      { taskId: 't-0000000001', status: OPEN },
+      { taskId: 't-0000000001', owner: 'kiro', status: OPEN },
       {
         $set: { status: 'solved' },
         $push: { history: { $each: [report], $slice: -20 } },
@@ -103,15 +120,15 @@ describe('MongoMcpTaskRepository', () => {
     expect(task.isOpen).toBe(false);
   });
 
-  it('gives a running round back', async () => {
-    await repo.releaseRound('t-0000000001');
+  it('gives back only the claimed round and counts a failed attempt', async () => {
+    const claimedAt = new Date('2026-09-28T12:00:00Z');
+    await repo.releaseRound('t-0000000001', claimedAt);
     expect(model.updateOne).toHaveBeenCalledWith(
+      { taskId: 't-0000000001', inFlightSince: claimedAt },
       {
-        taskId: 't-0000000001',
-        rounds: { $gt: 0 },
-        inFlightSince: { $ne: null },
+        $inc: { rounds: -1, failures: 1 },
+        $set: { inFlightSince: null },
       },
-      { $inc: { rounds: -1 }, $set: { inFlightSince: null } },
     );
   });
 
@@ -119,10 +136,11 @@ describe('MongoMcpTaskRepository', () => {
     model.findOneAndUpdate.mockReturnValue(lean(row({ status: 'solved' })));
     const event = { at: new Date(), kind: 'report' as const, note: 'ok' };
 
-    await repo.resolveEscalated('t-0000000001', event);
+    await repo.resolveEscalated('t-0000000001', 'kiro', event);
 
     expect(model.findOneAndUpdate.mock.calls[0][0]).toEqual({
       taskId: 't-0000000001',
+      owner: 'kiro',
       status: 'escalated',
     });
   });
@@ -132,10 +150,15 @@ describe('MongoMcpTaskRepository', () => {
     delete legacy.owner;
     model.findOne.mockReturnValue(lean(legacy));
 
-    const task = await repo.findById('t-0000000001');
+    const task = await repo.findById('t-0000000001', 'default');
 
+    expect(model.findOne).toHaveBeenCalledWith({
+      taskId: 't-0000000001',
+      owner: 'default',
+    });
     expect(task.owner).toBe('default');
     expect(task.inFlightSince).toBeNull();
+    expect(task.failures).toBe(0);
   });
 
   it("lists the owner's open tasks, most recently touched first", async () => {

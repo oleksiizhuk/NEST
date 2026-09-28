@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   AssistantModel,
   CODE_ASSISTANT_SERVICE,
@@ -24,14 +24,14 @@ import {
   escalatedText,
   inFlightText,
   needInfoFooter,
-  newTaskId,
   noAnswerFooter,
   reportFirstText,
   unknownText,
 } from '@application/mcp/task-protocol';
 
-// Below this much context a question without a task has nothing to be
-// grounded in: the caller gets the checklist first instead of an answer
+// Below this much material (context, or code pasted into the prompt after
+// its first line) a question without a task has nothing to be grounded in:
+// the caller gets the checklist first instead of an answer
 export const THIN_CONTEXT_CHARS = 200;
 
 export interface IAskAdviceRequest {
@@ -48,6 +48,8 @@ export interface IAskAdviceRequest {
 // asks for a report and nothing is left hanging.
 @Injectable()
 export class AskClaudeUseCase {
+  private readonly logger = new Logger(AskClaudeUseCase.name);
+
   constructor(
     @Inject(CODE_ASSISTANT_SERVICE)
     private readonly assistant: ICodeAssistantService,
@@ -59,17 +61,19 @@ export class AskClaudeUseCase {
   async execute(request: IAskAdviceRequest): Promise<string> {
     const prompt = (request.prompt ?? '').trim();
     if (!prompt) {
-      throw new Error('prompt must not be empty');
+      throw new McpToolError('prompt is empty: put your question in prompt.');
     }
     const context = request.context?.trim() || undefined;
     const owner = request.owner ?? DEFAULT_TASK_OWNER;
     // The first line of the question stands in for the goal
+    const [firstLine, ...rest] = prompt.split('\n');
     const derivedGoal = () =>
-      McpTask.clean(prompt.split('\n')[0], MAX_DERIVED_GOAL_CHARS, true);
+      McpTask.clean(firstLine, MAX_DERIVED_GOAL_CHARS, true);
+    const material = (context?.length ?? 0) + rest.join('\n').trim().length;
 
     let id = request.taskId?.trim().toLowerCase();
     if (!id) {
-      if ((context?.length ?? 0) < THIN_CONTEXT_CHARS) {
+      if (material < THIN_CONTEXT_CHARS) {
         return this.startTask.execute({
           goal: derivedGoal(),
           context,
@@ -77,14 +81,16 @@ export class AskClaudeUseCase {
           unanswered: true,
         });
       }
-      id = (await this.tasks.create(newTaskId(), owner, derivedGoal(), [])).id;
+      id = (await this.tasks.create(McpTask.newId(), owner, derivedGoal(), []))
+        .id;
     }
 
     const now = new Date();
-    const task = await this.tasks.claimRound(id, MAX_TASK_ROUNDS, now);
+    const task = await this.tasks.claimRound(id, owner, MAX_TASK_ROUNDS, now);
     if (!task) {
-      return this.refusal(id, now);
+      return this.refusal(id, owner, now);
     }
+    const claimedAt = task.inFlightSince ?? now;
     // Claiming a round leaves the status as it was: still answered means
     // the last answer was never reported on
     const unreported = task.awaitingReport;
@@ -107,7 +113,9 @@ export class AskClaudeUseCase {
     } catch (error) {
       // A failed call must not use up the task, and a caller that sent no
       // task_id still needs the one that was opened for it
-      await this.tasks.releaseRound(task.id).catch(() => undefined);
+      await this.bestEffort('releaseRound', () =>
+        this.tasks.releaseRound(task.id, claimedAt),
+      );
       throw Object.assign(
         new McpToolError(
           'The advice call failed (the model service was busy or timed ' +
@@ -119,23 +127,29 @@ export class AskClaudeUseCase {
     }
 
     if (result.noAnswer) {
-      await this.tasks.releaseRound(task.id);
+      await this.bestEffort('releaseRound', () =>
+        this.tasks.releaseRound(task.id, claimedAt),
+      );
       return `${result.text}\n\n${noAnswerFooter(task)}`;
     }
 
+    // The answer is paid for: a failed bookkeeping write must not lose it
+    // (the in-flight mark then lapses after ROUND_MAX_MS)
     const kind = result.needInfo ? 'need_info' : 'answer';
-    await this.tasks.recordReply(task.id, kind, {
-      at: new Date(),
-      kind,
-      // One line: what was asked for or the hypothesis, never the answer
-      note: McpTask.clean(
-        result.needInfo
-          ? result.text
-          : result.hypothesis ?? 'answer given (no hypothesis line)',
-        MAX_REPLY_NOTE_CHARS,
-        true,
-      ),
-    });
+    await this.bestEffort('recordReply', () =>
+      this.tasks.recordReply(task.id, claimedAt, kind, {
+        at: new Date(),
+        kind,
+        // One line: what was asked for or the hypothesis, never the answer
+        note: McpTask.clean(
+          result.needInfo
+            ? result.text
+            : result.hypothesis ?? 'answer given (no hypothesis line)',
+          MAX_REPLY_NOTE_CHARS,
+          true,
+        ),
+      }),
+    );
 
     const footer = result.needInfo
       ? needInfoFooter(task)
@@ -143,15 +157,23 @@ export class AskClaudeUseCase {
     return `${result.text}\n\n${footer}`;
   }
 
-  // Why no round was taken: unknown, closed, busy, or out of rounds. Out of
-  // rounds escalates only once no round runs and the last answer is
+  private async bestEffort(what: string, write: () => Promise<void>) {
+    try {
+      await write();
+    } catch (error) {
+      this.logger.error(`${what} failed: ${(error as Error).message}`);
+    }
+  }
+
+  // Why no round was taken: unknown, closed, busy, or out of rounds or
+  // attempts. That escalates only once no round runs and the last answer is
   // reported on, so a parallel call cannot close a task under a round.
-  private async refusal(id: string, now: Date): Promise<string> {
-    const task = await this.tasks.findById(id);
+  private async refusal(id: string, owner: string, now: Date) {
+    const task = await this.tasks.findById(id, owner);
     if (!task) return unknownText(id);
     if (!task.isOpen) return closedText(task);
-    // Under the cap, a refused claim can only mean a round is running
-    if (task.roundInFlight(now) || !task.onLastRound) {
+    // Under both caps, a refused claim can only mean a round is running
+    if (task.roundInFlight(now) || !(task.onLastRound || task.outOfAttempts)) {
       return inFlightText(task);
     }
     if (task.awaitingReport) return reportFirstText(task);

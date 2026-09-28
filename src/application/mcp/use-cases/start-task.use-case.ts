@@ -13,12 +13,13 @@ import {
   MAX_REPLY_NOTE_CHARS,
   McpTask,
 } from '@domain/mcp-task/mcp-task.entity';
-import { newTaskId, startedText } from '@application/mcp/task-protocol';
+import { startedText } from '@application/mcp/task-protocol';
+import { McpToolError } from '@application/mcp/mcp-tool.error';
 
 const CHECKLIST_ITEM_CHARS = MAX_REPLY_NOTE_CHARS;
 
 // Opens a task: a checklist of what the caller must collect before asking,
-// and a reminder of the caller's recent tasks still waiting for a report
+// and a reminder of the caller's tasks still waiting for a report
 @Injectable()
 export class StartTaskUseCase {
   constructor(
@@ -37,7 +38,9 @@ export class StartTaskUseCase {
   }): Promise<string> {
     const goal = McpTask.clean(request.goal ?? '', MAX_GOAL_CHARS, true);
     if (!goal) {
-      throw new Error('goal must not be empty');
+      throw new McpToolError(
+        'goal is empty: say in a sentence what must work in the end.',
+      );
     }
     const owner = request.owner ?? DEFAULT_TASK_OWNER;
     const context = request.context?.trim() || undefined;
@@ -45,11 +48,16 @@ export class StartTaskUseCase {
     const checklist = (await this.assistant.plan({ goal, context })).map((c) =>
       McpTask.clean(c, CHECKLIST_ITEM_CHARS, true),
     );
-    const now = new Date();
-    const waiting = (await this.tasks.listOpen(owner, 10))
-      .filter((t) => t.awaitingReport && !t.isStale(now))
+    // Old ones too: an abandoned task is exactly the one that hangs
+    const waiting = (await this.tasks.listOpen(owner, 20))
+      .filter((t) => t.awaitingReport)
       .slice(0, 3);
-    const task = await this.tasks.create(newTaskId(), owner, goal, checklist);
+    const task = await this.tasks.create(
+      McpTask.newId(),
+      owner,
+      goal,
+      checklist,
+    );
     return startedText(task, waiting, request.unanswered);
   }
 }

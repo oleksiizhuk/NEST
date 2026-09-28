@@ -22,7 +22,7 @@ describe('AskClaudeUseCase', () => {
     hypothesis: 'x is null on first render; guard it',
   };
   const report = (outcome: 'solved' | 'not_solved') =>
-    tasks.report(ID, outcome, {
+    tasks.report(ID, 'default', outcome, {
       at: new Date(),
       kind: 'report',
       note: 'r',
@@ -175,6 +175,7 @@ describe('AskClaudeUseCase', () => {
     );
     expect(tasks.rows.get(ID)).toMatchObject({
       rounds: 0,
+      failures: 1,
       inFlightSince: null,
     });
   });
@@ -188,12 +189,85 @@ describe('AskClaudeUseCase', () => {
 
     const reply = await useCase.execute({ prompt: 'a', taskId: ID });
 
-    expect(tasks.rows.get(ID)).toMatchObject({ rounds: 0, history: [] });
-    expect(reply).toContain('this round was not counted');
+    expect(tasks.rows.get(ID)).toMatchObject({
+      rounds: 0,
+      failures: 1,
+      history: [],
+    });
+    expect(reply).toContain('not counted as a round; failed attempts 1 of 3');
+  });
+
+  it('answers code pasted into the prompt instead of sending the checklist', async () => {
+    const reply = await useCase.execute({
+      prompt: `why does this throw?\n${CODE}`,
+    });
+
+    expect(assistant.plan).not.toHaveBeenCalled();
+    expect(assistant.ask).toHaveBeenCalled();
+    expect(reply).toContain('Use ?. here.');
+  });
+
+  it('still returns a paid answer when recording it fails', async () => {
+    jest.spyOn(tasks, 'recordReply').mockRejectedValue(new Error('db down'));
+
+    const reply = await useCase.execute({ prompt: 'a', taskId: ID });
+
+    expect(reply).toContain('Use ?. here.');
+    expect(reply).toContain(`report_outcome { task_id: "${ID}"`);
+  });
+
+  it('still names the task when giving a round back fails', async () => {
+    jest.spyOn(tasks, 'releaseRound').mockRejectedValue(new Error('db down'));
+    assistant.ask.mockResolvedValue({
+      text: 'declined',
+      needInfo: false,
+      noAnswer: true,
+    });
+
+    const reply = await useCase.execute({ prompt: 'a', taskId: ID });
+
+    expect(reply).toContain(`task_id "${ID}"`);
+  });
+
+  it('escalates a task after too many failed attempts', async () => {
+    assistant.ask.mockRejectedValue(new Error('529'));
+    for (let i = 0; i < 3; i++) {
+      await useCase.execute({ prompt: 'a', taskId: ID }).catch(() => undefined);
+    }
+    assistant.ask.mockClear();
+
+    const reply = await useCase.execute({ prompt: 'a', taskId: ID });
+
+    expect(assistant.ask).not.toHaveBeenCalled();
+    expect(tasks.rows.get(ID).status).toBe('escalated');
+    expect(reply).toContain('STOP trying fixes');
+  });
+
+  it('takes over a round whose function died without counting another', async () => {
+    await tasks.claimRound(ID, 'default', MAX_TASK_ROUNDS, new Date(0));
+
+    await useCase.execute({ prompt: 'a', taskId: ID });
+
+    expect(tasks.rows.get(ID)).toMatchObject({
+      rounds: 1,
+      status: 'answered',
+      inFlightSince: null,
+    });
+  });
+
+  it("does not run a round on another client's task", async () => {
+    const reply = await useCase.execute({
+      prompt: 'a',
+      taskId: ID,
+      owner: 'cursor',
+    });
+
+    expect(assistant.ask).not.toHaveBeenCalled();
+    expect(reply).toContain('Unknown task_id');
   });
 
   it('refuses a second call while a round is running', async () => {
-    await tasks.claimRound(ID, MAX_TASK_ROUNDS, new Date());
+    await tasks.claimRound(ID, 'default', MAX_TASK_ROUNDS, new Date());
 
     const reply = await useCase.execute({ prompt: 'a', taskId: ID });
 
@@ -236,7 +310,7 @@ describe('AskClaudeUseCase', () => {
 
   it('rejects an empty prompt without opening a task', async () => {
     await expect(useCase.execute({ prompt: '   ' })).rejects.toThrow(
-      'prompt must not be empty',
+      McpToolError,
     );
     expect(tasks.rows.size).toBe(1);
   });

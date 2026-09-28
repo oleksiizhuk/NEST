@@ -1,4 +1,5 @@
 import {
+  MAX_FAILED_ATTEMPTS,
   MAX_HISTORY,
   McpOutcome,
   McpTask,
@@ -8,7 +9,9 @@ import {
 } from '@domain/mcp-task/mcp-task.entity';
 import { IMcpTaskRepository } from '@domain/mcp-task/mcp-task.repository.interface';
 
-// Same filters as MongoMcpTaskRepository, in memory, for use-case specs
+// Same filters as MongoMcpTaskRepository, in memory, for use-case specs.
+// Keep each method in step with its Mongo filter; mongo-mcp-task.repository
+// .spec pins those filters.
 export class InMemoryTaskRepository implements IMcpTaskRepository {
   rows = new Map<string, McpTask>();
   now = () => new Date();
@@ -20,7 +23,7 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
       rounds: number;
       history: McpTaskEvent[];
       inFlightSince: Date | null;
-      updatedAt: Date;
+      failures: number;
     }>,
   ): McpTask {
     const next = new McpTask(
@@ -32,11 +35,17 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
       patch.rounds ?? t.rounds,
       (patch.history ?? t.history).slice(-MAX_HISTORY),
       t.createdAt,
-      patch.updatedAt ?? this.now(),
+      this.now(),
       'inFlightSince' in patch ? patch.inFlightSince : t.inFlightSince,
+      patch.failures ?? t.failures,
     );
     this.rows.set(t.id, next);
     return next;
+  }
+
+  private own(id: string, owner: string) {
+    const t = this.rows.get(id);
+    return t?.owner === owner ? t : undefined;
   }
 
   async create(id: string, owner: string, goal: string, checklist: string[]) {
@@ -55,33 +64,48 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     return t;
   }
 
-  async findById(id: string) {
-    return this.rows.get(id) ?? null;
+  async findById(id: string, owner: string) {
+    return this.own(id, owner) ?? null;
   }
 
-  async claimRound(id: string, maxRounds: number, now: Date) {
-    const t = this.rows.get(id);
-    const busy =
-      t?.inFlightSince &&
-      t.inFlightSince.getTime() >= now.getTime() - ROUND_MAX_MS;
-    if (!t || !t.isOpen || t.rounds >= maxRounds || busy) return null;
+  async claimRound(id: string, owner: string, maxRounds: number, now: Date) {
+    const t = this.own(id, owner);
+    if (!t || !t.isOpen) return null;
+    const stale = now.getTime() - ROUND_MAX_MS;
+    if (t.inFlightSince && t.inFlightSince.getTime() < stale) {
+      return this.put(t, { inFlightSince: now });
+    }
+    if (
+      t.inFlightSince ||
+      t.rounds >= maxRounds ||
+      t.failures >= MAX_FAILED_ATTEMPTS
+    ) {
+      return null;
+    }
     return this.put(t, { rounds: t.rounds + 1, inFlightSince: now });
   }
 
-  async releaseRound(id: string) {
+  async releaseRound(id: string, claimedAt: Date) {
     const t = this.rows.get(id);
-    if (t && t.rounds > 0 && t.inFlightSince) {
-      this.put(t, { rounds: t.rounds - 1, inFlightSince: null });
+    if (t && t.inFlightSince?.getTime() === claimedAt.getTime()) {
+      this.put(t, {
+        rounds: t.rounds - 1,
+        failures: t.failures + 1,
+        inFlightSince: null,
+      });
     }
   }
 
   async recordReply(
     id: string,
+    claimedAt: Date,
     kind: 'need_info' | 'answer',
     event: McpTaskEvent,
   ) {
     const t = this.rows.get(id);
-    if (!t || !t.isOpen) return;
+    if (!t?.isOpen || t.inFlightSince?.getTime() !== claimedAt.getTime()) {
+      return;
+    }
     this.put(t, {
       status: McpTask.statusAfterReply(kind),
       inFlightSince: null,
@@ -89,14 +113,19 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     });
   }
 
-  async report(id: string, outcome: McpOutcome, event: McpTaskEvent) {
-    const t = this.rows.get(id);
-    if (!t || !t.isOpen) return null;
+  async report(
+    id: string,
+    owner: string,
+    outcome: McpOutcome,
+    event: McpTaskEvent,
+  ) {
+    const t = this.own(id, owner);
+    if (!t?.isOpen) return null;
     return this.put(t, { status: outcome, history: [...t.history, event] });
   }
 
-  async resolveEscalated(id: string, event: McpTaskEvent) {
-    const t = this.rows.get(id);
+  async resolveEscalated(id: string, owner: string, event: McpTaskEvent) {
+    const t = this.own(id, owner);
     if (t?.status !== 'escalated') return null;
     return this.put(t, { status: 'solved', history: [...t.history, event] });
   }
@@ -104,6 +133,17 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
   async escalate(id: string) {
     const t = this.rows.get(id);
     if (t?.isOpen) this.put(t, { status: 'escalated' });
+  }
+
+  // Test helper: one full round, claimed and answered
+  async answerRound(id: string, note = 'h') {
+    const t = this.rows.get(id);
+    const claimed = await this.claimRound(id, t.owner, 99, this.now());
+    await this.recordReply(id, claimed.inFlightSince, 'answer', {
+      at: new Date(),
+      kind: 'answer',
+      note,
+    });
   }
 
   async listOpen(owner: string, limit: number) {

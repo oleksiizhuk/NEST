@@ -52,6 +52,10 @@ export class McpTaskDocument extends Document {
   @Prop({ type: Date, default: null })
   inFlightSince: Date | null;
 
+  // Rounds given back because the model gave no answer
+  @Prop({ default: 0 })
+  failures: number;
+
   createdAt: Date;
   updatedAt: Date;
 }

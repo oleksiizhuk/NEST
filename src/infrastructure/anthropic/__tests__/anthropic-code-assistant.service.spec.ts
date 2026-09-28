@@ -248,6 +248,15 @@ describe('AnthropicCodeAssistantService', () => {
         needInfo: false,
         hypothesis: 'x',
       });
+      // What is kept comes from the raw line: `__init__.py` survives
+      expect(
+        parse('Fix.\nHYPOTHESIS: `__init__.py` imports twice').hypothesis,
+      ).toBe('`__init__.py` imports twice');
+      // A reply wrapped in a fence loses the fence pair, not the list
+      expect(parse('```\nNEED_INFO\n1. send a.ts\n```')).toEqual({
+        text: '1. send a.ts',
+        needInfo: true,
+      });
 
       // NEED_INFO only as the first line; no colon, no hypothesis
       expect(parse('See NEED_INFO docs\nHypothesis testing matters')).toEqual({
@@ -283,7 +292,7 @@ describe('AnthropicCodeAssistantService', () => {
       const block = (mockStream.mock.calls[0][0] as any).messages[0].content[0]
         .text;
       expect(block).toContain('this is the last round');
-      expect(block).toContain('has not reported');
+      expect(block).toContain('never reported on');
     });
 
     it('plans a checklist with the fast model and falls back on failure', async () => {

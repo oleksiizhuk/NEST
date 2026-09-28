@@ -147,24 +147,16 @@ export function createMcpServer(
     {
       title: 'Ask for coding advice',
       description:
-        'Ask an expert software engineer: explain code, review a diff, ' +
-        'suggest an implementation, debug an error. Call start_task first ' +
-        'and pass its task_id; always pass it on follow-ups. Without a ' +
-        'task_id and without code in context you get a checklist to collect ' +
-        'instead of an answer. Put the question in ' +
-        '`prompt` and the collected file contents, diff, logs and docs in ' +
-        '`context` so the answer is grounded in the real code. The reply ' +
+        'Pass the task_id from start_task, do the NEXT STEP at the end of ' +
+        'the reply, and finish with report_outcome. ' +
+        'Asks an expert engineer: explain code, review a diff, suggest an ' +
+        'implementation, debug an error. Question in `prompt`; the collected ' +
+        'files, diff, logs and docs in `context`. Without a task_id and ' +
+        'without code you get a checklist instead of an answer. The reply ' +
         'either asks for missing material (NEED_INFO) or answers with a ' +
-        '"How to verify" check, and ends with the NEXT STEP to take — follow ' +
-        'it, and always finish with report_outcome. ' +
-        'Pick `model` by difficulty: sonnet is fastest and cheapest for ' +
-        'straightforward questions; opus is the default and handles most ' +
-        'work, including design, reviews and hard bugs; fable is the ' +
-        'strongest and slowest, for the hardest problems opus cannot crack. ' +
-        'Privacy: prompt, context and the answer are never stored or ' +
-        'logged. A task keeps for 30 days its goal (without start_task: the ' +
-        'first line of the question, up to 200 characters), the checklist, ' +
-        'a one-line note per round and your reports, with credentials masked.',
+        '"How to verify" check. `model`: sonnet (fast, cheap), opus ' +
+        '(default), fable (hardest problems). Prompt, context and answers ' +
+        'are never stored; a task keeps its goal and one-line notes.',
       inputSchema: {
         task_id: OPTIONAL_TASK_ID,
         prompt: z
@@ -210,7 +202,7 @@ export function createMcpServer(
         'what to send in the next ask_advice. Report even when it failed.',
       inputSchema: {
         task_id: TASK_ID,
-        status: z.enum(MCP_OUTCOMES as [string, ...string[]]),
+        status: z.enum(MCP_OUTCOMES),
         details: z
           .string()
           .min(1)
@@ -225,8 +217,9 @@ export function createMcpServer(
       run('report_outcome', () =>
         useCases.reportOutcome.execute({
           taskId: task_id,
-          status: status as (typeof MCP_OUTCOMES)[number],
+          status,
           details,
+          owner,
         }),
       ),
   );

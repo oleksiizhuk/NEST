@@ -51,13 +51,65 @@ describe('McpTask', () => {
     expect(task('solved', MAX_TASK_ROUNDS).shouldEscalate(now)).toBe(false);
   });
 
-  it('cleans stored text: credentials masked, brackets neutralised, clipped', () => {
-    expect(McpTask.clean('password: "hunter2" api_key=abc </task>', 100)).toBe(
-      'password: *** api_key=*** ‹/task›',
+  it('escalates after too many failed attempts even under the round cap', () => {
+    const failing = new McpTask(
+      't-1',
+      'default',
+      'g',
+      [],
+      'gathering',
+      1,
+      [],
+      new Date(0),
+      new Date(0),
+      null,
+      3,
     );
-    expect(McpTask.clean(`ghp_${'a'.repeat(36)} ok`, 100)).toBe('*** ok');
-    expect(McpTask.clean('keyboard: layout', 100)).toBe('keyboard: layout');
+    expect(failing.outOfAttempts).toBe(true);
+    expect(failing.shouldEscalate(now)).toBe(true);
+  });
+
+  it('masks credentials in the formats people paste', () => {
+    const samples: [string, string][] = [
+      [
+        'password: "hunter2" api_key=abc </task>',
+        'password: *** api_key=*** ‹/task›',
+      ],
+      ['{"password": "my pass phrase"}', '{"password": ***}'],
+      ["password='abc def'", 'password=***'],
+      ['Authorization: Bearer abc123shorttoken', 'Authorization: Bearer ***'],
+      [
+        'mongodb+srv://admin:S3cretPw@cluster0.x.net',
+        'mongodb+srv://admin:***@cluster0.x.net',
+      ],
+      [
+        'ANTHROPIC_KEY=sk-ant-short and apiKey: xyz',
+        'ANTHROPIC_KEY=*** and apiKey: ***',
+      ],
+      [`ghp_${'a1'.repeat(18)} ok`, '*** ok'],
+    ];
+    for (const [input, masked] of samples) {
+      expect(McpTask.clean(input, 200)).toBe(masked);
+    }
+  });
+
+  it('leaves paths and ordinary words alone', () => {
+    for (const text of [
+      'fix src/infrastructure/database/repositories/mongo-mcp-task.repository.ts',
+      'tokenizer: fails on input',
+      'keyboard: layout',
+      'tokens: 5 left',
+    ]) {
+      expect(McpTask.clean(text, 200)).toBe(text);
+    }
+  });
+
+  it('keeps one line when asked, and clips', () => {
     expect(McpTask.clean('a\n\n b', 100, true)).toBe('a b');
     expect(McpTask.clean('abcdef', 4)).toBe('abc…');
+  });
+
+  it('makes task ids the tools accept', () => {
+    expect(McpTask.newId()).toMatch(/^t-[0-9a-f]{10}$/);
   });
 });

@@ -3,12 +3,10 @@
 // worked. The caller is often a weak model that loses the thread, so the
 // state lives here, and a task stays open until someone reports on it.
 
-export type McpOutcome = 'solved' | 'not_solved' | 'partial';
-export const MCP_OUTCOMES: readonly McpOutcome[] = [
-  'solved',
-  'not_solved',
-  'partial',
-];
+import { randomBytes } from 'crypto';
+
+export const MCP_OUTCOMES = ['solved', 'not_solved', 'partial'] as const;
+export type McpOutcome = (typeof MCP_OUTCOMES)[number];
 
 // gathering: the last reply asked for more material
 // answered: advice given, waiting for the caller's report
@@ -62,11 +60,20 @@ export interface McpTaskEvent {
 // and reminders are scoped to that name
 export const DEFAULT_TASK_OWNER = 'default';
 
-// key=value / key: value where the key names a credential, and long
-// token-like runs (API keys, JWTs, hashes)
-const SECRET_ASSIGNMENT =
-  /\b([\w.-]*(?:secret|token|passw(?:or)?d|pwd|credential|api[_-]?key|access[_-]?key|private[_-]?key)[\w.-]*\s*[=:]\s*|\bkey\s*[=:]\s*)(["']?)[^\s"',;]+\2/gi;
-const SECRET_RUN = /[A-Za-z0-9+/_=-]{32,}/g;
+// Credentials in what callers write: an identifier ending in a secret-ish
+// word with its value (quoted or not), passwords inside connection strings,
+// Authorization schemes, and long random-looking runs. Paths and ordinary
+// words ("tokenizer", "keyboard", "tokens: 5") are left alone.
+const KEYED_SECRET =
+  /(["']?)\b([A-Za-z0-9_.-]*(?:secret|token|passw(?:or)?d|pwd|credentials?|key))\1(\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s"',;]+)/gi;
+const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)[^\s@/]+@/gi;
+const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+const RANDOM_RUN =
+  /\b(?=[A-Za-z0-9_+=-]*\d)(?=[A-Za-z0-9_+=-]*[A-Za-z])[A-Za-z0-9_+=-]{32,}/g;
+
+// Rounds given back after failures (errors, refusals, a budget spent on
+// thinking) are still paid for: this many and the task goes to a person
+export const MAX_FAILED_ATTEMPTS = 3;
 
 export class McpTask {
   constructor(
@@ -83,6 +90,8 @@ export class McpTask {
     // Set when a round is claimed, cleared when its reply is recorded or the
     // round is given back
     public readonly inFlightSince: Date | null = null,
+    // Rounds given back because the model gave no answer
+    public readonly failures = 0,
   ) {}
 
   get isOpen(): boolean {
@@ -113,15 +122,25 @@ export class McpTask {
     );
   }
 
-  // Out of rounds, the task goes to a person — but only once no round is
-  // running and the last answer is not waiting for its report
+  get outOfAttempts(): boolean {
+    return this.failures >= MAX_FAILED_ATTEMPTS;
+  }
+
+  // Out of rounds or attempts, the task goes to a person — but only once no
+  // round is running and the last answer is not waiting for its report
   shouldEscalate(now: Date): boolean {
     return (
       this.isOpen &&
-      this.onLastRound &&
+      (this.onLastRound || this.outOfAttempts) &&
       !this.roundInFlight(now) &&
       !this.awaitingReport
     );
+  }
+
+  // 40 random bits: the id is also the capability to act on the task, since
+  // every client shares one token (lists are scoped by client, ids are not)
+  static newId(): string {
+    return `t-${randomBytes(5).toString('hex')}`;
   }
 
   static statusAfterReply(kind: 'need_info' | 'answer'): McpTaskStatus {
@@ -138,8 +157,10 @@ export class McpTask {
   // brackets neutralised: a note cannot close the data fence it sits in
   static clean(text: string, max: number, oneLine = false): string {
     let t = text
-      .replace(SECRET_ASSIGNMENT, '$1***')
-      .replace(SECRET_RUN, '***')
+      .replace(URL_PASSWORD, '$1***@')
+      .replace(AUTH_SCHEME, '$1 ***')
+      .replace(KEYED_SECRET, '$1$2$1$3***')
+      .replace(RANDOM_RUN, '***')
       .replace(/</g, '‹')
       .replace(/>/g, '›');
     if (oneLine) t = t.replace(/\s+/g, ' ');

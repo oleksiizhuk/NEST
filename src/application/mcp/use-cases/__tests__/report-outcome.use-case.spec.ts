@@ -1,4 +1,5 @@
 import { ReportOutcomeUseCase } from '@application/mcp/use-cases/report-outcome.use-case';
+import { McpToolError } from '@application/mcp/mcp-tool.error';
 import { InMemoryTaskRepository } from '@application/mcp/__tests__/in-memory-task.repository';
 import { MAX_TASK_ROUNDS } from '@domain/mcp-task/mcp-task.entity';
 
@@ -9,14 +10,7 @@ describe('ReportOutcomeUseCase', () => {
   let useCase: ReportOutcomeUseCase;
 
   // One full round: claimed and answered
-  const round = async () => {
-    await tasks.claimRound(ID, MAX_TASK_ROUNDS, new Date(0));
-    await tasks.recordReply(ID, 'answer', {
-      at: new Date(),
-      kind: 'answer',
-      note: 'h',
-    });
-  };
+  const round = () => tasks.answerRound(ID);
 
   beforeEach(async () => {
     tasks = new InMemoryTaskRepository();
@@ -68,18 +62,42 @@ describe('ReportOutcomeUseCase', () => {
     expect(reply).toContain('- report (partial): half works');
   });
 
-  it('does not escalate under a round that is still running', async () => {
-    for (let i = 2; i < MAX_TASK_ROUNDS; i++) await round();
-    await tasks.claimRound(ID, MAX_TASK_ROUNDS, new Date());
+  it('refuses a report while a round is running, so it cannot be overwritten', async () => {
+    await tasks.claimRound(ID, 'default', MAX_TASK_ROUNDS, new Date());
 
     const reply = await useCase.execute({
       taskId: ID,
-      status: 'not_solved',
-      details: 'round 4 failed',
+      status: 'solved',
+      details: 'round 1 worked',
     });
 
     expect(tasks.rows.get(ID).isOpen).toBe(true);
+    expect(tasks.rows.get(ID).history).toHaveLength(1);
     expect(reply).toContain('still running');
+  });
+
+  it("does not touch another client's task", async () => {
+    const reply = await useCase.execute({
+      taskId: ID,
+      status: 'solved',
+      details: 'x',
+      owner: 'cursor',
+    });
+
+    expect(reply).toContain('Unknown task_id');
+    expect(tasks.rows.get(ID).isOpen).toBe(true);
+  });
+
+  it('stores a multi-line report as one line with credentials masked', async () => {
+    await useCase.execute({
+      taskId: ID,
+      status: 'not_solved',
+      details: 'ran with DB=mongodb+srv://admin:pw@c0/x\nround: 5 of 5',
+    });
+
+    expect(tasks.rows.get(ID).history[1].note).toBe(
+      'ran with DB=mongodb+srv://admin:***@c0/x round: 5 of 5',
+    );
   });
 
   it('accepts a late "solved" on an escalated task', async () => {
@@ -117,6 +135,6 @@ describe('ReportOutcomeUseCase', () => {
   it('requires details', async () => {
     await expect(
       useCase.execute({ taskId: ID, status: 'solved', details: ' ' }),
-    ).rejects.toThrow('details must not be empty');
+    ).rejects.toThrow(McpToolError);
   });
 });

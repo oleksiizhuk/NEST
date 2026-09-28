@@ -257,6 +257,8 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
   // task. Markdown around the markers is tolerated; both lines are stripped.
   static parseReply(raw: string): IAskResult {
     const lines = raw.split('\n');
+    // Detection looks at the line without markdown; what is kept comes from
+    // the raw line with only the marker removed, so `__init__.py` survives
     const bare = (l: string) =>
       l
         .trim()
@@ -264,24 +266,44 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
         // Bold, code and _emphasis_ marks, but not the _ inside NEED_INFO
         .replace(/[*`]+/g, '')
         .replace(/(^|\W)_+|_+(?=\W|$)/g, '$1');
+    const afterMarker = (line: string, marker: string) =>
+      line
+        .trim()
+        .replace(
+          new RegExp(
+            `^(?:[#>*_\`\\-\\s]|\`\`\`\\w*)*${marker}[*_\`]*\\s*[:.\\-—]?[*_\`]*\\s*`,
+            'i',
+          ),
+          '',
+        )
+        .trim();
+    const isFence = (l: string) => /^```\w*\s*$/.test(l.trim());
+
     let needInfo = false;
     const first = lines.findIndex((l) => bare(l));
-    if (first >= 0) {
-      const m = /^NEED_INFO\b[\s:.\-—]*(.*)$/i.exec(bare(lines[first]));
-      if (m) {
-        needInfo = true;
-        if (m[1].trim()) lines[first] = m[1].trim();
-        else lines.splice(first, 1);
+    if (first >= 0 && /^NEED_INFO\b/i.test(bare(lines[first]))) {
+      needInfo = true;
+      const rest = afterMarker(lines[first], 'NEED_INFO');
+      if (rest) lines[first] = rest;
+      else lines.splice(first, 1);
+      // A reply wrapped in a code fence: drop the fence pair around it
+      const open = lines.findIndex((l) => l.trim());
+      if (open >= 0 && open < first && isFence(lines[open])) {
+        lines.splice(open, 1);
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (!lines[i].trim()) continue;
+          if (isFence(lines[i])) lines.splice(i, 1);
+          break;
+        }
       }
     }
     let hypothesis: string | undefined;
     let seen = 0;
     for (let i = lines.length - 1; i >= 0 && seen < 3; i--) {
-      if (!lines[i].trim() || /^```\s*$/.test(lines[i].trim())) continue;
+      if (!lines[i].trim() || isFence(lines[i])) continue;
       seen += 1;
-      const m = /^HYPOTHESIS\s*:\s*(.+)$/i.exec(bare(lines[i]));
-      if (m) {
-        hypothesis = m[1].trim();
+      if (/^HYPOTHESIS\s*:\s*\S/i.test(bare(lines[i]))) {
+        hypothesis = afterMarker(lines[i], 'HYPOTHESIS');
         lines.splice(i, 1);
         break;
       }
@@ -306,8 +328,8 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     }
     if (task.unreported) {
       parts.push(
-        'the caller has not reported whether the previous answer worked; ' +
-          'start by asking them to say what happened',
+        'the previous answer was never reported on, so it is unverified: ' +
+          'do not build on it as if it worked, and say so in one line',
       );
     }
     if (task.checklist.length) {

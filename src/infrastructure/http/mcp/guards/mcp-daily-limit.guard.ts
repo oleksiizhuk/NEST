@@ -47,21 +47,22 @@ export class McpDailyLimitGuard implements CanActivate {
     // so a hard DoS cap must count attempts (including failures and client
     // retries), not only completions. A retried model call can bill twice.
     const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
-    if (paid) {
-      const count = await this.incrementForDay(this.usage, day, paid);
-      if (count > limit) {
-        throw new HttpException(
-          `Daily /mcp call limit of ${limit} reached. Try again tomorrow (UTC).`,
-          HttpStatus.TOO_MANY_REQUESTS,
-        );
-      }
-    }
+    // Free first: a batch refused on the free cap must not use paid quota
     if (free) {
       const freeLimit = limit * FREE_CALLS_PER_PAID;
       const count = await this.incrementForDay(this.usage, `${day}:free`, free);
       if (count > freeLimit) {
         throw new HttpException(
           `Daily /mcp limit of ${freeLimit} task calls reached. Try again tomorrow (UTC).`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+    if (paid) {
+      const count = await this.incrementForDay(this.usage, day, paid);
+      if (count > limit) {
+        throw new HttpException(
+          `Daily /mcp call limit of ${limit} reached. Try again tomorrow (UTC).`,
           HttpStatus.TOO_MANY_REQUESTS,
         );
       }

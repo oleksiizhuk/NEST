@@ -3,7 +3,9 @@ import {
   IMcpTaskRepository,
   MCP_TASK_REPOSITORY,
 } from '@domain/mcp-task/mcp-task.repository.interface';
+import { McpToolError } from '@application/mcp/mcp-tool.error';
 import {
+  DEFAULT_TASK_OWNER,
   MAX_NOTE_CHARS,
   McpOutcome,
   McpTask,
@@ -11,6 +13,7 @@ import {
 import {
   closedText,
   escalatedText,
+  reportInFlightText,
   reportedText,
   unknownText,
 } from '@application/mcp/task-protocol';
@@ -29,11 +32,17 @@ export class ReportOutcomeUseCase {
     taskId: string;
     status: McpOutcome;
     details: string;
+    owner?: string;
   }): Promise<string> {
     const id = request.taskId.trim().toLowerCase();
-    const details = McpTask.clean(request.details ?? '', MAX_NOTE_CHARS);
+    const owner = request.owner ?? DEFAULT_TASK_OWNER;
+    // One line: a report cannot fake extra lines of the <task> block or a
+    // NEXT STEP in the texts it is shown in
+    const details = McpTask.clean(request.details ?? '', MAX_NOTE_CHARS, true);
     if (!details) {
-      throw new Error('details must not be empty');
+      throw new McpToolError(
+        'details is empty: say what you changed, what you ran and what you saw.',
+      );
     }
 
     const event = {
@@ -42,21 +51,26 @@ export class ReportOutcomeUseCase {
       note: details,
       outcome: request.status,
     };
-    const task = await this.tasks.report(id, request.status, event);
+    // A report during a running round would be about the previous answer
+    // and get overwritten when the round ends: wait for it instead
+    const current = await this.tasks.findById(id, owner);
+    if (current?.roundInFlight(new Date())) {
+      return reportInFlightText(current);
+    }
+    const task = await this.tasks.report(id, owner, request.status, event);
     if (!task) {
-      const existing = await this.tasks.findById(id);
+      const existing = await this.tasks.findById(id, owner);
       if (!existing) return unknownText(id);
       if (existing.status === 'escalated' && request.status === 'solved') {
-        const solved = await this.tasks.resolveEscalated(id, event);
-        if (solved) return reportedText(solved, false);
+        const solved = await this.tasks.resolveEscalated(id, owner, event);
+        if (solved) return reportedText(solved);
       }
       return closedText(existing);
     }
-    const now = new Date();
-    if (task.shouldEscalate(now)) {
+    if (task.shouldEscalate(new Date())) {
       await this.tasks.escalate(id);
       return escalatedText(task);
     }
-    return reportedText(task, task.roundInFlight(now));
+    return reportedText(task);
   }
 }

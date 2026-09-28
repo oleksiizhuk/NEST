@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
+  MAX_FAILED_ATTEMPTS,
   MAX_HISTORY,
   McpOutcome,
   McpTask,
@@ -40,35 +41,41 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
       rounds: 0,
       history: [],
       inFlightSince: null,
+      failures: 0,
     });
     return McpTaskMapper.toDomain(doc);
   }
 
-  async findById(id: string): Promise<McpTask | null> {
-    const doc = await this.tasks.findOne({ taskId: id }).lean();
+  async findById(id: string, owner: string): Promise<McpTask | null> {
+    const doc = await this.tasks.findOne({ taskId: id, owner }).lean();
     return doc ? McpTaskMapper.toDomain(doc) : null;
   }
 
   async claimRound(
     id: string,
+    owner: string,
     maxRounds: number,
     now: Date,
   ): Promise<McpTask | null> {
+    const stale = new Date(now.getTime() - ROUND_MAX_MS);
+    const open = { taskId: id, owner, status: OPEN };
+    // A round whose function died never answered: take it over as is
+    const takenOver = await this.tasks
+      .findOneAndUpdate(
+        { ...open, inFlightSince: { $lt: stale } },
+        { $set: { inFlightSince: now } },
+        { new: true },
+      )
+      .lean();
+    if (takenOver) return McpTaskMapper.toDomain(takenOver);
     const doc = await this.tasks
       .findOneAndUpdate(
         {
-          taskId: id,
-          status: OPEN,
+          ...open,
           rounds: { $lt: maxRounds },
-          // A round left behind by a function that died does not block
-          $or: [
-            { inFlightSince: null },
-            {
-              inFlightSince: {
-                $lt: new Date(now.getTime() - ROUND_MAX_MS),
-              },
-            },
-          ],
+          // Rows written before the field existed have no failures
+          failures: { $not: { $gte: MAX_FAILED_ATTEMPTS } },
+          inFlightSince: null,
         },
         { $inc: { rounds: 1 }, $set: { inFlightSince: now } },
         { new: true },
@@ -77,20 +84,24 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     return doc ? McpTaskMapper.toDomain(doc) : null;
   }
 
-  async releaseRound(id: string): Promise<void> {
+  async releaseRound(id: string, claimedAt: Date): Promise<void> {
     await this.tasks.updateOne(
-      { taskId: id, rounds: { $gt: 0 }, inFlightSince: { $ne: null } },
-      { $inc: { rounds: -1 }, $set: { inFlightSince: null } },
+      { taskId: id, inFlightSince: claimedAt },
+      {
+        $inc: { rounds: -1, failures: 1 },
+        $set: { inFlightSince: null },
+      },
     );
   }
 
   async recordReply(
     id: string,
+    claimedAt: Date,
     kind: 'need_info' | 'answer',
     event: McpTaskEvent,
   ): Promise<void> {
     await this.tasks.updateOne(
-      { taskId: id, status: OPEN },
+      { taskId: id, status: OPEN, inFlightSince: claimedAt },
       {
         $set: {
           status: McpTask.statusAfterReply(kind),
@@ -103,12 +114,13 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
 
   async report(
     id: string,
+    owner: string,
     outcome: McpOutcome,
     event: McpTaskEvent,
   ): Promise<McpTask | null> {
     const doc = await this.tasks
       .findOneAndUpdate(
-        { taskId: id, status: OPEN },
+        { taskId: id, owner, status: OPEN },
         { $set: { status: outcome }, $push: push(event) },
         { new: true },
       )
@@ -118,11 +130,12 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
 
   async resolveEscalated(
     id: string,
+    owner: string,
     event: McpTaskEvent,
   ): Promise<McpTask | null> {
     const doc = await this.tasks
       .findOneAndUpdate(
-        { taskId: id, status: 'escalated' },
+        { taskId: id, owner, status: 'escalated' },
         { $set: { status: 'solved' }, $push: push(event) },
         { new: true },
       )

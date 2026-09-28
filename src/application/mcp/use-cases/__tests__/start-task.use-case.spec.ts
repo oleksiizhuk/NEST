@@ -1,5 +1,6 @@
 import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case';
 import { ICodeAssistantService } from '@application/mcp/code-assistant.service.interface';
+import { McpToolError } from '@application/mcp/mcp-tool.error';
 import { InMemoryTaskRepository } from '@application/mcp/__tests__/in-memory-task.repository';
 
 describe('StartTaskUseCase', () => {
@@ -9,11 +10,7 @@ describe('StartTaskUseCase', () => {
 
   const answered = async (id: string, owner: string, goal: string) => {
     await tasks.create(id, owner, goal, []);
-    await tasks.recordReply(id, 'answer', {
-      at: new Date(),
-      kind: 'answer',
-      note: 'h',
-    });
+    await tasks.answerRound(id);
   };
 
   beforeEach(() => {
@@ -58,7 +55,7 @@ describe('StartTaskUseCase', () => {
     expect(reply).not.toContain('not answered yet');
   });
 
-  it("reminds only of the caller's own recent tasks waiting for a report", async () => {
+  it("reminds only of the caller's own tasks waiting for a report, old ones too", async () => {
     await answered('t-0000000001', 'kiro', 'my old bug');
     await answered('t-0000000002', 'cursor', 'someone else');
     await tasks.create('t-0000000003', 'kiro', 'still gathering', []);
@@ -71,13 +68,11 @@ describe('StartTaskUseCase', () => {
     expect(reply).toContain('- t-0000000001: "my old bug"');
     expect(reply).not.toContain('someone else');
     expect(reply).not.toContain('still gathering');
-    expect(reply).not.toContain('abandoned');
+    expect(reply).toContain('"abandoned"');
   });
 
   it('rejects an empty goal', async () => {
-    await expect(useCase.execute({ goal: '  ' })).rejects.toThrow(
-      'goal must not be empty',
-    );
+    await expect(useCase.execute({ goal: '  ' })).rejects.toThrow(McpToolError);
     expect(assistant.plan).not.toHaveBeenCalled();
   });
 });
