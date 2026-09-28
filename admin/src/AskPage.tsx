@@ -10,6 +10,7 @@ import {
 import { modelCallBody, TokenBadge, useConfirm } from './confirm';
 import {
   claimWaiting,
+  dismissFailure,
   failureFor,
   isConfirmed,
   markConfirmed,
@@ -64,6 +65,7 @@ export function AskPage({
   const endRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLTextAreaElement>(null);
   const newTopicRef = useRef<HTMLButtonElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const wantFocus = useRef(false);
   // The topic on screen now, for news that arrives after a switch
   const shown = useRef(topicId);
@@ -162,13 +164,18 @@ export function AskPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [topicId]);
 
+  // The newest message in view, then the question box and any error under
+  // it, so a long thread never leaves the box typed into out of sight
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [topic?.messages.length, pending]);
+    formRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [topic?.messages.length, pending, error]);
 
   const send = async (text: string) => {
     const question = text.trim();
-    if (!topic || !question || waiting) return;
+    // Ctrl+Enter and the choice buttons come here too: the daily limit is
+    // checked here, not only by disabled buttons
+    if (!topic || !question || waiting || left === 0) return;
     const id = topic.id;
     // The first question of a topic asks once; the rest of the topic is
     // one conversation the person already agreed to
@@ -226,6 +233,16 @@ export function AskPage({
   };
 
   const remove = async (id: string) => {
+    const ok = await ask({
+      title: 'Удалить тему?',
+      body: (
+        <p>
+          Тема и вся переписка с ботом в ней удалятся. Вернуть их будет нельзя.
+        </p>
+      ),
+      confirm: 'Удалить',
+    });
+    if (!ok) return;
     try {
       await api.removeTopic(id);
       // Every view showing it leaves it, and both lists drop it
@@ -280,9 +297,14 @@ export function AskPage({
                   e.preventDefault();
                   // The list folds away under the focused link: the
                   // question box takes over once the topic is on screen
+                  setShowTopics(false);
+                  // Already open: nothing will load, so focus now
+                  if (t.id === topicId) {
+                    boxRef.current?.focus();
+                    return;
+                  }
                   wantFocus.current = true;
                   onOpen(t.id);
-                  setShowTopics(false);
                 }}
               >
                 <span className="ask-topic-title">{t.title}</span>
@@ -380,6 +402,7 @@ export function AskPage({
               <div ref={endRef} />
             </div>
             <form
+              ref={formRef}
               className="ask-form"
               onSubmit={(e) => {
                 e.preventDefault();
@@ -393,7 +416,12 @@ export function AskPage({
                 maxLength={4000}
                 placeholder="Ваш вопрос. Ctrl+Enter — отправить"
                 aria-label="Вопрос боту"
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  const failed = topic && failureFor(topic.id);
+                  if (failed && e.target.value.trim() !== failed.question)
+                    dismissFailure(topic.id);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault();
@@ -409,6 +437,12 @@ export function AskPage({
                   Отправить
                 </button>
                 <TokenBadge />
+                {left === 0 && (
+                  <span className="muted small">
+                    Лимит вопросов из админки на сегодня исчерпан — завтра снова
+                    можно.
+                  </span>
+                )}
                 {waiting && !pending && (
                   <span className="muted small">
                     Бот ещё отвечает в другой теме.

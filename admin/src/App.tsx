@@ -23,6 +23,7 @@ import { DataPage } from './DataPage';
 import { AskPage } from './AskPage';
 import { AskButton, AskContext, pageContext } from './ask';
 import { ChatDock, DockState, loadDock, saveDock } from './dock';
+import { publish } from './topicStore';
 import {
   IconAsk,
   IconChats,
@@ -273,6 +274,8 @@ export function App() {
   const startTopic = async (title: string, context: string) => {
     try {
       const topic = await api.createTopic(title, context);
+      // Both views' lists learn of it, whichever one opens it
+      publish({ kind: 'created', id: topic.id });
       if (pageRef.current === 'ask') openTopic(topic.id);
       else
         changeDock((prev) => ({

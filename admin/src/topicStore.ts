@@ -68,6 +68,12 @@ export const publish = (news: TopicNews) => {
 
 export const failureFor = (id: string): Failure | undefined => failures.get(id);
 
+// The person moved on from a failed question (changed or cleared the box):
+// it stops coming back when the topic opens
+export const dismissFailure = (id: string) => {
+  failures.delete(id);
+};
+
 // Subscribes once; the handler may change every render
 export const useTopicNews = (handler: (news: TopicNews) => void) => {
   const latest = useRef(handler);

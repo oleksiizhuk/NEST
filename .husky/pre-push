@@ -6,3 +6,6 @@ npm run lint
 
 echo "Running tests with coverage..."
 npm run test:cov
+
+echo "Running admin tests..."
+npm --prefix admin test

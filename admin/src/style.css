@@ -1363,12 +1363,22 @@ select.tab {
 }
 /* News that came in while the window was folded */
 .dock-fab-answer {
-  outline: 2px solid var(--ok);
-  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--ok), 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 .dock-fab-failed {
-  outline: 2px solid var(--bad);
-  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--bad), 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+/* Read by screen readers, not shown */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 .dock {
   position: fixed;

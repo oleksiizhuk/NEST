@@ -26,7 +26,7 @@ vi.mock('../api', async (original) => {
 
 import { api, ApiError } from '../api';
 import { AskPage } from '../AskPage';
-import { markConfirmed } from '../topicStore';
+import { markConfirmed, publish } from '../topicStore';
 
 const mocked = api as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
@@ -179,6 +179,9 @@ describe('AskPage: the page and the window stay in step', () => {
     const { page, onOpenPage, onOpenDock } = renderBoth();
 
     fireEvent.click(await page.findByRole('button', { name: 'удалить тему' }));
+    // One click must not delete a conversation
+    expect(mocked.removeTopic).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Удалить' }));
 
     await waitFor(() => expect(onOpenPage).toHaveBeenCalledWith(null));
     expect(onOpenDock).toHaveBeenCalledWith(null);
@@ -210,6 +213,24 @@ describe('AskPage: the page and the window stay in step', () => {
     );
     expect((await screen.findByRole('alert')).textContent).toBe('Ошибка 502');
     expect(kept).not.toHaveBeenCalled();
+  });
+
+  it('an answer that lands while the topic is still loading is not hidden by the older load', async () => {
+    const slowLoad = deferred<Topic>();
+    mocked.topic.mockReturnValueOnce(slowLoad.promise);
+    render(<AskPage topicId="a" onOpen={vi.fn()} onUnauthorized={vi.fn()} />);
+
+    act(() => {
+      publish({
+        kind: 'answered',
+        id: 'a',
+        topic: answer,
+        question: 'почему?',
+      });
+    });
+    await act(async () => slowLoad.resolve(topicA()));
+
+    expect(screen.getByText('потому что')).toBeTruthy();
   });
 
   it('a late 404 for a topic already left does not clear the one opened since', async () => {

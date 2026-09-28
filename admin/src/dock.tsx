@@ -64,12 +64,24 @@ export function ChatDock({
   // What the folded button says: the bot is thinking, or news came in
   // while nobody was looking
   const waiting = useWaiting();
-  const [news, setNews] = useState<'answer' | 'failed' | null>(null);
+  // ...and which topic, so the button opens that one
+  const [news, setNews] = useState<{
+    kind: 'answer' | 'failed';
+    id: string;
+  } | null>(null);
   useTopicNews((n) => {
-    if (open) return;
-    if (n.kind === 'answered') setNews('answer');
-    if (n.kind === 'failed') setNews('failed');
+    // Seen on the Спросить бота page (the window is suppressed there) or in
+    // the open window: nothing to point at
+    if (open || suppressed) return;
+    if (n.kind === 'answered') setNews({ kind: 'answer', id: n.id });
+    if (n.kind === 'failed') setNews({ kind: 'failed', id: n.id });
   });
+  const newsText =
+    news?.kind === 'answer'
+      ? 'Ответ готов'
+      : news?.kind === 'failed'
+      ? 'Вопрос не отправился'
+      : '';
 
   useEffect(() => {
     if (open) {
@@ -124,26 +136,30 @@ export function ChatDock({
       {state.mode === 'closed' && !suppressed && (
         <button
           ref={fabRef}
-          className={`dock-fab${news ? ` dock-fab-${news}` : ''}`}
-          onClick={() => set({ mode: 'open' })}
+          className={`dock-fab${news ? ` dock-fab-${news.kind}` : ''}`}
+          onClick={() =>
+            set({ mode: 'open', ...(news ? { topicId: news.id } : {}) })
+          }
           aria-label={`Открыть окно «Спросить бота»${
             waiting
               ? ', бот думает'
-              : news === 'answer'
-              ? ', пришёл ответ'
-              : news === 'failed'
-              ? ', вопрос не отправился'
+              : newsText
+              ? `, ${newsText.toLowerCase()}`
               : ''
           }`}
         >
           {waiting
             ? 'Бот думает…'
-            : news === 'answer'
-            ? '● Ответ готов'
-            : news === 'failed'
-            ? '● Не отправилось'
+            : newsText
+            ? `● ${newsText}`
             : 'Спросить бота'}
         </button>
+      )}
+      {/* Said aloud even while the window is folded and its thread hidden */}
+      {!suppressed && (
+        <span className="sr-only" role="status">
+          {state.mode === 'closed' ? newsText : ''}
+        </span>
       )}
       {/* Kept mounted while folded: a question in progress keeps going */}
       {mounted && (

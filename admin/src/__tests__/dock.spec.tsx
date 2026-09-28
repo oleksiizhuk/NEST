@@ -39,19 +39,28 @@ const topic: Topic = {
 function Harness({ initial }: { initial: DockState }) {
   const [state, setState] = useState(initial);
   return (
-    <ChatDock
-      state={state}
-      onChange={(update) => setState(update)}
-      onUnauthorized={vi.fn()}
-      suppressed={false}
-    />
+    <>
+      {/* Like a signal's "спросить бота": another topic in the window */}
+      <button onClick={() => setState((s) => ({ ...s, topicId: 'b' }))}>
+        сигнал
+      </button>
+      <ChatDock
+        state={state}
+        onChange={(update) => setState(update)}
+        onUnauthorized={vi.fn()}
+        suppressed={false}
+      />
+    </>
   );
 }
+
+const fold = () => fireEvent.keyDown(document, { key: 'Escape' });
+const fab = () => screen.getByRole('button', { name: /Открыть окно/ });
 
 describe('ChatDock', () => {
   beforeEach(() => {
     mocked.topics.mockResolvedValue({ topics: [], used: 0, limit: 60 });
-    mocked.topic.mockResolvedValue(topic);
+    mocked.topic.mockImplementation(async (id: string) => ({ ...topic, id }));
   });
 
   it('opening the window puts focus in the question box once the topic loads, not on the resize button', async () => {
@@ -61,6 +70,48 @@ describe('ChatDock', () => {
 
     const box = await screen.findByLabelText('Вопрос боту');
     await waitFor(() => expect(document.activeElement).toBe(box));
+  });
+
+  it('focus returns to the question box on every reopen, and when a signal opens another topic', async () => {
+    render(<Harness initial={{ mode: 'open', topicId: 'a' }} />);
+    await screen.findByLabelText('Вопрос боту');
+
+    fold();
+    await waitFor(() => expect(document.activeElement).toBe(fab()));
+    fireEvent.click(fab());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText('Вопрос боту')),
+    );
+
+    (document.activeElement as HTMLElement).blur();
+    fireEvent.click(screen.getByText('сигнал'));
+    await waitFor(() => expect(mocked.topic).toHaveBeenCalledWith('b'));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText('Вопрос боту')),
+    );
+  });
+
+  it('news seen in the open window leaves no badge after folding; news while folded opens its own topic', async () => {
+    render(<Harness initial={{ mode: 'open', topicId: 'a' }} />);
+    await screen.findByLabelText('Вопрос боту');
+
+    act(() => {
+      publish({ kind: 'answered', id: 'a', topic, question: 'почему?' });
+    });
+    fold();
+    await waitFor(() => expect(fab().textContent).toBe('Спросить бота'));
+
+    act(() => {
+      publish({
+        kind: 'answered',
+        id: 'b',
+        topic: { ...topic, id: 'b' },
+        question: 'q',
+      });
+    });
+    expect(screen.getByRole('status').textContent).toBe('Ответ готов');
+    fireEvent.click(fab());
+    await waitFor(() => expect(mocked.topic).toHaveBeenCalledWith('b'));
   });
 
   it('Esc folds the window even after the focused control went away, but not under a confirmation', async () => {
@@ -95,7 +146,7 @@ describe('ChatDock', () => {
       publish({ kind: 'answered', id: 'a', topic, question: 'почему?' });
       releaseWaiting();
     });
-    const fab = screen.getByRole('button', { name: /пришёл ответ/ });
+    const fab = screen.getByRole('button', { name: /ответ готов/ });
     expect(fab.textContent).toBe('● Ответ готов');
 
     fireEvent.click(fab);
