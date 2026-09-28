@@ -102,6 +102,7 @@ describe('MongoMcpTaskRepository', () => {
       history: [],
       inFlightSince: null,
       failures: 0,
+      startedVia: 'start_task',
     });
     expect(task).toMatchObject({
       id: 't-0000000001',
@@ -226,16 +227,14 @@ describe('MongoMcpTaskRepository', () => {
   });
 
   it('reads tasks started since a date for stats, without their notes or checklist', async () => {
-    const limit = jest
-      .fn()
-      .mockReturnValue(
-        lean([
-          row({
-            checklist: undefined,
-            history: [{ at: '2026-09-28T10:00:00Z', kind: 'answer' }],
-          }),
-        ]),
-      );
+    const limit = jest.fn().mockReturnValue(
+      lean([
+        row({
+          checklist: undefined,
+          history: [{ at: '2026-09-28T10:00:00Z', kind: 'answer' }],
+        }),
+      ]),
+    );
     const sort = jest.fn().mockReturnValue({ limit });
     const select = jest.fn().mockReturnValue({ sort });
     model.find.mockReturnValue({ select });
@@ -249,6 +248,20 @@ describe('MongoMcpTaskRepository', () => {
     expect(limit).toHaveBeenCalledWith(5001);
     expect(tasks[0].checklist).toEqual([]);
     expect(tasks[0].history[0]).toMatchObject({ kind: 'answer', note: '' });
+  });
+
+  it('reads open tasks of every client for stats, longest idle first, without notes', async () => {
+    const limit = jest.fn().mockReturnValue(lean([row()]));
+    const sort = jest.fn().mockReturnValue({ limit });
+    const select = jest.fn().mockReturnValue({ sort });
+    model.find.mockReturnValue({ select });
+
+    await repo.listOpenAnyOwner(5001);
+
+    expect(model.find).toHaveBeenCalledWith({ status: OPEN });
+    expect(select).toHaveBeenCalledWith('-checklist -history.note');
+    expect(sort).toHaveBeenCalledWith({ updatedAt: 1 });
+    expect(limit).toHaveBeenCalledWith(5001);
   });
 
   it("lists the owner's open tasks, most recently touched first", async () => {

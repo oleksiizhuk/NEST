@@ -5,6 +5,7 @@ import {
   MAX_FAILED_ATTEMPTS,
   MAX_HISTORY,
   McpOutcome,
+  McpStartedVia,
   McpTask,
   McpTaskEvent,
   OPEN_TASK_STATUSES,
@@ -15,6 +16,9 @@ import { McpTaskDocument } from '@infrastructure/database/schemas/mcp-task.schem
 import { McpTaskMapper } from '@infrastructure/database/mappers/mcp-task.mapper';
 
 const OPEN = { $in: [...OPEN_TASK_STATUSES] };
+// Stats read kinds and counts, not the text: notes and checklists stay in
+// the database
+const STATS_FIELDS = '-checklist -history.note';
 // No round running: never claimed, or claimed by a function that died
 const idle = (now: Date) => ({
   $or: [
@@ -38,12 +42,14 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     owner: string,
     goal: string,
     checklist: string[],
+    startedVia: McpStartedVia = 'start_task',
   ): Promise<McpTask> {
     const doc = await this.tasks.create({
       taskId: id,
       owner,
       goal,
       checklist,
+      startedVia,
       status: 'gathering',
       rounds: 0,
       history: [],
@@ -166,12 +172,20 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
   }
 
   async listCreatedSince(since: Date, limit: number): Promise<McpTask[]> {
-    // Stats read kinds and counts, not the text: notes and checklists stay
-    // in the database
     const docs = await this.tasks
       .find({ createdAt: { $gte: since } })
-      .select('-checklist -history.note')
+      .select(STATS_FIELDS)
       .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+    return docs.map((d) => McpTaskMapper.toDomain(d));
+  }
+
+  async listOpenAnyOwner(limit: number): Promise<McpTask[]> {
+    const docs = await this.tasks
+      .find({ status: OPEN })
+      .select(STATS_FIELDS)
+      .sort({ updatedAt: 1 })
       .limit(limit)
       .lean();
     return docs.map((d) => McpTaskMapper.toDomain(d));

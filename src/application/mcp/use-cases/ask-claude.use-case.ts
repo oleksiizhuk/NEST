@@ -86,8 +86,16 @@ export class AskClaudeUseCase {
           unanswered: true,
         });
       }
-      id = (await this.tasks.create(McpTask.newId(), owner, derivedGoal(), []))
-        .id;
+      // Opened without start_task: the caller skipped gathering
+      id = (
+        await this.tasks.create(
+          McpTask.newId(),
+          owner,
+          derivedGoal(),
+          [],
+          'ask_advice',
+        )
+      ).id;
     }
 
     const now = new Date();

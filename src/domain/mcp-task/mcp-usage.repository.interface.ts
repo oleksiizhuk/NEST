@@ -6,8 +6,18 @@ export interface McpDayUsage {
   units: number;
   // report_outcome / list_open_tasks calls
   free: number;
+  // Units asked for past the budget and refused
+  refused: number;
+  // Free-tool calls refused past their cap
+  refusedFree: number;
 }
 
+// The /mcp daily counters (keys from application/mcp/mcp-budget): the
+// daily-limit guard writes them, the stats read them
 export interface IMcpUsageRepository {
+  // Adds to a counter atomically and returns its new value
+  increment(key: string, by: number): Promise<number>;
+  // Takes back what a refused call counted; best effort, never throws
+  giveBack(key: string, by: number): Promise<void>;
   usageOn(day: string): Promise<McpDayUsage>;
 }

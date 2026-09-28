@@ -14,6 +14,7 @@ type McpTaskRow = Pick<
   | 'updatedAt'
   | 'inFlightSince'
   | 'failures'
+  | 'startedVia'
 >;
 
 export class McpTaskMapper {
@@ -36,6 +37,7 @@ export class McpTaskMapper {
       new Date(doc.updatedAt),
       doc.inFlightSince ? new Date(doc.inFlightSince) : null,
       doc.failures ?? 0,
+      doc.startedVia ?? null,
     );
   }
 }

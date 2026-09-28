@@ -37,6 +37,7 @@ describe('StartTaskUseCase', () => {
     const [task] = [...tasks.rows.values()];
     expect(task.id).toMatch(/^t-[0-9a-f]{10}$/);
     expect(task.owner).toBe('kiro');
+    expect(task.startedVia).toBe('start_task');
     expect(task.goal).toBe('Login returns 401 after refresh');
     // Stored text goes back into prompts, so it cannot close a data fence
     expect(task.checklist).toEqual([
