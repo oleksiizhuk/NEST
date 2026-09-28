@@ -300,6 +300,22 @@ describe('AskClaudeUseCase', () => {
     expect(tasks.rows.get(ID).isOpen).toBe(true);
   });
 
+  it('a third answer-less reply also says to hand over, not to retry', async () => {
+    assistant.ask.mockResolvedValue({
+      text: 'declined',
+      needInfo: false,
+      noAnswer: true,
+    });
+    await useCase.execute({ prompt: 'a', taskId: ID });
+    await useCase.execute({ prompt: 'a', taskId: ID });
+
+    const reply = await useCase.execute({ prompt: 'a', taskId: ID });
+
+    expect(reply).toContain('failed attempts 3 of 3');
+    expect(reply).toContain('no attempts are left');
+    expect(reply).not.toContain('call ask_advice again');
+  });
+
   it('escalates a task after too many failed attempts', async () => {
     assistant.ask.mockRejectedValue(new Error('529'));
     for (let i = 0; i < 3; i++) {

@@ -386,7 +386,9 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
 
   // MCP_AI_MODEL is either one of the short names (opus, sonnet, fable) or a
   // raw Anthropic model id for anything not in the list
-  private static resolveModel(value?: string): string {
+  private static resolveModel(raw?: string): string {
+    // Trimmed like the daily-limit guard reads it, so both agree on the model
+    const value = raw?.trim();
     if (!value) {
       return MODEL_IDS[DEFAULT_ASSISTANT_MODEL];
     }

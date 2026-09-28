@@ -66,7 +66,7 @@ describe('AnthropicCodeAssistantService', () => {
     mockFinalMessage.mockResolvedValue(textMessage('ok'));
 
     await new AnthropicCodeAssistantService(
-      configWith({ MCP_AI_MODEL: 'sonnet', MCP_AI_EFFORT: 'low' }),
+      configWith({ MCP_AI_MODEL: ' sonnet ', MCP_AI_EFFORT: 'low' }),
     ).ask({ prompt: 'a' });
     await new AnthropicCodeAssistantService(
       configWith({

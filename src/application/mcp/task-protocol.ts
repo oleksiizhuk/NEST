@@ -111,9 +111,12 @@ export const answerFooter = (
 
 // What a task's current state asks of the caller, when a write lost a race
 export const currentStateText = (task: McpTask, now: Date): string => {
+  if (task.status === 'escalated') return escalatedText(task);
   if (!task.isOpen) return closedText(task);
   if (task.roundInFlight(now)) return inFlightText(task);
   if (task.awaitingReport) return reportFirstText(task);
+  // No rounds or attempts left: another ask would only be refused
+  if (task.onLastRound || task.outOfAttempts) return handOver(task);
   if (task.status === 'gathering') {
     return (
       `Task ${task.id} is waiting for material: collect what was asked ` +

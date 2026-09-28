@@ -79,6 +79,39 @@ describe('MongoMcpTaskRepository', () => {
     expect(task.rounds).toBe(2);
   });
 
+  it('creates a task gathering, with no rounds, failures or running round', async () => {
+    model.create.mockResolvedValue(
+      row({
+        status: 'gathering',
+        rounds: 0,
+        history: [],
+        inFlightSince: null,
+        failures: 0,
+      }),
+    );
+
+    const task = await repo.create('t-0000000001', 'kiro', 'fix login', ['a']);
+
+    expect(model.create).toHaveBeenCalledWith({
+      taskId: 't-0000000001',
+      owner: 'kiro',
+      goal: 'fix login',
+      checklist: ['a'],
+      status: 'gathering',
+      rounds: 0,
+      history: [],
+      inFlightSince: null,
+      failures: 0,
+    });
+    expect(task).toMatchObject({
+      id: 't-0000000001',
+      status: 'gathering',
+      rounds: 0,
+      failures: 0,
+      inFlightSince: null,
+    });
+  });
+
   it('returns null when no round could be claimed', async () => {
     model.findOneAndUpdate.mockReturnValue(lean(null));
     expect(

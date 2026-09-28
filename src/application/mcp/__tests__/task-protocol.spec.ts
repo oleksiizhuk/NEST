@@ -30,6 +30,12 @@ const task = (
 describe('currentStateText', () => {
   it.each([
     ['closed', task('solved'), 'already closed (solved)'],
+    ['escalated', task('escalated'), 'STOP trying fixes'],
+    [
+      'nothing left to try',
+      task('not_solved', null, MAX_TASK_ROUNDS),
+      'no attempts are left',
+    ],
     [
       'running',
       task('answered', new Date(now.getTime() - 1000)),
