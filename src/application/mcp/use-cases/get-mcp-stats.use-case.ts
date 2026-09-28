@@ -7,28 +7,38 @@ import {
   IMcpUsageRepository,
   MCP_USAGE_REPOSITORY,
 } from '@domain/mcp-task/mcp-usage.repository.interface';
-import { computeMcpStats, McpStats } from '@application/mcp/mcp-stats';
+import {
+  clampStatsDays,
+  computeMcpStats,
+  McpStats,
+  statsSince,
+} from '@application/mcp/mcp-stats';
+import { FREE_CALLS_PER_PAID, usageDay } from '@application/mcp/mcp-budget';
 
-export const DEFAULT_STATS_DAYS = 7;
-// Tasks expire 30 days after their last call, so further back is empty
-export const MAX_STATS_DAYS = 30;
+// The daily budget in units (MCP_DAILY_LIMIT read once; 0 = off)
+export const MCP_DAILY_BUDGET = 'MCP_DAILY_BUDGET';
+
 // More than any real month of tasks; a cap keeps one request bounded
 const MAX_TASKS = 5000;
 
 export interface McpStatsReport extends McpStats {
   budget: {
     day: string;
-    // Units spent today and the daily budget (0 = no budget)
-    used: number;
+    // Off (0): nothing is counted, so there is no usage to show
     limit: number;
+    // Units actually spent today, capped at the limit
+    used: number | null;
+    // Units asked for past the limit and refused (the counter includes them)
+    refused: number | null;
     left: number | null;
-    freeCalls: number;
+    freeCalls: number | null;
+    freeLimit: number | null;
   };
-  // The task list hit MAX_TASKS: counts are lower bounds
+  // A task list hit MAX_TASKS: counts are lower bounds
   capped: boolean;
 }
 
-// GET /mcp/stats: how the bridge is used, for whoever holds MCP_TOKEN
+// GET /mcp/stats: how the bridge is used, for the owner (MCP_STATS_TOKEN)
 @Injectable()
 export class GetMcpStatsUseCase {
   constructor(
@@ -36,40 +46,51 @@ export class GetMcpStatsUseCase {
     private readonly tasks: IMcpTaskRepository,
     @Inject(MCP_USAGE_REPOSITORY)
     private readonly usage: IMcpUsageRepository,
+    @Inject(MCP_DAILY_BUDGET)
+    private readonly limit: number,
   ) {}
 
   async execute(request: {
     days?: number;
-    limit: number;
     now?: Date;
   }): Promise<McpStatsReport> {
     const now = request.now ?? new Date();
-    const days = McpStatsDays.clamp(request.days);
-    const since = new Date(now.getTime() - days * 24 * 3_600_000);
-    const day = now.toISOString().slice(0, 10);
-    const [tasks, usage] = await Promise.all([
-      // One more than the cap tells a cut list from an exact one
-      this.tasks.listCreatedSince(since, MAX_TASKS + 1),
+    const days = clampStatsDays(request.days);
+    const day = usageDay(now);
+    // One more than the cap tells a cut list from an exact one
+    const [started, open, usage] = await Promise.all([
+      this.tasks.listCreatedSince(statsSince(now, days), MAX_TASKS + 1),
+      this.tasks.listOpenAnyOwner(MAX_TASKS + 1),
       this.usage.usageOn(day),
     ]);
+    const limit = this.limit;
     return {
-      ...computeMcpStats(tasks.slice(0, MAX_TASKS), now, days),
-      budget: {
-        day,
-        used: usage.units,
-        limit: request.limit,
-        left: request.limit ? Math.max(0, request.limit - usage.units) : null,
-        freeCalls: usage.free,
-      },
-      capped: tasks.length > MAX_TASKS,
+      ...computeMcpStats({
+        started: started.slice(0, MAX_TASKS),
+        open: open.slice(0, MAX_TASKS),
+        now,
+        days,
+      }),
+      budget: limit
+        ? {
+            day,
+            limit,
+            used: Math.min(usage.units, limit),
+            refused: Math.max(0, usage.units - limit),
+            left: Math.max(0, limit - usage.units),
+            freeCalls: usage.free,
+            freeLimit: limit * FREE_CALLS_PER_PAID,
+          }
+        : {
+            day,
+            limit,
+            used: null,
+            refused: null,
+            left: null,
+            freeCalls: null,
+            freeLimit: null,
+          },
+      capped: started.length > MAX_TASKS || open.length > MAX_TASKS,
     };
-  }
-}
-
-export class McpStatsDays {
-  // Anything unreadable falls back to the default; the rest is kept in range
-  static clamp(days?: number): number {
-    if (days === undefined || !Number.isFinite(days)) return DEFAULT_STATS_DAYS;
-    return Math.min(MAX_STATS_DAYS, Math.max(1, Math.floor(days)));
   }
 }

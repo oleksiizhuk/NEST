@@ -1,5 +1,6 @@
 import {
   McpOutcome,
+  McpStartedVia,
   McpTask,
   McpTaskEvent,
 } from '@domain/mcp-task/mcp-task.entity';
@@ -14,6 +15,7 @@ export interface IMcpTaskRepository {
     owner: string,
     goal: string,
     checklist: string[],
+    startedVia?: McpStartedVia,
   ): Promise<McpTask>;
   findById(id: string, owner: string): Promise<McpTask | null>;
   // Atomically takes one round: an open task under `maxRounds` and the
@@ -58,6 +60,10 @@ export interface IMcpTaskRepository {
   escalate(id: string, now: Date): Promise<boolean>;
   // The owner's open tasks, most recently touched first
   listOpen(owner: string, limit: number): Promise<McpTask[]>;
-  // Every client's tasks started since `since`, newest first (stats)
+  // Stats reads, across every client. The tasks come without history notes
+  // and checklists (kinds and counts only): never render them.
+  // Tasks started since `since`, newest first
   listCreatedSince(since: Date, limit: number): Promise<McpTask[]>;
+  // Open tasks of any age, the longest idle first
+  listOpenAnyOwner(limit: number): Promise<McpTask[]>;
 }

@@ -53,11 +53,13 @@ export class StartTaskUseCase {
     const waiting = (await this.tasks.listOpen(owner, 20))
       .filter((t) => needsReminder(t, now))
       .slice(0, 3);
+    // A bare ask_advice lands here too: it still skipped start_task
     const task = await this.tasks.create(
       McpTask.newId(),
       owner,
       goal,
       checklist,
+      request.unanswered ? 'ask_advice' : 'start_task',
     );
     return startedText(task, waiting, request.unanswered);
   }

@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import type {
+  McpStartedVia,
   McpOutcome,
   McpTaskEventKind,
   McpTaskStatus,
@@ -52,6 +53,9 @@ export class McpTaskDocument extends Document {
   @Prop({ type: Date, default: null })
   inFlightSince: Date | null;
 
+  @Prop({ type: String, default: null })
+  startedVia: McpStartedVia | null;
+
   // Rounds given back because the model gave no answer
   @Prop({ default: 0 })
   failures: number;
@@ -64,6 +68,9 @@ export const McpTaskSchema = SchemaFactory.createForClass(McpTaskDocument);
 
 // GET /mcp/stats: tasks started since a date
 McpTaskSchema.index({ createdAt: -1 });
+
+// GET /mcp/stats: open tasks of any client, longest idle first
+McpTaskSchema.index({ status: 1, updatedAt: 1 });
 
 // list_open_tasks and the start_task reminder
 McpTaskSchema.index({ owner: 1, status: 1, updatedAt: -1 });

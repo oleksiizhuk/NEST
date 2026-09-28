@@ -5,7 +5,10 @@ import { AddressInfo } from 'net';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { McpController } from '@infrastructure/http/mcp/mcp.controller';
-import { McpTokenGuard } from '@infrastructure/http/mcp/guards/mcp-token.guard';
+import {
+  McpStatsTokenGuard,
+  McpTokenGuard,
+} from '@infrastructure/http/mcp/guards/mcp-token.guard';
 import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
 import { AskClaudeUseCase } from '@application/mcp/use-cases/ask-claude.use-case';
 import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case';
@@ -14,10 +17,15 @@ import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks
 import { CODE_ASSISTANT_SERVICE } from '@application/mcp/code-assistant.service.interface';
 import { MCP_TASK_REPOSITORY } from '@domain/mcp-task/mcp-task.repository.interface';
 import { MCP_USAGE_REPOSITORY } from '@domain/mcp-task/mcp-usage.repository.interface';
-import { GetMcpStatsUseCase } from '@application/mcp/use-cases/get-mcp-stats.use-case';
+import {
+  GetMcpStatsUseCase,
+  MCP_DAILY_BUDGET,
+} from '@application/mcp/use-cases/get-mcp-stats.use-case';
+import { McpStatsController } from '@infrastructure/http/mcp/mcp-stats.controller';
 import { InMemoryTaskRepository } from '@application/mcp/__tests__/in-memory-task.repository';
 
 const TOKEN = 'test-mcp-token';
+const STATS_TOKEN = 'test-stats-token';
 
 // End-to-end over a real socket: the same MCP client library an IDE uses
 // talks to the controller, so the transport wiring is what gets tested
@@ -43,7 +51,7 @@ describe('McpController (streamable HTTP)', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      controllers: [McpController],
+      controllers: [McpController, McpStatsController],
       providers: [
         McpTokenGuard,
         // Daily-limit guard with no Mongo model injected (optional): with
@@ -60,10 +68,13 @@ describe('McpController (streamable HTTP)', () => {
           useValue: { usageOn: async () => ({ units: 7, free: 2 }) },
         },
         GetMcpStatsUseCase,
+        { provide: MCP_DAILY_BUDGET, useValue: 200 },
+        McpStatsTokenGuard,
         {
           provide: ConfigService,
           useValue: {
-            get: (key: string) => (key === 'MCP_TOKEN' ? TOKEN : ''),
+            get: (key: string) =>
+              ({ MCP_TOKEN: TOKEN, MCP_STATS_TOKEN: STATS_TOKEN }[key] ?? ''),
           },
         },
       ],
@@ -250,28 +261,30 @@ describe('McpController (streamable HTTP)', () => {
     expect(assistant.ask).not.toHaveBeenCalled();
   });
 
-  it('GET /mcp/stats needs the token and returns the numbers without touching the model', async () => {
+  it('GET /mcp/stats takes only the owner stats token, never the IDE token', async () => {
     await tasks.create('t-0000000001', 'kiro', 'fix login', []);
-
-    const denied = await fetch(`${url}/stats`);
-    const res = await fetch(`${url}/stats?days=3`, {
-      headers: { Authorization: `Bearer ${TOKEN}` },
+    const as = (token: string) => ({
+      headers: { Authorization: `Bearer ${token}` },
     });
-    const body = await res.json();
 
-    expect(denied.status).toBe(401);
+    const none = await fetch(`${url}/stats`);
+    const ide = await fetch(`${url}/stats`, as(TOKEN));
+    const res = await fetch(`${url}/stats?days=3`, as(STATS_TOKEN));
+    const body = await res.json();
+    const blank = await fetch(`${url}/stats?days=%20`, as(STATS_TOKEN));
+
+    expect(none.status).toBe(401);
+    expect(ide.status).toBe(401);
     expect(res.status).toBe(200);
     expect(body.period.days).toBe(3);
-    const empty = await fetch(`${url}/stats?days=`, {
-      headers: { Authorization: `Bearer ${TOKEN}` },
-    });
-    expect((await empty.json()).period.days).toBe(7);
-    expect(body.tasks.total).toBe(1);
+    expect((await blank.json()).period.days).toBe(7);
+    expect(body.started.total).toBe(1);
     expect(body.byClient[0].client).toBe('kiro');
-    // MCP_DAILY_LIMIT unset in this config: the default budget
+    expect(body.open.stuck[0].goal).toBe('fix login');
     expect(body.budget).toMatchObject({
-      used: 7,
       limit: 200,
+      used: 7,
+      refused: 0,
       left: 193,
       freeCalls: 2,
     });

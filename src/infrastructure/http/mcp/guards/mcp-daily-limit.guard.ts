@@ -13,11 +13,16 @@ import { Request } from 'express';
 import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
 import { FREE_TOOLS } from '@infrastructure/mcp/mcp-server.factory';
 import { AssistantModel } from '@application/mcp/code-assistant.service.interface';
+import {
+  FREE_CALLS_PER_PAID,
+  mcpDailyLimit,
+  usageDay,
+  usageKey,
+} from '@application/mcp/mcp-budget';
 
 // The daily cap is in cost units, not calls, so it bounds spend: a call
 // weighs what its model costs. start_task plans on sonnet. An unknown tool
 // or model weighs the most — better one unit too many than a way around.
-export const DEFAULT_DAILY_LIMIT = 200;
 // Keyed by the models the tools accept: a new model needs a price here
 const MODEL_UNITS: Record<AssistantModel, number> = {
   sonnet: 1,
@@ -27,22 +32,6 @@ const MODEL_UNITS: Record<AssistantModel, number> = {
 const unitsOf = (model: string): number | undefined =>
   MODEL_UNITS[model as AssistantModel];
 const MAX_UNITS = MODEL_UNITS.fable;
-// report_outcome / list_open_tasks per unit before they are refused
-const FREE_CALLS_PER_PAID = 10;
-
-// MCP_DAILY_LIMIT as a budget in units. Unset or unreadable = the default:
-// per-task caps guide the protocol but do not bound spend (a caller can open
-// new tasks), so the day needs one. Exactly 0 = off.
-export function mcpDailyLimit(value?: string): number {
-  const n = Number(value);
-  if (value === undefined || value.trim() === '' || !Number.isFinite(n)) {
-    return DEFAULT_DAILY_LIMIT;
-  }
-  if (n === 0) return 0;
-  // A fraction or a negative number is a typo, not a request to switch
-  // the cap off
-  return n < 0 ? DEFAULT_DAILY_LIMIT : Math.max(1, Math.floor(n));
-}
 
 // A leaked MCP_TOKEN would otherwise buy unlimited paid model calls (a
 // financial DoS). This caps cost units per UTC day with a shared Mongo
@@ -79,11 +68,15 @@ export class McpDailyLimitGuard implements CanActivate {
     // Counted before the call, on purpose: each attempt reaches the paid API,
     // so a hard DoS cap must count attempts (including failures and client
     // retries), not only completions. A retried model call can bill twice.
-    const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+    const day = usageDay(new Date());
     // Free first: a batch refused on the free cap must not use paid quota
     if (free) {
       const freeLimit = limit * FREE_CALLS_PER_PAID;
-      const count = await this.incrementForDay(this.usage, `${day}:free`, free);
+      const count = await this.incrementForDay(
+        this.usage,
+        usageKey(day, 'free'),
+        free,
+      );
       if (count > freeLimit) {
         throw new HttpException(
           `Daily /mcp limit of ${freeLimit} task calls reached. Try again tomorrow (UTC).`,
@@ -92,7 +85,11 @@ export class McpDailyLimitGuard implements CanActivate {
       }
     }
     if (paid) {
-      const count = await this.incrementForDay(this.usage, day, paid);
+      const count = await this.incrementForDay(
+        this.usage,
+        usageKey(day, 'paid'),
+        paid,
+      );
       if (count > limit) {
         throw new HttpException(
           `Daily /mcp budget of ${limit} units reached (sonnet 1, opus 2, ` +

@@ -6,9 +6,9 @@ import {
   McpDayUsage,
 } from '@domain/mcp-task/mcp-usage.repository.interface';
 import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
+import { usageKey } from '@application/mcp/mcp-budget';
 
-// Reads the counters McpDailyLimitGuard keeps: one row per day for paid
-// units, one per day with a ":free" suffix for the free tools
+// Reads the counters McpDailyLimitGuard keeps (keys from mcp-budget)
 @Injectable()
 export class MongoMcpUsageRepository implements IMcpUsageRepository {
   constructor(
@@ -17,10 +17,10 @@ export class MongoMcpUsageRepository implements IMcpUsageRepository {
   ) {}
 
   async usageOn(day: string): Promise<McpDayUsage> {
-    const rows = await this.usage
-      .find({ day: { $in: [day, `${day}:free`] } })
-      .lean();
+    const paid = usageKey(day, 'paid');
+    const free = usageKey(day, 'free');
+    const rows = await this.usage.find({ day: { $in: [paid, free] } }).lean();
     const count = (key: string) => rows.find((r) => r.day === key)?.count ?? 0;
-    return { units: count(day), free: count(`${day}:free`) };
+    return { units: count(paid), free: count(free) };
   }
 }

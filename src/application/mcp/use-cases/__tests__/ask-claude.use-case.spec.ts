@@ -55,6 +55,8 @@ describe('AskClaudeUseCase', () => {
       context: 'short',
     });
     expect(reply).toContain('Your question is not answered yet');
+    const opened = [...tasks.rows.values()].find((t) => t.id !== ID);
+    expect(opened.startedVia).toBe('ask_advice');
     expect(reply).toContain('1. the failing code');
     expect(reply).toMatch(/ask_advice with task_id "t-[0-9a-f]{10}"/);
   });
@@ -70,6 +72,8 @@ describe('AskClaudeUseCase', () => {
     const task = [...tasks.rows.values()].find((t) => t.id !== ID);
     expect(task).toMatchObject({
       owner: 'kiro',
+      // Opened without start_task: counted as a skipped start in the stats
+      startedVia: 'ask_advice',
       goal: 'why does this throw?',
       status: 'answered',
       rounds: 1,

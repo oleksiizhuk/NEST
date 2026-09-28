@@ -2,6 +2,7 @@ import {
   MAX_FAILED_ATTEMPTS,
   MAX_HISTORY,
   McpOutcome,
+  McpStartedVia,
   McpTask,
   McpTaskEvent,
   McpTaskStatus,
@@ -38,6 +39,7 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
       this.now(),
       'inFlightSince' in patch ? patch.inFlightSince : t.inFlightSince,
       patch.failures ?? t.failures,
+      t.startedVia,
     );
     this.rows.set(t.id, next);
     return next;
@@ -48,7 +50,13 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     return t?.owner === owner ? t : undefined;
   }
 
-  async create(id: string, owner: string, goal: string, checklist: string[]) {
+  async create(
+    id: string,
+    owner: string,
+    goal: string,
+    checklist: string[],
+    startedVia: McpStartedVia = 'start_task',
+  ) {
     const t = new McpTask(
       id,
       owner,
@@ -59,6 +67,9 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
       [],
       this.now(),
       this.now(),
+      null,
+      0,
+      startedVia,
     );
     this.rows.set(id, t);
     return t;
@@ -151,11 +162,38 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     });
   }
 
+  // Like the Mongo stats projection: no checklist, no note text
+  private statsCopy(t: McpTask) {
+    return new McpTask(
+      t.id,
+      t.owner,
+      t.goal,
+      [],
+      t.status,
+      t.rounds,
+      t.history.map((e) => ({ ...e, note: '' })),
+      t.createdAt,
+      t.updatedAt,
+      t.inFlightSince,
+      t.failures,
+      t.startedVia,
+    );
+  }
+
   async listCreatedSince(since: Date, limit: number) {
     return [...this.rows.values()]
       .filter((t) => t.createdAt.getTime() >= since.getTime())
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((t) => this.statsCopy(t));
+  }
+
+  async listOpenAnyOwner(limit: number) {
+    return [...this.rows.values()]
+      .filter((t) => t.isOpen)
+      .sort((a, b) => a.updatedAt.getTime() - b.updatedAt.getTime())
+      .slice(0, limit)
+      .map((t) => this.statsCopy(t));
   }
 
   async listOpen(owner: string, limit: number) {

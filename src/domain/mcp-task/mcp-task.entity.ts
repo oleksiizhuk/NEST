@@ -54,6 +54,10 @@ export const MAX_HISTORY = 20;
 
 export type McpTaskEventKind = 'need_info' | 'answer' | 'report';
 
+// How the task began: with start_task as the protocol asks, or with a bare
+// ask_advice (the caller skipped gathering). Unknown for older tasks.
+export type McpStartedVia = 'start_task' | 'ask_advice';
+
 export interface McpTaskEvent {
   at: Date;
   kind: McpTaskEventKind;
@@ -101,6 +105,7 @@ export class McpTask {
     public readonly inFlightSince: Date | null = null,
     // Rounds given back because the model gave no answer
     public readonly failures = 0,
+    public readonly startedVia: McpStartedVia | null = null,
   ) {}
 
   get isOpen(): boolean {
