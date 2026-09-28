@@ -62,7 +62,9 @@ const INSTRUCTIONS =
   '3. If the reply asks for more (NEED_INFO), collect exactly that and call ' +
   'ask_advice again with the same task_id. Send the code from before again ' +
   'along with the new items: nothing you sent earlier is kept.\n' +
-  '4. Apply the answer and run its "How to verify" check.\n' +
+  '4. Apply the answer and run its "How to verify" check if it has one; ' +
+  'for an explanation with nothing to apply, report solved with details ' +
+  '"answered".\n' +
   '5. Always call report_outcome: solved, not_solved or partial, with what ' +
   'you ran and saw (abandoned if you drop the task). If it is not solved, ' +
   'call ask_advice again with the same task_id and the new output.\n' +

@@ -13,6 +13,8 @@ jest.mock('@anthropic-ai/sdk', () => ({
   })),
 }));
 
+import { MAX_REPLY_NOTE_CHARS } from '@domain/mcp-task/mcp-task.entity';
+
 // Imported after the mock so the service picks up the stubbed SDK
 import { AnthropicCodeAssistantService } from '@infrastructure/anthropic/anthropic-code-assistant.service';
 
@@ -264,6 +266,10 @@ describe('AnthropicCodeAssistantService', () => {
         needInfo: false,
         hypothesis: 'stale token; refresh first',
       });
+      // Found among the last 6 non-blank lines, not further up
+      expect(
+        parse('Fix.\nHYPOTHESIS: far\n1\n2\n3\n4\n5\n6').hypothesis,
+      ).toBeUndefined();
       // Found even when a few verify lines follow it
       expect(
         parse(
@@ -361,12 +367,20 @@ describe('AnthropicCodeAssistantService', () => {
       expect(fallback.length).toBeGreaterThanOrEqual(3);
       expect(fallback.join('\n')).toContain('package.json');
       expect(fallback.join('\n')).toContain('adb logcat');
-      // Every fallback line survives the 300-char checklist clip
-      expect(fallback.every((line) => line.length <= 300)).toBe(true);
+      // Every fallback line survives the checklist clip
+      expect(
+        fallback.every((line) => line.length <= MAX_REPLY_NOTE_CHARS),
+      ).toBe(true);
 
-      // Too short to be a checklist: the fixed list instead
-      mockFinalMessage.mockResolvedValueOnce(textMessage('- just one thing'));
+      // Under 3 items is not a checklist: the fixed list instead; 3 is kept
+      mockFinalMessage.mockResolvedValueOnce(textMessage('- a\n- b'));
       expect(await service.plan({ goal: 'fix login' })).toEqual(fallback);
+      mockFinalMessage.mockResolvedValueOnce(textMessage('- a\n- b\n- c'));
+      expect(await service.plan({ goal: 'fix login' })).toEqual([
+        'a',
+        'b',
+        'c',
+      ]);
     });
   });
 
