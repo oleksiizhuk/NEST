@@ -13,6 +13,8 @@ import { ReportOutcomeUseCase } from '@application/mcp/use-cases/report-outcome.
 import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks.use-case';
 import { CODE_ASSISTANT_SERVICE } from '@application/mcp/code-assistant.service.interface';
 import { MCP_TASK_REPOSITORY } from '@domain/mcp-task/mcp-task.repository.interface';
+import { MCP_USAGE_REPOSITORY } from '@domain/mcp-task/mcp-usage.repository.interface';
+import { GetMcpStatsUseCase } from '@application/mcp/use-cases/get-mcp-stats.use-case';
 import { InMemoryTaskRepository } from '@application/mcp/__tests__/in-memory-task.repository';
 
 const TOKEN = 'test-mcp-token';
@@ -53,6 +55,11 @@ describe('McpController (streamable HTTP)', () => {
         ListOpenTasksUseCase,
         { provide: CODE_ASSISTANT_SERVICE, useValue: assistant },
         { provide: MCP_TASK_REPOSITORY, useValue: tasks },
+        {
+          provide: MCP_USAGE_REPOSITORY,
+          useValue: { usageOn: async () => ({ units: 7, free: 2 }) },
+        },
+        GetMcpStatsUseCase,
         {
           provide: ConfigService,
           useValue: {
@@ -241,6 +248,31 @@ describe('McpController (streamable HTTP)', () => {
     });
     expect(response.status).toBe(401);
     expect(assistant.ask).not.toHaveBeenCalled();
+  });
+
+  it('GET /mcp/stats needs the token and returns the numbers without touching the model', async () => {
+    await tasks.create('t-0000000001', 'kiro', 'fix login', []);
+
+    const denied = await fetch(`${url}/stats`);
+    const res = await fetch(`${url}/stats?days=3`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    const body = await res.json();
+
+    expect(denied.status).toBe(401);
+    expect(res.status).toBe(200);
+    expect(body.period.days).toBe(3);
+    expect(body.tasks.total).toBe(1);
+    expect(body.byClient[0].client).toBe('kiro');
+    // MCP_DAILY_LIMIT unset in this config: the default budget
+    expect(body.budget).toMatchObject({
+      used: 7,
+      limit: 200,
+      left: 193,
+      freeCalls: 2,
+    });
+    expect(assistant.ask).not.toHaveBeenCalled();
+    expect(assistant.plan).not.toHaveBeenCalled();
   });
 
   it('answers GET and DELETE with 405 (stateless server)', async () => {

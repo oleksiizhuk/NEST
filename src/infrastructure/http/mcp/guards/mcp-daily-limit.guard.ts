@@ -30,6 +30,20 @@ const MAX_UNITS = MODEL_UNITS.fable;
 // report_outcome / list_open_tasks per unit before they are refused
 const FREE_CALLS_PER_PAID = 10;
 
+// MCP_DAILY_LIMIT as a budget in units. Unset or unreadable = the default:
+// per-task caps guide the protocol but do not bound spend (a caller can open
+// new tasks), so the day needs one. Exactly 0 = off.
+export function mcpDailyLimit(value?: string): number {
+  const n = Number(value);
+  if (value === undefined || value.trim() === '' || !Number.isFinite(n)) {
+    return DEFAULT_DAILY_LIMIT;
+  }
+  if (n === 0) return 0;
+  // A fraction or a negative number is a typo, not a request to switch
+  // the cap off
+  return n < 0 ? DEFAULT_DAILY_LIMIT : Math.max(1, Math.floor(n));
+}
+
 // A leaked MCP_TOKEN would otherwise buy unlimited paid model calls (a
 // financial DoS). This caps cost units per UTC day with a shared Mongo
 // counter, incremented atomically so concurrent serverless invocations
@@ -45,7 +59,7 @@ export class McpDailyLimitGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const limit = McpDailyLimitGuard.limitFrom(
+    const limit = mcpDailyLimit(
       this.configService.get<string>('MCP_DAILY_LIMIT'),
     );
     if (!this.usage || limit === 0) {
@@ -88,19 +102,6 @@ export class McpDailyLimitGuard implements CanActivate {
       }
     }
     return true;
-  }
-
-  // Unset or unreadable = the default: per-task caps guide the protocol but
-  // do not bound spend (a caller can open new tasks), so the day needs one
-  private static limitFrom(value?: string): number {
-    const n = Number(value);
-    if (value === undefined || value.trim() === '' || !Number.isFinite(n)) {
-      return DEFAULT_DAILY_LIMIT;
-    }
-    if (n === 0) return 0;
-    // A fraction or a negative number is a typo, not a request to switch
-    // the cap off
-    return n < 0 ? DEFAULT_DAILY_LIMIT : Math.max(1, Math.floor(n));
   }
 
   // A call without `model` runs on MCP_AI_MODEL (opus when unset); a raw

@@ -165,6 +165,15 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     return result.modifiedCount > 0;
   }
 
+  async listCreatedSince(since: Date, limit: number): Promise<McpTask[]> {
+    const docs = await this.tasks
+      .find({ createdAt: { $gte: since } })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+    return docs.map((d) => McpTaskMapper.toDomain(d));
+  }
+
   async listOpen(owner: string, limit: number): Promise<McpTask[]> {
     const docs = await this.tasks
       .find({ owner, status: OPEN })

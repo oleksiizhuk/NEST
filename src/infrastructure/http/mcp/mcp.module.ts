@@ -7,6 +7,9 @@ import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case
 import { ReportOutcomeUseCase } from '@application/mcp/use-cases/report-outcome.use-case';
 import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks.use-case';
 import { MCP_TASK_REPOSITORY } from '@domain/mcp-task/mcp-task.repository.interface';
+import { MCP_USAGE_REPOSITORY } from '@domain/mcp-task/mcp-usage.repository.interface';
+import { MongoMcpUsageRepository } from '@infrastructure/database/repositories/mongo-mcp-usage.repository';
+import { GetMcpStatsUseCase } from '@application/mcp/use-cases/get-mcp-stats.use-case';
 import { MongoMcpTaskRepository } from '@infrastructure/database/repositories/mongo-mcp-task.repository';
 import {
   McpTaskDocument,
@@ -36,6 +39,8 @@ import {
       useClass: AnthropicCodeAssistantService,
     },
     { provide: MCP_TASK_REPOSITORY, useClass: MongoMcpTaskRepository },
+    { provide: MCP_USAGE_REPOSITORY, useClass: MongoMcpUsageRepository },
+    GetMcpStatsUseCase,
     AskClaudeUseCase,
     StartTaskUseCase,
     ReportOutcomeUseCase,

@@ -58,4 +58,6 @@ export interface IMcpTaskRepository {
   escalate(id: string, now: Date): Promise<boolean>;
   // The owner's open tasks, most recently touched first
   listOpen(owner: string, limit: number): Promise<McpTask[]>;
+  // Every client's tasks started since `since`, newest first (stats)
+  listCreatedSince(since: Date, limit: number): Promise<McpTask[]>;
 }
