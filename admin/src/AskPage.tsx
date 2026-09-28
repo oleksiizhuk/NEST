@@ -4,6 +4,10 @@ import { modelCallBody, TokenBadge, useConfirm } from './confirm';
 
 const STARTERS = ['Почему так?', 'Это плохо или хорошо?', 'Что с этим делать?'];
 
+// Topics whose first paid question was confirmed in this visit, shared by
+// the page and the window so one topic never asks twice
+const confirmedTopics = { current: new Set<string>() };
+
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', {
     day: 'numeric',
@@ -27,8 +31,7 @@ export function AskPage({
   variant?: 'page' | 'dock';
 }) {
   const [modal, ask] = useConfirm();
-  // Topics where the first paid question was confirmed in this visit
-  const confirmed = useRef(new Set<string>());
+  const confirmed = confirmedTopics;
   const [showTopics, setShowTopics] = useState(false);
   const [list, setList] = useState<TopicList | null>(null);
   const [topic, setTopic] = useState<Topic | null>(null);
@@ -65,8 +68,17 @@ export function AskPage({
     let live = true;
     api
       .topic(topicId)
-      .then((t) => live && setTopic(t))
-      .catch(handle);
+      .then((t) => {
+        if (!live) return;
+        setTopic(t);
+        // Opened from elsewhere (a new topic): the list does not have it yet
+        if (list && !list.topics.some((x) => x.id === t.id)) loadList();
+      })
+      .catch((e) => {
+        // A remembered topic deleted meanwhile: start clean, not stuck on it
+        if (variant === 'dock' && !(e instanceof Unauthorized)) onOpen(null);
+        else handle(e);
+      });
     return () => {
       live = false;
     };

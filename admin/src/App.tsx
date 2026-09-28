@@ -1,4 +1,11 @@
-import { Fragment, ReactNode, useCallback, useEffect, useState } from 'react';
+import {
+  Fragment,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { api, session, SettingsView, Unauthorized, Usage } from './api';
 import { SettingsForm } from './SettingsForm';
 import { UsagePanel } from './UsagePanel';
@@ -247,10 +254,12 @@ export function App() {
   };
 
   const [dock, setDock] = useState<DockState>(loadDock);
-  const changeDock = (next: DockState) => {
-    setDock(next);
-    saveDock(next);
-  };
+  const changeDock = (update: (prev: DockState) => DockState) =>
+    setDock((prev) => update(prev));
+  useEffect(() => saveDock(dock), [dock]);
+  // The page right now, for code that resumes after a network wait
+  const pageRef = useRef(page);
+  pageRef.current = page;
 
   const openTopic = (id: string | null) => {
     window.location.hash = id ? `#/ask/${id}` : '#/ask';
@@ -264,12 +273,12 @@ export function App() {
   const startTopic = async (title: string, context: string) => {
     try {
       const topic = await api.createTopic(title, context);
-      if (page === 'ask') openTopic(topic.id);
+      if (pageRef.current === 'ask') openTopic(topic.id);
       else
-        changeDock({
-          mode: dock.mode === 'max' ? 'max' : 'open',
+        changeDock((prev) => ({
+          mode: prev.mode === 'max' ? 'max' : 'open',
           topicId: topic.id,
-        });
+        }));
     } catch (e) {
       if (e instanceof Unauthorized) logout();
       else setError((e as Error).message);
@@ -447,13 +456,12 @@ export function App() {
             )}
           </main>
         </div>
-        {page !== 'ask' && (
-          <ChatDock
-            state={dock}
-            onChange={changeDock}
-            onUnauthorized={logout}
-          />
-        )}
+        <ChatDock
+          state={dock}
+          onChange={changeDock}
+          onUnauthorized={logout}
+          suppressed={page === 'ask' || menuOpen}
+        />
       </div>
     </AskContext.Provider>
   );
