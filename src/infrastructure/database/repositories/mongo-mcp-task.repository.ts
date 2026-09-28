@@ -166,8 +166,11 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
   }
 
   async listCreatedSince(since: Date, limit: number): Promise<McpTask[]> {
+    // Stats read kinds and counts, not the text: notes and checklists stay
+    // in the database
     const docs = await this.tasks
       .find({ createdAt: { $gte: since } })
+      .select('-checklist -history.note')
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();

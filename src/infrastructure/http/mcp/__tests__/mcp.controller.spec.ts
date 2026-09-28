@@ -262,6 +262,10 @@ describe('McpController (streamable HTTP)', () => {
     expect(denied.status).toBe(401);
     expect(res.status).toBe(200);
     expect(body.period.days).toBe(3);
+    const empty = await fetch(`${url}/stats?days=`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    expect((await empty.json()).period.days).toBe(7);
     expect(body.tasks.total).toBe(1);
     expect(body.byClient[0].client).toBe('kiro');
     // MCP_DAILY_LIMIT unset in this config: the default budget

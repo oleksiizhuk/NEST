@@ -50,7 +50,8 @@ export class McpController {
   @Get('stats')
   stats(@Query('days') days?: string): Promise<McpStatsReport> {
     return this.getStats.execute({
-      days: days === undefined ? undefined : Number(days),
+      // Absent or empty (?days=) means the default, not zero days
+      days: days ? Number(days) : undefined,
       limit: mcpDailyLimit(this.configService.get<string>('MCP_DAILY_LIMIT')),
     });
   }

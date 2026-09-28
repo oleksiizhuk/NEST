@@ -28,7 +28,8 @@ export class McpTaskMapper {
       (doc.history ?? []).map((e) => ({
         at: new Date(e.at),
         kind: e.kind,
-        note: e.note,
+        // Left out by the stats query, which reads kinds only
+        note: e.note ?? '',
         ...(e.outcome ? { outcome: e.outcome } : {}),
       })),
       new Date(doc.createdAt),

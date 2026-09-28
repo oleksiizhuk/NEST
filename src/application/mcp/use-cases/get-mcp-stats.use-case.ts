@@ -48,11 +48,12 @@ export class GetMcpStatsUseCase {
     const since = new Date(now.getTime() - days * 24 * 3_600_000);
     const day = now.toISOString().slice(0, 10);
     const [tasks, usage] = await Promise.all([
-      this.tasks.listCreatedSince(since, MAX_TASKS),
+      // One more than the cap tells a cut list from an exact one
+      this.tasks.listCreatedSince(since, MAX_TASKS + 1),
       this.usage.usageOn(day),
     ]);
     return {
-      ...computeMcpStats(tasks, now, days),
+      ...computeMcpStats(tasks.slice(0, MAX_TASKS), now, days),
       budget: {
         day,
         used: usage.units,
@@ -60,7 +61,7 @@ export class GetMcpStatsUseCase {
         left: request.limit ? Math.max(0, request.limit - usage.units) : null,
         freeCalls: usage.free,
       },
-      capped: tasks.length >= MAX_TASKS,
+      capped: tasks.length > MAX_TASKS,
     };
   }
 }
