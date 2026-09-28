@@ -30,10 +30,17 @@ export function AskPage({
   const [list, setList] = useState<TopicList | null>(null);
   const [topic, setTopic] = useState<Topic | null>(null);
   const [draft, setDraft] = useState('');
-  // The question being answered, shown until the answer arrives
-  const [pending, setPending] = useState<string | null>(null);
+  // The question being answered and its topic, shown until the answer
+  // arrives; switching topics meanwhile leaves it running there
+  const [waiting, setWaiting] = useState<{ id: string; text: string } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  // The topic on screen now, for answers that arrive after a switch
+  const shown = useRef(topicId);
+  shown.current = topicId;
+  const pending = waiting?.id === topicId ? waiting.text : null;
 
   const handle = (e: unknown) => {
     if (e instanceof Unauthorized) onUnauthorized();
@@ -50,7 +57,7 @@ export function AskPage({
   useEffect(() => {
     setTopic(null);
     setError(null);
-    setPending(null);
+    setDraft('');
     if (!topicId) return;
     let live = true;
     api
@@ -69,19 +76,23 @@ export function AskPage({
 
   const send = async (text: string) => {
     const question = text.trim();
-    if (!topic || !question || pending) return;
-    setPending(question);
+    if (!topic || !question || waiting) return;
+    const id = topic.id;
+    setWaiting({ id, text: question });
     setError(null);
     setDraft('');
     try {
-      setTopic(await api.askTopic(topic.id, question));
+      const answered = await api.askTopic(id, question);
+      if (shown.current === id) setTopic(answered);
       loadList();
     } catch (e) {
-      // Keep the question so it can be sent again
-      setDraft(question);
-      handle(e);
+      // Keep the question so it can be sent again, in its own topic only
+      if (shown.current === id) {
+        setDraft(question);
+        handle(e);
+      } else if (e instanceof Unauthorized) onUnauthorized();
     } finally {
-      setPending(null);
+      setWaiting(null);
     }
   };
 
@@ -187,7 +198,7 @@ export function AskPage({
                   key={i}
                   m={m}
                   onChoose={
-                    m === last && !pending
+                    m === last && !waiting
                       ? (label) => send(`Выбираю вариант: ${label}`)
                       : undefined
                   }
@@ -209,7 +220,7 @@ export function AskPage({
                         <button
                           key={s}
                           className="ghost"
-                          disabled={left === 0}
+                          disabled={left === 0 || Boolean(waiting)}
                           onClick={() => send(s)}
                         >
                           {s}
@@ -246,11 +257,16 @@ export function AskPage({
               <div className="actions">
                 <button
                   type="submit"
-                  disabled={Boolean(pending) || !draft.trim() || left === 0}
+                  disabled={Boolean(waiting) || !draft.trim() || left === 0}
                 >
                   Отправить
                 </button>
                 <TokenBadge />
+                {waiting && !pending && (
+                  <span className="muted small">
+                    Бот ещё отвечает в другой теме.
+                  </span>
+                )}
               </div>
             </form>
           </>

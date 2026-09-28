@@ -36,7 +36,8 @@ const setup = (current = topic(), used = 0) => {
     })),
     release: jest.fn().mockResolvedValue(undefined),
     remove: jest.fn(),
-    countQuestionsSince: jest.fn().mockResolvedValue(used),
+    reserve: jest.fn().mockImplementation(async (_day, limit) => used < limit),
+    used: jest.fn().mockResolvedValue(used),
   };
   const answer = {
     execute: jest
@@ -100,7 +101,22 @@ describe('AdminTopicsUseCase', () => {
       useCase.ask('t1', 7, 'вопрос', { canReadCode: true }, now),
     ).rejects.toBeInstanceOf(TopicLimitError);
     expect(answer.execute).not.toHaveBeenCalled();
-    expect(store.claim).not.toHaveBeenCalled();
+    expect(store.reserve).toHaveBeenCalledWith(
+      '2026-09-28',
+      ADMIN_CHAT_DAILY_LIMIT,
+      now,
+    );
+    // The topic is not left locked
+    expect(store.release).toHaveBeenCalledWith('t1', 7);
+  });
+
+  it('does not spend a slot on a topic that is busy', async () => {
+    const { useCase, store } = setup();
+    store.claim.mockResolvedValueOnce(null);
+    await expect(
+      useCase.ask('t1', 7, 'вопрос', { canReadCode: true }, now),
+    ).rejects.toBeInstanceOf(TopicError);
+    expect(store.reserve).not.toHaveBeenCalled();
   });
 
   it('refuses a second question while one is answered', async () => {

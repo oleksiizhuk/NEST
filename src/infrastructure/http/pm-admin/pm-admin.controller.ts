@@ -44,9 +44,10 @@ import {
 } from '@application/project-manager/use-cases/admin-topics.use-case';
 
 export class AdminTopicBody {
+  // Trimmed to 120 by the use case; a long signal text must still open
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(2000)
   title?: string;
 
   // What the page showed; trimmed to the limit rather than refused

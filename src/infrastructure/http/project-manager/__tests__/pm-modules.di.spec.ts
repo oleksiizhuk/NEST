@@ -37,6 +37,7 @@ const MODELS = [
   'PmIndex',
   'PmIndexJob',
   'PmAdminTopic',
+  'PmAdminTopicDay',
 ];
 
 describe('project-manager module wiring', () => {

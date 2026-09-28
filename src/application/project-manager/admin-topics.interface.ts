@@ -49,6 +49,8 @@ export interface IAdminTopics {
   ): Promise<AdminTopic | null>;
   release(id: string, userId: number): Promise<void>;
   remove(id: string, userId: number): Promise<void>;
-  // Questions asked since `since`, everyone together: the daily cap
-  countQuestionsSince(since: Date): Promise<number>;
+  // The daily cap, everyone together. `reserve` takes one question for the
+  // UTC day atomically and is never given back (a failed answer still cost)
+  reserve(day: string, limit: number, now: Date): Promise<boolean>;
+  used(day: string): Promise<number>;
 }

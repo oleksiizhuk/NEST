@@ -91,6 +91,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
 import { PM_ADMIN_TOPICS } from '@application/project-manager/admin-topics.interface';
 import { MongoAdminTopics } from '@infrastructure/database/repositories/mongo-admin-topics';
 import { PmAdminTopicSchema } from '@infrastructure/database/schemas/pm-admin-topic.schema';
+import { PmAdminTopicDaySchema } from '@infrastructure/database/schemas/pm-admin-topic-day.schema';
 
 @Module({
   imports: [
@@ -112,6 +113,7 @@ import { PmAdminTopicSchema } from '@infrastructure/database/schemas/pm-admin-to
       { name: 'PmIndex', schema: PmIndexSchema },
       { name: 'PmIndexJob', schema: PmIndexJobSchema },
       { name: 'PmAdminTopic', schema: PmAdminTopicSchema },
+      { name: 'PmAdminTopicDay', schema: PmAdminTopicDaySchema },
     ]),
   ],
   providers: [

@@ -8,6 +8,7 @@ import {
   TopicSummary,
 } from '@application/project-manager/admin-topics.interface';
 import { PmAdminTopicDocument } from '@infrastructure/database/schemas/pm-admin-topic.schema';
+import { PmAdminTopicDayDocument } from '@infrastructure/database/schemas/pm-admin-topic-day.schema';
 
 // Newest topics a person sees in the list
 const LIST_LIMIT = 50;
@@ -42,7 +43,30 @@ export class MongoAdminTopics implements IAdminTopics {
   constructor(
     @InjectModel('PmAdminTopic')
     private readonly model: Model<PmAdminTopicDocument>,
+    @InjectModel('PmAdminTopicDay')
+    private readonly days: Model<PmAdminTopicDayDocument>,
   ) {}
+
+  // Increment only below the limit; at the limit the filter misses and the
+  // upsert hits the unique day index, which means "full"
+  async reserve(day: string, limit: number, now: Date): Promise<boolean> {
+    try {
+      const doc = await this.days.findOneAndUpdate(
+        { day, n: { $lt: limit } },
+        { $inc: { n: 1 }, $setOnInsert: { at: now } },
+        { upsert: true, new: true },
+      );
+      return Boolean(doc);
+    } catch (error) {
+      if ((error as { code?: number }).code === 11000) return false;
+      throw error;
+    }
+  }
+
+  async used(day: string): Promise<number> {
+    const doc = await this.days.findOne({ day }).lean();
+    return doc?.n ?? 0;
+  }
 
   async list(userId: number): Promise<TopicSummary[]> {
     const docs = await this.model.aggregate<{
@@ -146,15 +170,5 @@ export class MongoAdminTopics implements IAdminTopics {
   async remove(id: string, userId: number): Promise<void> {
     if (!isValidObjectId(id)) return;
     await this.model.deleteOne({ _id: id, userId });
-  }
-
-  async countQuestionsSince(since: Date): Promise<number> {
-    const [row] = await this.model.aggregate<{ n: number }>([
-      { $match: { updatedAt: { $gte: since } } },
-      { $unwind: '$messages' },
-      { $match: { 'messages.role': 'user', 'messages.at': { $gte: since } } },
-      { $count: 'n' },
-    ]);
-    return row?.n ?? 0;
   }
 }
