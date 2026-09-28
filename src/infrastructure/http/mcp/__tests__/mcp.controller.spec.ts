@@ -123,6 +123,11 @@ describe('McpController (streamable HTTP)', () => {
       },
     });
     expect(instructions).toContain('Always call report_outcome');
+    // The bridge serves React Native: said to the caller as well
+    expect(instructions).toContain('React Native');
+    expect(instructions).toContain('nothing you sent earlier is kept');
+    expect(tools[0].description).toContain('React Native');
+    expect(tools[1].description).toContain('React Native');
   });
 
   it('runs a task from start to a report', async () => {

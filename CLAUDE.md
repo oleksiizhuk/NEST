@@ -52,8 +52,8 @@ src/
 │   │   ├── schemas/                 # Mongoose schemas (UserDocument, ProductDocument, ShoppingCartDocument)
 │   │   ├── mappers/                 # DB doc → Domain entity (UserMapper, ProductMapper, ShoppingCartMapper)
 │   │   └── repositories/           # MongoUserRepository, MongoProductRepository, MongoShoppingCartRepository
-│   ├── anthropic/                   # AnthropicCodeAssistantService (Claude behind /mcp)
-│   ├── mcp/                         # createMcpServer() — task tools + protocol instructions
+│   ├── anthropic/                   # AnthropicCodeAssistantService (Claude behind /mcp) + code-assistant.prompts.ts
+│   ├── mcp/                         # createMcpServer() — start_task, ask_advice, report_outcome, list_open_tasks + protocol instructions
 │   └── http/
 │       ├── user/                    # Controller + DTO + Module
 │       ├── auth/                    # Controller + DTOs + Guards + Strategies + Module
@@ -218,7 +218,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS`, chats switched on with `/pm_on`, and 
 | POST | `/shoppingCart/completeOrder` | JWT | Complete order, delete the cart |
 | POST | `/email/send`, `/email/sendEmailTemple` | JWT | Email the caller's own address only |
 | POST | `/email/convert` | JWT | OCR an uploaded image (`file`, ≤ 5 MB) |
-| POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint: `start_task`, `ask_advice`, `report_outcome`, `list_open_tasks` |
+| POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint (React Native only): `start_task { goal, context? }`, `ask_advice { task_id?, prompt, context?, model? }`, `report_outcome { task_id, status, details }`, `list_open_tasks` |
 | GET | `/mcp/stats?days=7` | Bearer `MCP_STATS_TOKEN` | MCP usage: tasks by status and client, solved share, how often IDEs report back, rounds and NEED_INFO share, today's budget, longest-idle open tasks (days 1–30) |
 | GET | `/cron/pm/actions`, `/cron/pm/ask?q=`, `/cron/pm/targets`, `/cron/pm/feedback` | Bearer `CRON_SECRET` | Diagnostics: recent actions with outcome, one question through the PM pipeline, dev/staging sign-in check, 👍/👎 and time/tokens of recent answers |
 | GET | `/cron/pm/watch?dry=1`, `/cron/pm/eval`, `/cron/pm/memory`, `/cron/pm/golden` · PUT `/cron/pm/golden` | Bearer `CRON_SECRET` | Alerts (Vercel Cron 08/11/14 UTC weekdays; `dry=1` lists without sending), weekly golden eval (Mon 02:00, 03:00, 04:00 UTC), memory records, golden questions |
@@ -227,7 +227,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS`, chats switched on with `/pm_on`, and 
 
 ### MCP endpoint (`/mcp`)
 
-Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. It exists for React Native work only (Expo or bare, iOS and Android): the answer prompt, the start_task checklist, NEED_INFO and "How to verify" all speak mobile — Expo vs bare and versions, the failing platform, the right log (Metro, Xcode, adb logcat, Gradle), native config, Metro reload vs native rebuild. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405.
+Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. It exists for React Native work only (Expo with CNG, Expo with committed native folders, or bare; iOS and Android). The texts live in `infrastructure/anthropic/code-assistant.prompts.ts`, the shared RN lists (versions, project kinds, logs, native config) in `application/mcp/react-native.ts`: the answer prompt covers CNG vs committed folders (never `prebuild --clean` on committed ones), Expo Go vs development builds, env (EXPO_PUBLIC_* vs react-native-config vs EAS), release-only failures and release runs, OTA vs native fixes, `expo-doctor` and toolchain versions, cache resets, iOS signing and monorepos; NEED_INFO asks for at most 3 items (one matching log); "How to verify" appears only when there is a change and names the one step it takes; HYPOTHESIS is the very last line (the parser looks 6 lines up). Context is never kept between rounds, so every footer tells the caller to resend the code with the new items. A planning result under 3 items falls back to the fixed RN list. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405.
 
 The caller is often a weak model that gets lost in a lot of code, so the bridge runs a task protocol (sent as server `instructions` and repeated as a NEXT STEP line at the end of every reply):
 - `start_task { goal, context? }` opens a task (`t-` + 10 hex) and returns a React Native checklist of what to collect (Expo or bare and versions, the code involved, for a bug the failing platform and the right log, native config when relevant, how to verify), planned by sonnet at low effort (a fixed RN list if that fails), plus the caller's tasks from the last day still waiting for a report.

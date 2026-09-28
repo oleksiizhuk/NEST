@@ -11,6 +11,7 @@ import {
   MAX_TASK_ROUNDS,
 } from '@domain/mcp-task/mcp-task.entity';
 import { McpToolError } from '@application/mcp/mcp-tool.error';
+import { RN_LOGS_SHORT, RN_VERSIONS } from '@application/mcp/react-native';
 
 export const MCP_SERVER_NAME = 'nest-claude';
 export const MCP_SERVER_VERSION = '2.0.0';
@@ -54,13 +55,13 @@ const INSTRUCTIONS =
   '1. start_task with the goal. You get a task_id and a checklist of what ' +
   'to collect.\n' +
   '2. Collect the checklist from the codebase and docs: read the files, ' +
-  'run the commands, open the docs. Always include package.json (RN and ' +
-  'Expo versions); for a bug also which platform fails and the right log ' +
-  '(Metro, Xcode, adb logcat or Gradle). Then call ask_advice with the ' +
-  'task_id, ' +
+  `run the commands, open the docs. Always include ${RN_VERSIONS}; for a ` +
+  `bug also which platform fails and the one matching log (${RN_LOGS_SHORT}). ` +
+  'Then call ask_advice with the task_id, ' +
   'your question in prompt and what you collected in context.\n' +
   '3. If the reply asks for more (NEED_INFO), collect exactly that and call ' +
-  'ask_advice again with the same task_id.\n' +
+  'ask_advice again with the same task_id. Send the code from before again ' +
+  'along with the new items: nothing you sent earlier is kept.\n' +
   '4. Apply the answer and run its "How to verify" check.\n' +
   '5. Always call report_outcome: solved, not_solved or partial, with what ' +
   'you ran and saw (abandoned if you drop the task). If it is not solved, ' +
@@ -124,9 +125,9 @@ export function createMcpServer(
       description:
         'Call this first for any React Native bug to fix or change to make. ' +
         'Opens a task and returns its task_id and a checklist of what to ' +
-        'collect before asking (Expo or bare and versions, the platform, the ' +
-        'code, the right log, native config, how to verify). Also lists ' +
-        'earlier tasks still waiting for your report.',
+        'collect before asking (versions, the project kind, the code, for a ' +
+        'bug the platform and the matching log, native config, how to ' +
+        'verify). Also lists earlier tasks still waiting for your report.',
       inputSchema: {
         goal: z
           .string()

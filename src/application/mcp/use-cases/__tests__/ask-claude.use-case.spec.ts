@@ -174,6 +174,8 @@ describe('AskClaudeUseCase', () => {
     );
     expect(task.history[0].note.length).toBeLessThanOrEqual(300);
     expect(reply).toContain(`call ask_advice again with task_id "${ID}"`);
+    // Context is never stored: the caller must resend the code
+    expect(reply).toContain('the code you sent before plus the new items');
     expect(reply).not.toContain('report_outcome');
   });
 
