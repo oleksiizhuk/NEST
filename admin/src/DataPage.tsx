@@ -5,7 +5,7 @@ const NAMES: Record<IndexSource, string> = {
   jira: 'Задачи (Jira)',
   confluence: 'Документация (Confluence)',
   figma: 'Дизайн (Figma)',
-  github: 'Pull requests (GitHub)',
+  github: 'PR — изменения кода (GitHub)',
 };
 const WHAT: Record<IndexSource, string> = {
   jira: 'все задачи в любом статусе: описание, автор, исполнитель, комментарии',
@@ -161,7 +161,7 @@ export function DataPage({ onUnauthorized }: { onUnauthorized: () => void }) {
         <div className="actions">
           <button onClick={collect} disabled={running}>
             {running
-              ? 'Собираю… можно не закрывать, займёт несколько минут'
+              ? 'Собираю… не уходите со страницы — это займёт несколько минут'
               : 'Собрать всё'}
           </button>
           {running && (
@@ -176,8 +176,8 @@ export function DataPage({ onUnauthorized }: { onUnauthorized: () => void }) {
         <h2>Сводка проекта</h2>
         <p className="muted">
           Короткая сводка, которую бот держит в каждом ответе: открытые задачи,
-          PR, CI, изменения дизайна и выбранные страницы. Обновляется утром и в
-          08, 11, 14 UTC.
+          PR, CI, изменения дизайна и выбранные страницы. Обновляется утром и
+          ещё несколько раз в день.
         </p>
         <div className="actions">
           <button

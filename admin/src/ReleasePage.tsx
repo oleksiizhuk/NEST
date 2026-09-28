@@ -83,7 +83,9 @@ function Burnup({ points }: { points: ReleaseData['burnup'] }) {
         <span>
           <i className="swatch done" /> сделано
         </span>
-        <span className="muted">наведите на график, чтобы увидеть день</span>
+        <span className="muted">
+          наведите или нажмите на график, чтобы увидеть день
+        </span>
       </figcaption>
     </figure>
   );
@@ -111,8 +113,9 @@ function SprintsCard({
       <section className="card">
         <h2>Обещали — сделали</h2>
         <p className="muted small">
-          Чтобы видеть спринты, задайте в Vercel номер доски Jira
-          (PM_JIRA_BOARD_ID) и обновите данные.
+          Спринт — отрезок в 1–2 недели, на который команда заранее берёт
+          задачи. Чтобы видеть, сколько из обещанного сделано, нужно указать
+          доску Jira — попросите разработчика (переменная PM_JIRA_BOARD_ID).
         </p>
       </section>
     );
@@ -126,6 +129,7 @@ function SprintsCard({
     <section className="card">
       <h2>Обещали — сделали</h2>
       <p className="muted small">
+        Спринт — отрезок в 1–2 недели, на который команда заранее берёт задачи.
         «Обещали» — задачи, которые были в спринте на старте; добавленные по
         ходу считаются отдельно.{' '}
         {avg !== null && `В среднем выполняется ${avg}% обещанного.`} Устойчиво
@@ -213,7 +217,7 @@ function WhatIf({ r }: { r: ReleaseData }) {
           Убрать из релиза низкий приоритет ({low})
         </label>
         <label>
-          Темп команды: {pacePct}%
+          Темп по релизу: {pacePct}%
           <input
             type="range"
             min={50}
@@ -301,11 +305,15 @@ export function ReleasePage({
     return (
       <>
         <section className="card">
-          <h2>Релиз не задан</h2>
+          <h2>Релиз ещё не выбран</h2>
           <p className="muted">
-            Укажите в Vercel версию релиза в Jira (PM_RELEASE_VERSION) и дату
-            (PM_RELEASE_DATE), затем обновите данные. Страница считает всё по
-            задачам этой версии.
+            Нужно указать, какую версию в Jira считать релизом и дату выпуска, —
+            попросите разработчика. После этого здесь появится прогноз: успеваем
+            ли к дате и что можно отложить.
+          </p>
+          <p className="muted small">
+            Для разработчика: переменные PM_RELEASE_VERSION и PM_RELEASE_DATE в
+            Vercel, затем обновить данные.
           </p>
         </section>
         {view && <SprintsCard rows={view.sprints} error={view.sprintsError} />}
@@ -390,14 +398,15 @@ export function ReleasePage({
           }}
         >
           <label className="small">
-            Считать с{r.creep.custom ? '' : ' (сейчас — последние 30 дней)'}{' '}
+            С какой даты считать задачи «добавленными по ходу»
+            {r.creep.custom ? '' : ' (сейчас — последние 30 дней)'}:{' '}
             <input
               type="date"
               value={baseline}
               onChange={(e) => setBaseline(e.target.value)}
             />
           </label>
-          <button type="submit">OK</button>
+          <button type="submit">Сохранить</button>
           {r.creep.custom && (
             <button
               type="button"
@@ -412,7 +421,7 @@ export function ReleasePage({
             className="ghost"
             onClick={() => saveBaseline(new Date().toISOString().slice(0, 10))}
           >
-            Зафиксировать сегодня
+            Считать с сегодняшнего дня
           </button>
         </form>
         <p className="small">
@@ -513,6 +522,9 @@ export function ReleasePage({
 
       <section className="card">
         <h2>Jira против кода</h2>
+        <p className="muted small">
+          Задачи, где статус в Jira не совпадает с тем, что видно в коде.
+        </p>
         {!view.hasCode ? (
           <p className="muted">GitHub не подключён — сверять не с чем.</p>
         ) : r.mismatches.length ? (

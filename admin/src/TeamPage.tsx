@@ -116,7 +116,7 @@ function AwayEditor({
         placeholder="отпуск, больничный…"
         onChange={(e) => setNote(e.target.value)}
       />
-      <button type="submit">OK</button>
+      <button type="submit">Сохранить</button>
       {p.away && (
         <button
           type="button"
@@ -126,7 +126,7 @@ function AwayEditor({
             setEditing(false);
           }}
         >
-          Вернулся
+          Снять отметку
         </button>
       )}
       <button type="button" className="ghost" onClick={() => setEditing(false)}>
@@ -160,9 +160,10 @@ function ThresholdsPanel({
   if (!open)
     return (
       <button className="link small" onClick={() => setOpen(true)}>
-        Пороги сигналов: в работе &gt; {value.wipLimit}, застряла &gt;{' '}
-        {value.staleDays} дн., ревью &gt; {value.reviewWaitDays} дн.
-        {value.off.length ? ` · выключено ${value.off.length}` : ''}
+        Настроить, когда показывать замечания (сейчас: в работе больше{' '}
+        {value.wipLimit}, застряла дольше {value.staleDays} дн., ревью дольше{' '}
+        {value.reviewWaitDays} дн.
+        {value.off.length ? `, выключено ${value.off.length}` : ''})
       </button>
     );
   return (
@@ -281,13 +282,15 @@ function LoadRow({ p, weeks }: { p: Person; weeks: string[] }) {
           </span>
         )}{' '}
         Открыто {l.total}
-        {l.median ? ` · медиана ${l.median}` : ''}
+        {l.median ? ` (обычно у человека в команде — ${l.median})` : ''}
         {' · '}
         {l.pace === null
-          ? 'темп неизвестен'
-          : `темп ${l.pace.toFixed(1)} задачи/день`}
+          ? 'сколько закрывает — пока неизвестно'
+          : `закрывает ~${
+              Math.round(l.pace * 5 * 10) / 10
+            } задачи в неделю`.replace('.', ',')}
         {l.runwayDays !== null &&
-          ` · работы на ~${Math.round(l.runwayDays)} раб. дн.`}
+          ` · задач хватит примерно на ${Math.round(l.runwayDays)} раб. дн.`}
       </div>
       {l.weekly && weeks.length > 0 && (
         <div className="load-spark small muted">
@@ -296,7 +299,7 @@ function LoadRow({ p, weeks }: { p: Person; weeks: string[] }) {
               <Sparkline values={l.weekly} weeks={weeks} /> закрыто по неделям
             </>
           ) : (
-            `За ${weeks.length} недель закрытых задач нет`
+            `За последние ${weeks.length} нед. закрытых задач нет`
           )}
         </div>
       )}
@@ -414,10 +417,13 @@ type Notes = { text: string; at: string } | null;
 function MeetingCard({
   initial,
   onError,
+  people,
 }: {
   initial: Notes;
   onError: (e: unknown) => void;
+  people: string[];
 }) {
+  const [who, setWho] = useState('');
   const [kind, setKind] = useState<ReviewKind>('meeting');
   const [notes, setNotes] = useState<Record<string, Notes>>({
     meeting: initial,
@@ -453,35 +459,59 @@ function MeetingCard({
     <section className="card">
       <div className="review-head">
         <h2>Подготовка к встрече</h2>
-        {current && <span className="muted small">от {when(current.at)}</span>}
+        {current && !who && (
+          <span className="muted small">от {when(current.at)}</span>
+        )}
       </div>
       <div className="tabs" role="tablist">
         {KINDS.map((k) => (
           <button
             key={k.id}
             role="tab"
-            aria-selected={k.id === kind}
-            className={`tab${k.id === kind ? ' active' : ''}`}
-            onClick={() => pick(k.id)}
+            aria-selected={k.id === kind && !who}
+            className={`tab${k.id === kind && !who ? ' active' : ''}`}
+            onClick={() => {
+              setWho('');
+              pick(k.id);
+            }}
           >
             {k.title}
           </button>
         ))}
+        <select
+          className={`tab${who ? ' active' : ''}`}
+          value={who}
+          aria-label="Встреча 1:1 с человеком"
+          onChange={(e) => setWho(e.target.value)}
+        >
+          <option value="">1:1 с…</option>
+          {people.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
       </div>
-      {busy ? (
-        <p className="muted">Модель готовит — это до 2 минут…</p>
-      ) : current ? (
-        <div className="review-text">{current.text}</div>
+      {who ? (
+        <OneOnOne key={who} name={who} />
       ) : (
-        <p className="muted">
-          {meta.lead} Готовится моделью по данным ниже; сохраняется на день.
-        </p>
+        <>
+          {busy ? (
+            <p className="muted">Модель готовит — это до 2 минут…</p>
+          ) : current ? (
+            <div className="review-text">{current.text}</div>
+          ) : (
+            <p className="muted">
+              {meta.lead} Готовится моделью по данным выше; сохраняется на день.
+            </p>
+          )}
+          <div className="actions">
+            <button onClick={prepare} disabled={busy}>
+              {current ? 'Подготовить заново' : 'Подготовить'}
+            </button>
+          </div>
+        </>
       )}
-      <div className="actions">
-        <button onClick={prepare} disabled={busy}>
-          {current ? 'Подготовить заново' : 'Подготовить'}
-        </button>
-      </div>
     </section>
   );
 }
@@ -563,7 +593,7 @@ function TelegramEditor({
         placeholder="@username"
         onChange={(e) => setValue(e.target.value)}
       />
-      <button type="submit">OK</button>
+      <button type="submit">Сохранить</button>
       <button type="button" className="ghost" onClick={() => setEditing(false)}>
         Отмена
       </button>
@@ -598,6 +628,7 @@ function PersonCard({
   const [editing, setEditing] = useState(false);
   const [login, setLogin] = useState(p.github ?? '');
   const [nudge, setNudge] = useState<string | null>(null);
+  const [oneOnOne, setOneOnOne] = useState(false);
   const warns = p.signals.filter((s) => s.level === 'warn').length;
 
   return (
@@ -619,7 +650,7 @@ function PersonCard({
                 placeholder="логин GitHub"
                 onChange={(e) => setLogin(e.target.value)}
               />
-              <button type="submit">OK</button>
+              <button type="submit">Сохранить</button>
               <button
                 type="button"
                 className="ghost"
@@ -682,13 +713,18 @@ function PersonCard({
         <NudgeForm person={p.name} text={nudge} onDone={() => setNudge(null)} />
       )}
 
-      <button className="link" onClick={() => setOpen((v) => !v)}>
-        {open ? 'Скрыть детали' : 'Показать, над чем работает'}
-      </button>
+      <div className="card-actions">
+        <button className="link" onClick={() => setOneOnOne((v) => !v)}>
+          {oneOnOne ? 'Скрыть 1:1' : 'Подготовить 1:1'}
+        </button>
+        <button className="link" onClick={() => setOpen((v) => !v)}>
+          {open ? 'Скрыть детали' : 'Над чем работает'}
+        </button>
+      </div>
+      {oneOnOne && <OneOnOne name={p.name} />}
 
       {open && (
         <div className="person-details">
-          <OneOnOne name={p.name} />
           <h3>В работе</h3>
           {p.inProgress.length ? (
             <ul className="issues">
@@ -726,7 +762,7 @@ function PersonCard({
           )}
           {p.github && (
             <>
-              <h3>Pull requests</h3>
+              <h3>PR (изменения кода на проверку)</h3>
               {p.pulls.length ? (
                 <ul className="issues">
                   {p.pulls.map((x) => (
@@ -748,6 +784,11 @@ function PersonCard({
                             ? 'одобрен'
                             : x.review === 'CHANGES_REQUESTED'
                             ? 'нужны правки'
+                            : x.review === 'COMMENTED' ||
+                              x.review === 'reviewed'
+                            ? 'есть комментарии'
+                            : x.review === 'unknown'
+                            ? 'статус неизвестен'
                             : x.review}
                         </span>
                       </span>
@@ -821,32 +862,45 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
     <>
       {error && <p className="error">{error}</p>}
 
-      <MeetingCard initial={view.review} onError={handle} />
-
       {!team || !team.hasDetails ? (
-        <section className="card">
-          <h2>Данных по людям пока нет</h2>
-          <p className="muted">
-            {team
-              ? `Последний снимок проекта (${when(
-                  team.asOf,
-                )}) собран до появления этой вкладки.`
-              : 'Снимок проекта ещё не собран.'}{' '}
-            Обновите данные — это займёт до минуты. Дальше они обновляются сами
-            утром и в 08, 11 и 14 UTC.
-          </p>
-          <div className="actions">
-            <button onClick={refreshData} disabled={refreshing}>
-              {refreshing
-                ? 'Собираю данные из Jira и GitHub…'
-                : 'Обновить данные сейчас'}
-            </button>
-          </div>
-        </section>
+        <>
+          <section className="card">
+            <h2>Данных по людям пока нет</h2>
+            <p className="muted">
+              {team
+                ? `Последний снимок проекта (${when(
+                    team.asOf,
+                  )}) собран до появления этой вкладки.`
+                : 'Снимок проекта ещё не собран.'}{' '}
+              Обновите данные — это займёт до минуты. Дальше они обновляются
+              сами утром и ещё несколько раз в день.
+            </p>
+            <div className="actions">
+              <button onClick={refreshData} disabled={refreshing}>
+                {refreshing
+                  ? 'Собираю данные из Jira и GitHub…'
+                  : 'Обновить данные сейчас'}
+              </button>
+            </div>
+          </section>
+          <MeetingCard initial={view.review} onError={handle} people={[]} />
+        </>
       ) : (
         <>
-          <FlowCard team={team} />
-          <HistoryCard />
+          {(() => {
+            const today = new Date().toISOString().slice(0, 10);
+            const away = team.people.filter(
+              (p) => p.away && p.away.until >= today,
+            );
+            return away.length ? (
+              <p className="small">
+                Отсутствуют:{' '}
+                {away
+                  .map((p) => `${p.name} до ${ruDay(p.away?.until ?? '')}`)
+                  .join(', ')}
+              </p>
+            ) : null;
+          })()}
           <div className="team-bar">
             <span className="muted small">
               Данные на {when(team.asOf)}
@@ -930,6 +984,13 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
               GitHub без привязки к человеку: {team.unmatchedGithub.join(', ')}
             </p>
           )}
+          <MeetingCard
+            initial={view.review}
+            onError={handle}
+            people={team.people.map((p) => p.name)}
+          />
+          <FlowCard team={team} />
+          <HistoryCard />
         </>
       )}
     </>

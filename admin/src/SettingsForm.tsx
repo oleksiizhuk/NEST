@@ -4,6 +4,13 @@ import { api, Effort, Settings, SettingsView, Unauthorized } from './api';
 type Key = keyof Settings;
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
+const EFFORT_LABEL: Record<Effort, string> = {
+  low: 'быстро и дёшево',
+  medium: 'обычно',
+  high: 'подробно',
+  xhigh: 'очень подробно',
+  max: 'максимум',
+};
 
 const FIELDS: Array<{
   key: Key;
@@ -43,13 +50,13 @@ const FIELDS: Array<{
   },
   {
     key: 'alertChatIds',
-    title: 'Получают уведомления и отчёт проверки',
+    title: 'Получают уведомления и еженедельный отчёт о качестве ответов',
     hint: 'Id чатов через запятую. Ваша личка — ваш Telegram id.',
     kind: 'ids',
   },
   {
     key: 'aiEffort',
-    title: 'Усилие модели в чате',
+    title: 'Глубина ответов в чате',
     hint: 'Больше — глубже и дороже. Сводка не меняется.',
     kind: 'effort',
   },
@@ -147,7 +154,7 @@ export function SettingsForm({
   return (
     <section className="card">
       <p className="muted">
-        Пустое поле — значение из Vercel. Изменения действуют без редеплоя.
+        Пустое поле — значение по умолчанию. Изменения действуют сразу.
         {view.updatedAt &&
           ` Последнее изменение: ${new Date(view.updatedAt).toLocaleString(
             'ru-RU',
@@ -172,7 +179,7 @@ export function SettingsForm({
                   setDraft({ ...draft, [f.key]: e.target.value });
                 }}
               >
-                <option value="">Из Vercel</option>
+                <option value="">По умолчанию</option>
                 <option value="true">Да</option>
                 <option value="false">Нет</option>
               </select>
@@ -185,10 +192,10 @@ export function SettingsForm({
                   setDraft({ ...draft, [f.key]: e.target.value });
                 }}
               >
-                <option value="">Из Vercel</option>
+                <option value="">По умолчанию</option>
                 {EFFORTS.map((e) => (
                   <option key={e} value={e}>
-                    {e}
+                    {EFFORT_LABEL[e]}
                   </option>
                 ))}
               </select>
@@ -206,14 +213,14 @@ export function SettingsForm({
             )}
             <div className="field-foot">
               <span className="muted">
-                {f.hint} Из Vercel: {show(view.defaults[f.key])}
+                {f.hint} По умолчанию: {show(view.defaults[f.key])}
               </span>
               {overridden && (
                 <button
                   className="link"
                   onClick={() => setReset((r) => new Set(r).add(f.key))}
                 >
-                  Сбросить к Vercel
+                  Вернуть по умолчанию
                 </button>
               )}
             </div>

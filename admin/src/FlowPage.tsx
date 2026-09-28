@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, FlowView, ReviewLoad, Stage, Unauthorized } from './api';
 import { Key } from './signals';
+import { NoData } from './empty';
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', {
@@ -18,7 +19,7 @@ const STAGE: Record<Stage, string> = {
 };
 
 const SOURCE = {
-  map: 'из PM_STATUS_MAP',
+  map: 'задано вручную',
   name: 'по названию',
   category: 'по категории Jira',
 } as const;
@@ -204,14 +205,10 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
   if (!view?.stages)
     return (
       <>
-        <section className="card">
-          <h2>Истории статусов пока нет</h2>
-          <p className="muted">
-            Она собирается при обновлении данных из истории изменений Jira.
-            Обновите данные на странице «Сотрудники» или дождитесь утреннего
-            обновления.
-          </p>
-        </section>
+        <NoData
+          onUnauthorized={onUnauthorized}
+          onDone={() => window.location.reload()}
+        />
         {view?.reviews && (
           <Reviews
             r={view.reviews}
@@ -238,20 +235,24 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       <section className="card">
         <h2>Сколько задачи проводят на этапах</h2>
         <p className="muted small">
-          Медиана по задачам, закрытым за {s.windowDays} дней.
+          Путь задачи: разработка → ревью (коллега проверяет код) → QA
+          (тестировщик проверяет работу) → готово. Числа — типичное время на
+          каждом шаге (у половины задач меньше, у половины больше), по задачам,
+          закрытым за {s.windowDays} дней.
         </p>
         <StageBars medians={s.stageMedians} />
         <div className="tiles">
           <div className="tile">
             <span className="tile-value">{d(s.cycle.p50)}</span>
             <span className="small muted">
-              половина задач проходит путь от начала работы до «готово»
+              обычный срок задачи — от начала работы до «готово»
             </span>
           </div>
           <div className="tile">
             <span className="tile-value">{d(s.cycle.p85)}</span>
             <span className="small muted">
-              так закрываются 85% задач — реалистичный срок для обещаний
+              надёжный срок: так укладываются 85 из 100 задач — его и называйте
+              клиенту
             </span>
           </div>
         </div>
@@ -259,6 +260,9 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
 
       <section className="card">
         <h2>Стареющие задачи</h2>
+        <p className="small">
+          <a href="#/hanging">Все зависшие задачи с фильтрами →</a>
+        </p>
         <p className="muted small">
           Открытые задачи в работе, самые старые сверху. Выделены те, что идут
           дольше, чем 85% закрытых задач, — их стоит разобрать первыми.
@@ -299,7 +303,7 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       </section>
 
       <section className="card">
-        <h2>Возвраты</h2>
+        <h2>Задачи, которые отправили переделывать</h2>
         <p className="muted small">
           Считаются движения за последние {s.windowDays} дней.
         </p>
@@ -401,9 +405,10 @@ export function FlowPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       <details className="card">
         <summary>Как статусы Jira разложены по этапам</summary>
         <p className="muted small">
-          Если что-то не так, задайте в Vercel переменную PM_STATUS_MAP,
-          например «Ожидает клиента=blocked, Проверка=qa». Этапы: todo, dev,
-          review, qa, blocked, done.
+          Если статус попал не на тот шаг, попросите разработчика поправить
+          настройку. Для разработчика: переменная PM_STATUS_MAP, например
+          «Ожидает клиента=blocked, Проверка=qa». Этапы: todo, dev, review, qa,
+          blocked, done.
         </p>
         <ul className="issues">
           {s.statuses.map((x) => (
