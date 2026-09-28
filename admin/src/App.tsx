@@ -13,7 +13,10 @@ import { HangingPage } from './HangingPage';
 import { AdminsPanel } from './AdminsPanel';
 import { showGuide } from './guide';
 import { DataPage } from './DataPage';
+import { AskPage } from './AskPage';
+import { AskButton, AskContext, pageContext } from './ask';
 import {
+  IconAsk,
   IconChats,
   IconClose,
   IconLogout,
@@ -37,6 +40,7 @@ type PageId =
   | 'quality'
   | 'hanging'
   | 'overview'
+  | 'ask'
   | 'team'
   | 'data'
   | 'chats'
@@ -94,6 +98,13 @@ const PAGES: Array<{
     group: 'Релиз и процесс',
   },
   {
+    id: 'ask',
+    title: 'Спросить бота',
+    icon: <IconAsk />,
+    lead: 'Разговор с ботом по темам: почему так, хорошо это или плохо, что делать.',
+    group: 'Бот',
+  },
+  {
     id: 'overview',
     title: 'Вопросы боту',
     icon: <IconOverview />,
@@ -138,6 +149,21 @@ const pageFromHash = (): PageId => {
   return PAGES.find((p) => p.id === id)?.id ?? 'today';
 };
 
+// #/ask/<topic id>
+const topicFromHash = (): string | null =>
+  window.location.hash.match(/^#\/ask\/([a-f0-9]{24})/)?.[1] ?? null;
+
+// Pages whose numbers a "спросить бота" button in the header sends along
+const ASKABLE: PageId[] = [
+  'today',
+  'team',
+  'hanging',
+  'release',
+  'flow',
+  'quality',
+  'overview',
+];
+
 export function App() {
   const [state, setState] = useState<State>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +172,7 @@ export function App() {
   const [page, setPage] = useState<PageId>(pageFromHash);
   const [menuOpen, setMenuOpen] = useState(false);
   const [guideTick, setGuideTick] = useState(0);
+  const [topicId, setTopicId] = useState<string | null>(topicFromHash);
 
   const load = useCallback(async () => {
     try {
@@ -189,7 +216,10 @@ export function App() {
   }, [load]);
 
   useEffect(() => {
-    const onHash = () => setPage(pageFromHash());
+    const onHash = () => {
+      setPage(pageFromHash());
+      setTopicId(topicFromHash());
+    };
     const onKey = (e: KeyboardEvent) =>
       e.key === 'Escape' && setMenuOpen(false);
     window.addEventListener('hashchange', onHash);
@@ -213,6 +243,25 @@ export function App() {
     // Fresh numbers on every section switch (pages with their own data load
     // them when they open)
     load();
+  };
+
+  const openTopic = (id: string | null) => {
+    window.location.hash = id ? `#/ask/${id}` : '#/ask';
+    setPage('ask');
+    setTopicId(id);
+    setMenuOpen(false);
+  };
+
+  // A new topic about what is on the screen; the question is the person's
+  const startTopic = async (title: string, context: string) => {
+    try {
+      const topic = await api.createTopic(title, context);
+      openTopic(topic.id);
+      window.scrollTo(0, 0);
+    } catch (e) {
+      if (e instanceof Unauthorized) logout();
+      else setError((e as Error).message);
+    }
   };
 
   const logout = () => {
@@ -248,6 +297,7 @@ export function App() {
   const current = PAGES.find((p) => p.id === page) ?? PAGES[0];
 
   return (
+    <AskContext.Provider value={startTopic}>
     <div className="shell">
       <aside
         className={`sidebar${menuOpen ? ' open' : ''}`}
@@ -338,6 +388,14 @@ export function App() {
               <h1>{current.title}</h1>
               <p className="muted">{current.lead}</p>
             </div>
+            {ASKABLE.includes(page) && (
+              <AskButton
+                title={`Раздел «${current.title}»`}
+                context={() => pageContext(current.title)}
+                label="Спросить бота об этом"
+                className="ghost"
+              />
+            )}
           </div>
 
           {error && <p className="error">{error}</p>}
@@ -368,8 +426,16 @@ export function App() {
             />
           )}
           {page === 'settings' && <AdminsPanel onUnauthorized={logout} />}
+          {page === 'ask' && (
+            <AskPage
+              topicId={topicId}
+              onOpen={openTopic}
+              onUnauthorized={logout}
+            />
+          )}
         </main>
       </div>
     </div>
+    </AskContext.Provider>
   );
 }

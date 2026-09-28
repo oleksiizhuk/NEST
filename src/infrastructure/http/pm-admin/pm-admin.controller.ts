@@ -6,6 +6,8 @@ import {
   HttpStatus,
   Get,
   HttpCode,
+  NotFoundException,
+  Param,
   Post,
   Put,
   Req,
@@ -33,6 +35,32 @@ import {
   PmAdminGuard,
 } from '@infrastructure/http/pm-admin/pm-admin.auth';
 import { BadRequestException } from '@nestjs/common';
+import {
+  AdminTopicsUseCase,
+  TOPIC_CONTEXT_MAX,
+  TOPIC_TEXT_MAX,
+  TopicError,
+  TopicLimitError,
+} from '@application/project-manager/use-cases/admin-topics.use-case';
+
+export class AdminTopicBody {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+
+  // What the page showed; trimmed to the limit rather than refused
+  @IsOptional()
+  @IsString()
+  @MaxLength(TOPIC_CONTEXT_MAX * 2)
+  context?: string;
+}
+
+export class AdminAskBody {
+  @IsString()
+  @MaxLength(TOPIC_TEXT_MAX)
+  text: string;
+}
 
 export class AdminLoginBody {
   @IsString()
@@ -186,7 +214,68 @@ export class PmAdminController {
     private readonly team_: TeamReviewUseCase,
     private readonly refresher: RefreshProjectSnapshotUseCase,
     private readonly indexer: BuildIndexUseCase,
+    private readonly topics: AdminTopicsUseCase,
   ) {}
+
+  // Спросить бота: each admin's own topics with the bot
+  @Get('topics')
+  @UseGuards(PmAdminGuard)
+  topicList(@Req() req: { pmAdmin: number }) {
+    return this.topics.list(req.pmAdmin);
+  }
+
+  @Post('topics')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  createTopic(@Body() body: AdminTopicBody, @Req() req: { pmAdmin: number }) {
+    return this.topics.create(
+      req.pmAdmin,
+      body.title ?? '',
+      body.context ?? null,
+    );
+  }
+
+  @Get('topics/:id')
+  @UseGuards(PmAdminGuard)
+  async topic(@Param('id') id: string, @Req() req: { pmAdmin: number }) {
+    const topic = await this.topics.get(id, req.pmAdmin);
+    if (!topic) throw new NotFoundException('Тема не найдена');
+    return topic;
+  }
+
+  // One question to the model (the page marks the button ⚡)
+  @Post('topics/:id/ask')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async ask(
+    @Param('id') id: string,
+    @Body() body: AdminAskBody,
+    @Req() req: { pmAdmin: number },
+  ) {
+    try {
+      return await this.topics.ask(id, req.pmAdmin, body.text, {
+        // Code and PR deep-dives stay with the owner, as in Telegram
+        canReadCode: req.pmAdmin === this.auth.ownerId,
+      });
+    } catch (error) {
+      if (error instanceof TopicLimitError)
+        throw new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
+      if (error instanceof TopicError)
+        throw new BadRequestException(error.message);
+      throw new HttpException(
+        'Бот не смог ответить — попробуйте ещё раз чуть позже.',
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+  }
+
+  @Post('topics/:id/remove')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async removeTopic(@Param('id') id: string, @Req() req: { pmAdmin: number }) {
+    await this.topics.remove(id, req.pmAdmin);
+    return { ok: true };
+  }
 
   // Exchanges the one-time link from the bot for a 7-day session
   @Post('login')

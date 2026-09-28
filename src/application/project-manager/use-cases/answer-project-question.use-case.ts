@@ -111,6 +111,8 @@ export class AnswerProjectQuestionUseCase {
       requesterName?: string;
       // Owner-run diagnostics and the eval default to true
       canReadCode?: boolean;
+      // The admin page: nothing can be confirmed there, so no proposals
+      noActions?: boolean;
     } = {
       chatId: 0,
       requesterId: 0,

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Links, Signal, SignalRule } from './api';
+import { AskButton, signalContext } from './ask';
 
 // What each signal means and what a lead usually does about it, so the
 // numbers teach as well as warn
@@ -98,9 +99,12 @@ export function SignalLine({
   s,
   links,
   onSay,
+  person,
 }: {
   s: Signal;
   links: Links | null;
+  // Whose card the signal is on, for a question to the bot
+  person?: string;
   // Opens "Написать в чат" with the suggested sentence
   onSay?: () => void;
 }) {
@@ -154,6 +158,13 @@ export function SignalLine({
               )}
             </div>
           )}
+          <div>
+            <AskButton
+              title={`${person ? `${person}: ` : ''}${help?.title ?? s.text}`}
+              context={() => signalContext(s, person)}
+              label="спросить бота, почему так"
+            />
+          </div>
         </div>
       )}
     </li>
