@@ -544,7 +544,8 @@ export class JiraIssueReader implements IProjectSource {
         endDate?: string;
         completeDate?: string;
       }> = [];
-      for (let startAt = 0; startAt < 500; startAt += 50) {
+      // Page by what came back: the server may cap the page below 50
+      for (let startAt = 0; startAt < 500; ) {
         const { data } = await getJson<{
           values?: typeof all;
           isLast?: boolean;
@@ -553,6 +554,7 @@ export class JiraIssueReader implements IProjectSource {
           headers,
         );
         all.push(...(data.values ?? []));
+        startAt += (data.values ?? []).length;
         if (data.isLast !== false || !(data.values ?? []).length) break;
       }
       const byStart = (a: (typeof all)[number], b: (typeof all)[number]) =>

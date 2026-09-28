@@ -487,6 +487,7 @@ export const personSignals = (
     });
   } else if (
     on('runway') &&
+    !handedOn &&
     load?.runwayDays != null &&
     load.runwayDays < limits.runwayDays
   ) {
@@ -606,6 +607,10 @@ const WEIGHT: Partial<Record<SignalRule, number>> = {
 
 export const TEAM = 'Команда';
 
+// 1 задача ждёт, 3 задачи ждут
+const waitVerb = (n: number) =>
+  n % 10 === 1 && n % 100 !== 11 ? 'ждёт' : 'ждут';
+
 // 2 дня, 5 дней
 const daysWord = (n: number) => {
   const d = n % 10;
@@ -642,11 +647,9 @@ const queueSignal = (
     rule: 'qa-queue',
     // A new oldest ticket shows again even after "hide for a week"
     subject: `${stage}:${top[0].key}`,
-    text: `${tasks(
+    text: `${tasks(old.length)} ${waitVerb(
       old.length,
-    )} ждут ${what} дольше ${limit} раб. дн. (всего в очереди: ${
-      waiting.length
-    }).`,
+    )} ${what} дольше ${limit} раб. дн. (всего в очереди: ${waiting.length}).`,
     why: top.map((i) => `${i.key} — ${i.days} дн. (${i.person})`).join(', '),
     keys: top.map((i) => i.key),
     say: `В очереди на ${stage === 'qa' ? 'тестирование' : 'ревью'} ${tasks(
@@ -701,7 +704,9 @@ export const todayItems = (
   }
   for (const p of people) {
     const release = new Set(
-      [...p.inProgress, ...p.queue].filter((i) => i.inScope).map((i) => i.key),
+      [...p.inProgress, ...(p.waiting ?? []), ...p.queue]
+        .filter((i) => i.inScope)
+        .map((i) => i.key),
     );
     for (const s of p.signals) {
       const weight = WEIGHT[s.rule];

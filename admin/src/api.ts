@@ -105,6 +105,7 @@ export interface Chat {
 
 export interface TeamIssue {
   key: string;
+  stage?: string | null;
   summary: string;
   status: string;
   priority: string | null;

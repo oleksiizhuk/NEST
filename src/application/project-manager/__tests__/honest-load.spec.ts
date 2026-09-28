@@ -131,7 +131,7 @@ describe('honest load', () => {
     expect(rules).toContain('blocked');
     expect(rules).toContain('overdue');
     expect(t2.teamSignals.map((s) => s.text)).toEqual([
-      expect.stringContaining('ждут ревью кода'),
+      expect.stringContaining('1 задача ждёт ревью кода'),
     ]);
   });
 
@@ -148,5 +148,42 @@ describe('honest load', () => {
     expect(ira.signals.map((s) => s.rule)).not.toContain('runway');
     expect(ira.waiting[0].days).toBeNull();
     expect(t3.teamSignals).toEqual([]);
+  });
+
+  it('does not say "work runs out" when everything left is in review or QA', () => {
+    const snap = new ProjectSnapshot('s', NOW, [
+      {
+        source: 'issues',
+        ok: true,
+        fetchedAt: NOW,
+        text: '',
+        error: null,
+        details: teamIssues(
+          [
+            f('D-1', {
+              assignee: 'Dee',
+              status: 'Ready For Qa',
+              statusExact: true,
+            }),
+          ],
+          ['D-8', 'D-9'].map((k) =>
+            f(k, {
+              assignee: 'Dee',
+              category: 'done',
+              status: 'Done',
+              doneAt: '2026-09-20T00:00:00Z',
+            }),
+          ),
+          NOW,
+          null,
+          false,
+          { stage: stageOf },
+        ) as any,
+      },
+    ]);
+    const dee = buildTeam(snap, {}, NOW).people[0];
+    expect(dee.load.pace).not.toBeNull();
+    expect(dee.signals.map((s) => s.rule)).not.toContain('runway');
+    expect(t.teamSignals[0].text).toMatch(/^3 задачи ждут/);
   });
 });

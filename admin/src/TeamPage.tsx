@@ -654,6 +654,7 @@ function PersonCard({
   links,
   stale,
   qaWait,
+  reviewWait,
   weeks,
   telegram,
   review,
@@ -668,6 +669,7 @@ function PersonCard({
   links: Links | null;
   stale: number;
   qaWait: number;
+  reviewWait: number;
   weeks: string[];
   telegram: string | null;
   onGithub: (login: string | null) => Promise<void>;
@@ -798,7 +800,12 @@ function PersonCard({
               <h3>Ждёт ревью или тестирования</h3>
               <ul className="issues">
                 {p.waiting.map((i) => (
-                  <Issue key={i.key} i={i} links={links} stale={qaWait} />
+                  <Issue
+                    key={i.key}
+                    i={i}
+                    links={links}
+                    stale={i.stage === 'review' ? reviewWait : qaWait}
+                  />
                 ))}
               </ul>
             </>
@@ -1015,6 +1022,7 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
                 links={team.links}
                 stale={team.thresholds.staleDays}
                 qaWait={team.thresholds.qaWaitDays}
+                reviewWait={team.thresholds.reviewWaitDays}
                 weeks={team.flow?.weeks ?? []}
                 telegram={team.telegram?.[p.name] ?? null}
                 review={p.github ? team.reviewers?.[p.github] ?? null : null}
