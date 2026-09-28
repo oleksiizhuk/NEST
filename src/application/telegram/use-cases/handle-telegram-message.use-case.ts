@@ -487,16 +487,34 @@ export class HandleTelegramMessageUseCase {
     isPrivate: boolean,
   ): Promise<void> {
     if (!this.adminLinks) return;
-    const allowed =
-      msg.from.id === this.config.ownerId ||
-      (await this.adminAccess?.allowTelegram(msg.from).catch(() => false));
-    if (!allowed) return;
+    const isOwner = msg.from.id === this.config.ownerId;
     if (!isPrivate) {
-      await this.telegram.sendMessage(
-        msg.chatId,
-        'Ссылку на админку пришлю только в личку: напишите /admin мне в личные сообщения.',
-      );
+      // Only the owner is pointed to the private chat; a listed person
+      // asking in a group is not revealed (and not bound) there
+      if (isOwner)
+        await this.telegram.sendMessage(
+          msg.chatId,
+          'Ссылку на админку пришлю только в личку: напишите /admin мне в личные сообщения.',
+        );
       return;
+    }
+    const access = isOwner
+      ? 'known'
+      : await this.adminAccess?.allowTelegram(msg.from).catch(() => false);
+    if (!access) return;
+    if (access === 'bound') {
+      try {
+        await this.telegram.sendMessage(
+          this.config.ownerId,
+          `В админку впервые вошёл(а) ${[msg.from.firstName, msg.from.lastName]
+            .filter(Boolean)
+            .join(' ')} (@${msg.from.username ?? '—'}, id ${
+            msg.from.id
+          }). Если это не тот человек — уберите доступ на странице «Доступы и лимиты».`,
+        );
+      } catch {
+        // The link still goes out; the owner sees the person on the list
+      }
     }
     try {
       const link = await this.adminLinks.issue(new Date(), msg.from.id);

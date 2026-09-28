@@ -67,6 +67,9 @@ describe('PmRuntimeConfig', () => {
       save: jest.fn(),
       sessionEpoch: jest.fn().mockResolvedValue(0),
       bumpSessionEpoch: jest.fn(),
+      addAdmin: jest.fn(),
+      removeAdmin: jest.fn(),
+      bindAdmin: jest.fn(),
       setAway: jest.fn(),
       hideToday: jest.fn(),
     };
@@ -90,6 +93,9 @@ describe('PmAdminUseCase', () => {
       save: jest.fn(),
       sessionEpoch: jest.fn().mockResolvedValue(0),
       bumpSessionEpoch: jest.fn(),
+      addAdmin: jest.fn(),
+      removeAdmin: jest.fn(),
+      bindAdmin: jest.fn(),
       setAway: jest.fn(),
       hideToday: jest.fn(),
     };
@@ -208,6 +214,9 @@ describe('PmAdminUseCase — Сегодня and absences', () => {
       save: jest.fn(),
       sessionEpoch: jest.fn(),
       bumpSessionEpoch: jest.fn(),
+      addAdmin: jest.fn(),
+      removeAdmin: jest.fn(),
+      bindAdmin: jest.fn(),
       setAway: jest.fn(),
       hideToday: jest.fn(),
     };

@@ -19,6 +19,9 @@ describe('PmAdminAuth', () => {
     save: jest.fn(),
     sessionEpoch: jest.fn(async () => epoch),
     bumpSessionEpoch: jest.fn(async () => ++epoch),
+    addAdmin: jest.fn(),
+    removeAdmin: jest.fn(),
+    bindAdmin: jest.fn(),
     setAway: jest.fn(),
     hideToday: jest.fn(),
   };

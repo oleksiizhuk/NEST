@@ -71,6 +71,15 @@ export interface IPmSettingsStore {
   // Adds or replaces one hidden "Сегодня" item and drops expired ones,
   // atomically, so two quick clicks cannot overwrite each other
   hideToday(id: string, until: string, now: string, by: number): Promise<void>;
+  // Admin list changes, each atomic so concurrent calls cannot undo one
+  // another: add only if the username is new, bind only an unbound entry
+  addAdmin(
+    user: { username: string; userId: null; addedAt: string },
+    by: number,
+  ): Promise<void>;
+  removeAdmin(username: string, by: number): Promise<void>;
+  // True when this call bound the id (the entry existed and was unbound)
+  bindAdmin(username: string, userId: number): Promise<boolean>;
   // Admin sessions carry this number; raising it logs every session out
   sessionEpoch(): Promise<number>;
   bumpSessionEpoch(): Promise<number>;

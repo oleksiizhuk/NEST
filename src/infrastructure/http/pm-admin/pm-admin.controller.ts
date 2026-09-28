@@ -140,6 +140,15 @@ export class AdminNudgeBody {
   chatId: number;
 }
 
+// Settings that give someone access; only the owner changes them
+const ACCESS_KEYS = [
+  'unlimitedUsernames',
+  'dmUsernames',
+  'actionUserIds',
+  'alertChatIds',
+  'pmInOwnerGroups',
+];
+
 export class AdminUserBody {
   @IsString()
   @MaxLength(33)
@@ -232,6 +241,15 @@ export class PmAdminController {
     @Body() body: AdminSettingsBody,
     @Req() req: { pmAdmin: number },
   ) {
+    // Who may talk to the bot, confirm actions or get alerts is the owner's
+    // call: another admin's grants would outlive their removal
+    if (
+      req.pmAdmin !== this.auth.ownerId &&
+      Object.keys(body.settings ?? {}).some((k) => ACCESS_KEYS.includes(k))
+    )
+      throw new ForbiddenException(
+        'Кто может писать боту, подтверждать действия и получать уведомления, меняет только владелец',
+      );
     try {
       return await this.admin.update(body.settings, req.pmAdmin);
     } catch (error) {
@@ -242,7 +260,6 @@ export class PmAdminController {
     }
   }
 
-  // Ends every admin session, this one included
   // Who is signed in: the page shows the access list only to the owner
   @Get('me')
   @UseGuards(PmAdminGuard)
@@ -282,13 +299,16 @@ export class PmAdminController {
 
   private ownerOnly(req: { pmAdmin: number }) {
     if (req.pmAdmin !== this.auth.ownerId)
-      throw new ForbiddenException('only the owner changes admin access');
+      throw new ForbiddenException('Список доступа меняет только владелец');
   }
 
+  // Ends every admin session, this one included (owner only)
   @Post('logout-all')
   @HttpCode(200)
   @UseGuards(PmAdminGuard)
-  async logoutAll() {
+  async logoutAll(@Req() req: { pmAdmin: number }) {
+    if (req.pmAdmin !== this.auth.ownerId)
+      throw new ForbiddenException('«Выйти везде» доступно только владельцу');
     await this.auth.revokeAll();
     return { ok: true };
   }
@@ -543,6 +563,11 @@ export class PmAdminController {
   @Put('chats')
   @UseGuards(PmAdminGuard)
   async setChat(@Body() body: AdminChatBody, @Req() req: { pmAdmin: number }) {
+    // Opening project data to a chat is the owner's call (as /pm_on)
+    if (req.pmAdmin !== this.auth.ownerId)
+      throw new ForbiddenException(
+        'Включать бота в группах и оповещения меняет только владелец',
+      );
     try {
       if (body.alerts !== undefined)
         return await this.admin.setAlerts(

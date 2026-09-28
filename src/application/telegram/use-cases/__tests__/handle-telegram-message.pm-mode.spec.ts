@@ -490,7 +490,9 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
 
     // Someone the owner added gets their own link
     (useCase as any).adminAccess = {
-      allowTelegram: jest.fn(async (from: { id: number }) => from.id === 555),
+      allowTelegram: jest.fn(async (from: { id: number }) =>
+        from.id === 555 ? 'bound' : false,
+      ),
     };
     await useCase.execute({
       ...group(555, '/admin', 555),
@@ -502,6 +504,18 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       555,
       expect.stringContaining('login=abc'),
     );
+    // The owner is told who just bound
+    expect(telegram.sendMessage).toHaveBeenCalledWith(
+      OWNER,
+      expect.stringContaining('впервые вошёл'),
+    );
+    // A listed person asking in a group is neither answered nor bound
+    telegram.sendMessage.mockClear();
+    await useCase.execute({
+      ...group(PM_GROUP, '/admin', 555),
+      from: { id: 555, username: 'dmytro_aa', firstName: 'D', lastName: null },
+    });
+    expect(telegram.sendMessage).not.toHaveBeenCalled();
   });
 
   it('uses the owner overrides from the admin page', async () => {

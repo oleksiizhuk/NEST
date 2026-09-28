@@ -124,6 +124,42 @@ export class MongoPmSettings implements IPmSettingsStore {
     );
   }
 
+  async addAdmin(
+    user: { username: string; userId: null; addedAt: string },
+    by: number,
+  ): Promise<void> {
+    await this.model.updateOne(
+      { key: KEY },
+      { $set: { updatedBy: by } },
+      { upsert: true },
+    );
+    await this.model.updateOne(
+      { key: KEY, 'values.adminUsers.username': { $ne: user.username } },
+      { $push: { 'values.adminUsers': user } },
+    );
+  }
+
+  async removeAdmin(username: string, by: number): Promise<void> {
+    await this.model.updateOne(
+      { key: KEY },
+      {
+        $pull: { 'values.adminUsers': { username } },
+        $set: { updatedBy: by },
+      },
+    );
+  }
+
+  async bindAdmin(username: string, userId: number): Promise<boolean> {
+    const result = await this.model.updateOne(
+      {
+        key: KEY,
+        'values.adminUsers': { $elemMatch: { username, userId: null } },
+      },
+      { $set: { 'values.adminUsers.$.userId': userId } },
+    );
+    return result.modifiedCount > 0;
+  }
+
   async sessionEpoch(): Promise<number> {
     const doc = await this.model
       .findOne({ key: KEY }, { sessionEpoch: 1 })

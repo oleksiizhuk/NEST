@@ -35,28 +35,21 @@ export class AdminAccess {
     return (await this.store.get()).values.adminUsers ?? [];
   }
 
-  // May this Telegram user get an admin link? Binds the id on first use
+  // May this Telegram user get an admin link? 'bound' = this call tied the
+  // username to the id (the owner is told), 'known' = already bound
   async allowTelegram(from: {
     id: number;
     username: string | null;
-  }): Promise<boolean> {
+  }): Promise<'known' | 'bound' | false> {
     if (!this.store) return false;
     const users = await this.list();
-    if (users.some((u) => u.userId === from.id)) return true;
+    if (users.some((u) => u.userId === from.id)) return 'known';
     const name = from.username ? normalizeUsername(from.username) : null;
-    const match = name
-      ? users.find((u) => u.username === name && u.userId === null)
-      : undefined;
-    if (!match) return false;
-    await this.store.save(
-      {
-        adminUsers: users.map((u) =>
-          u === match ? { ...u, userId: from.id } : u,
-        ),
-      },
-      from.id,
-    );
-    return true;
+    if (!name || !users.some((u) => u.username === name && u.userId === null))
+      return false;
+    // Atomic: two people, or a removal, racing with this cannot resurrect or
+    // double-bind an entry
+    return (await this.store.bindAdmin(name, from.id)) ? 'bound' : false;
   }
 
   // A session's user is still on the list (removal ends access at once)
@@ -70,18 +63,16 @@ export class AdminAccess {
     const users = await this.list();
     if (users.some((u) => u.username === name)) return users;
     if (users.length >= 10) throw new Error('at most 10 people');
-    const next = [
-      ...users,
+    await this.store?.addAdmin(
       { username: name, userId: null, addedAt: new Date().toISOString() },
-    ];
-    await this.store?.save({ adminUsers: next }, by);
-    return next;
+      by,
+    );
+    return this.list();
   }
 
   async remove(username: string, by: number): Promise<AdminUser[]> {
     const name = normalizeUsername(username);
-    const next = (await this.list()).filter((u) => u.username !== name);
-    await this.store?.save({ adminUsers: next }, by);
-    return next;
+    if (name) await this.store?.removeAdmin(name, by);
+    return this.list();
   }
 }
