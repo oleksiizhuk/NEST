@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AskPage } from './AskPage';
+import { useTopicNews, useWaiting } from './topicStore';
 
 export type DockMode = 'closed' | 'open' | 'max';
 export interface DockState {
@@ -55,23 +56,78 @@ export function ChatDock({
   const panelRef = useRef<HTMLElement>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
   const wasOpen = useRef(state.mode !== 'closed');
+  const open = state.mode !== 'closed';
+  const visible = open && !suppressed;
+  // Asks the chat to focus its question box once the topic is on screen:
+  // on open, and when a signal opens another topic in an open window
+  const [focusKey, setFocusKey] = useState(0);
+  // What the folded button says: the bot is thinking, or news came in
+  // while nobody was looking
+  const waiting = useWaiting();
+  // ...and which topic, so the button opens that one
+  const [news, setNews] = useState<{
+    kind: 'answer' | 'failed';
+    id: string;
+  } | null>(null);
+  useTopicNews((n) => {
+    // Seen on the Спросить бота page (the window is suppressed there) or in
+    // the open window: nothing to point at
+    if (open || suppressed) return;
+    if (n.kind === 'answered') setNews({ kind: 'answer', id: n.id });
+    if (n.kind === 'failed') setNews({ kind: 'failed', id: n.id });
+  });
+  const newsText =
+    news?.kind === 'answer'
+      ? 'Ответ готов'
+      : news?.kind === 'failed'
+      ? 'Вопрос не отправился'
+      : '';
+
   useEffect(() => {
-    const open = state.mode !== 'closed';
-    if (open) setMounted(true);
-    // Focus follows the window: into the question box on open (or, while
-    // the topic loads, the first control of the chat, not the header's
-    // resize button), back to the button on fold
-    if (open && !wasOpen.current)
-      setTimeout(() => {
-        const body = panelRef.current?.querySelector('.dock-body');
-        (
-          (body?.querySelector('textarea') ??
-            body?.querySelector('button')) as HTMLElement | null
-        )?.focus();
-      }, 0);
+    if (open) {
+      setMounted(true);
+      setNews(null);
+    }
+    if (open && !wasOpen.current) {
+      setFocusKey((k) => k + 1);
+      // No topic yet: the first control of the chat, not the header's
+      // resize button
+      if (!state.topicId)
+        setTimeout(
+          () =>
+            (
+              panelRef.current?.querySelector(
+                '.dock-body button',
+              ) as HTMLElement | null
+            )?.focus(),
+          0,
+        );
+    }
     if (!open && wasOpen.current) setTimeout(() => fabRef.current?.focus(), 0);
     wasOpen.current = open;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.mode]);
+
+  useEffect(() => {
+    if (open && state.topicId) setFocusKey((k) => k + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.topicId]);
+
+  // Esc folds the window wherever focus is, even after the focused control
+  // went away — but never under an open confirmation, which Esc cancels
+  useEffect(() => {
+    if (!visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || document.querySelector('.modal')) return;
+      const at = document.activeElement;
+      if (at && at !== document.body && !panelRef.current?.contains(at)) return;
+      onChange((prev) => ({ ...prev, mode: 'closed' }));
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
   const set = (patch: Partial<DockState>) =>
     onChange((prev) => ({ ...prev, ...patch }));
 
@@ -80,25 +136,38 @@ export function ChatDock({
       {state.mode === 'closed' && !suppressed && (
         <button
           ref={fabRef}
-          className="dock-fab"
-          onClick={() => set({ mode: 'open' })}
-          aria-label="Открыть окно «Спросить бота»"
+          className={`dock-fab${news ? ` dock-fab-${news.kind}` : ''}`}
+          onClick={() =>
+            set({ mode: 'open', ...(news ? { topicId: news.id } : {}) })
+          }
+          aria-label={`Открыть окно «Спросить бота»${
+            waiting
+              ? ', бот думает'
+              : newsText
+              ? `, ${newsText.toLowerCase()}`
+              : ''
+          }`}
         >
-          Спросить бота
+          {waiting
+            ? 'Бот думает…'
+            : newsText
+            ? `● ${newsText}`
+            : 'Спросить бота'}
         </button>
+      )}
+      {/* Said aloud even while the window is folded and its thread hidden */}
+      {!suppressed && (
+        <span className="sr-only" role="status">
+          {state.mode === 'closed' ? newsText : ''}
+        </span>
       )}
       {/* Kept mounted while folded: a question in progress keeps going */}
       {mounted && (
         <section
           ref={panelRef}
           className={`dock dock-${state.mode}`}
-          hidden={state.mode === 'closed' || suppressed}
+          hidden={!visible}
           aria-label="Спросить бота"
-          onKeyDown={(e) => {
-            // Esc folds the window, unless a confirmation is open
-            if (e.key === 'Escape' && !document.querySelector('.modal'))
-              set({ mode: 'closed' });
-          }}
         >
           <header className="dock-head">
             <b>Спросить бота</b>
@@ -129,7 +198,8 @@ export function ChatDock({
               topicId={state.topicId}
               onOpen={(id) => set({ topicId: id })}
               onUnauthorized={onUnauthorized}
-              active={state.mode !== 'closed' && !suppressed}
+              active={visible}
+              focusKey={focusKey}
             />
           </div>
         </section>

@@ -26,10 +26,13 @@ export function useConfirm(): [
         return { options, resolve };
       });
     });
-  const close = (ok: boolean) => {
-    state?.resolve(ok);
-    setState(null);
-  };
+  // All three go through the latest state, so an old handler can never
+  // resolve the wrong question
+  const close = (ok: boolean) =>
+    setState((prev) => {
+      prev?.resolve(ok);
+      return null;
+    });
   const cancel = () =>
     setState((prev) => {
       prev?.resolve(false);
