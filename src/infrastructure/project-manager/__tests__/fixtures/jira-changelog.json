@@ -1,0 +1,46 @@
+{
+  "issueChangeLogs": [
+    {
+      "issueId": "10001",
+      "changeHistories": [
+        {
+          "id": "501",
+          "author": { "accountId": "a1", "displayName": "Vlad Koropets" },
+          "created": 1785909600000,
+          "items": [
+            { "field": "status", "fieldtype": "jira", "fieldId": "status", "from": "10000", "fromString": "To Do", "to": "3", "toString": "In Progress" }
+          ]
+        },
+        {
+          "id": "502",
+          "created": 1787212800000,
+          "items": [
+            { "field": "status", "fieldtype": "jira", "fieldId": "status", "from": "3", "fromString": "In Progress", "to": "10002", "toString": "Ready For Qa" },
+            { "field": "assignee", "fieldtype": "jira", "fieldId": "assignee", "from": "a1", "fromString": "Vlad Koropets", "to": "a2", "toString": "Ira Zanizdra" }
+          ]
+        },
+        {
+          "id": "503",
+          "created": 1787299200000,
+          "items": [
+            { "field": "assignee", "fieldtype": "jira", "fieldId": "assignee", "from": "a2", "fromString": "Ira Zanizdra", "to": "a1", "toString": "Vlad Koropets" },
+            { "field": "Fix Version", "fieldtype": "jira", "fieldId": "fixVersions", "from": null, "fromString": null, "to": "10010", "toString": "MVP 2" },
+            { "field": "Sprint", "fieldtype": "custom", "fieldId": "customfield_10020", "from": "6", "fromString": "Sprint 6, Release", "to": "6, 7", "toString": "Sprint 6, Release, Sprint 7" }
+          ]
+        }
+      ]
+    },
+    {
+      "issueId": "10010",
+      "changeHistories": [
+        {
+          "id": "601",
+          "created": 1789741800000,
+          "items": [
+            { "field": "status", "fieldtype": "jira", "fieldId": "status", "from": "3", "fromString": "In Progress", "to": "10001", "toString": "Done" }
+          ]
+        }
+      ]
+    }
+  ]
+}

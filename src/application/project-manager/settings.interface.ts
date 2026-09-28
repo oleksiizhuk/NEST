@@ -199,6 +199,9 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
         // Added later: older admin pages do not send it
         runwayDays:
           value.runwayDays === undefined ? 2 : int('runwayDays', 1, 10),
+        // Added later: older admin pages do not send it
+        qaWaitDays:
+          value.qaWaitDays === undefined ? 5 : int('qaWaitDays', 1, 30),
         off: [...new Set(off as SignalRule[])],
       };
     }

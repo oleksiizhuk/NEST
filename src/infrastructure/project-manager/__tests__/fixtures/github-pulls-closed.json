@@ -1,0 +1,22 @@
+[
+  {
+    "number": 10,
+    "title": "ORV-10 login",
+    "user": { "login": "eugene-t" },
+    "created_at": "2026-09-15T09:00:00Z",
+    "updated_at": "2026-09-18T15:00:00Z",
+    "merged_at": "2026-09-18T15:00:00Z",
+    "head": { "ref": "feature/ORV-10" },
+    "base": { "ref": "dev" }
+  },
+  {
+    "number": 9,
+    "title": "Closed without merge",
+    "user": { "login": "eugene-t" },
+    "created_at": "2026-09-10T09:00:00Z",
+    "updated_at": "2026-09-11T09:00:00Z",
+    "merged_at": null,
+    "head": { "ref": "spike" },
+    "base": { "ref": "dev" }
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "data": {
+    "repository": {
+      "pullRequests": {
+        "nodes": [
+          {
+            "number": 12,
+            "reviewDecision": null,
+            "author": { "login": "vlad-k" },
+            "reviews": { "nodes": [ { "author": { "__typename": "Bot", "login": "coderabbitai[bot]" } } ] },
+            "timelineItems": { "nodes": [] }
+          }
+        ]
+      }
+    }
+  }
+}

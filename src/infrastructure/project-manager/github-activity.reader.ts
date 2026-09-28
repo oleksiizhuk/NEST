@@ -372,8 +372,11 @@ export class GitHubActivityReader implements IProjectSource {
         break;
       after = prs.pageInfo.endCursor ?? null;
     }
-    // Promotions (dev → staging → main) are not reviewable work
+    // Promotions (dev → staging → main) are not reviewable work; a PR merged
+    // between the two queries would otherwise count twice
+    const seen = new Set<number>();
     return nodes
+      .filter((n) => !seen.has(n.number) && seen.add(n.number))
       .filter((n) => !PROMOTION_HEADS.has(n.headRefName ?? ''))
       .map((n) => toPrFact(repo, n));
   }

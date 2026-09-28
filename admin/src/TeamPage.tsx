@@ -32,6 +32,7 @@ const TOGGLEABLE: SignalRule[] = [
   'runway',
   'switching',
   'unplanned',
+  'qa-queue',
 ];
 
 const when = (iso: string) =>
@@ -148,7 +149,12 @@ function ThresholdsPanel({
   const [draft, setDraft] = useState<Thresholds>(value);
   const [busy, setBusy] = useState(false);
   const num = (
-    k: 'wipLimit' | 'staleDays' | 'reviewWaitDays' | 'runwayDays',
+    k:
+      | 'wipLimit'
+      | 'staleDays'
+      | 'reviewWaitDays'
+      | 'runwayDays'
+      | 'qaWaitDays',
   ) => (
     <input
       type="number"
@@ -198,6 +204,14 @@ function ThresholdsPanel({
           <span className="muted small">
             Считается по личному темпу за 4 недели. 2 дня — время заранее
             выбрать следующую задачу.
+          </span>
+        </label>
+        <label>
+          Рабочих дней ожидания тестирования, после которых — сигнал команде
+          {num('qaWaitDays')}
+          <span className="muted small">
+            Задача сделана и ждёт QA. Больше недели — повод разобраться, что
+            тормозит проверку.
           </span>
         </label>
       </div>
@@ -707,6 +721,14 @@ function PersonCard({
         </div>
         <div className="chips">
           <span className="chip">В работе {p.inProgress.length}</span>
+          {p.waiting.length > 0 && (
+            <span
+              className="chip"
+              title="Сделано, ждёт ревью или тестирования — не нагрузка человека"
+            >
+              Ждёт проверки {p.waiting.length}
+            </span>
+          )}
           <span className="chip">Очередь {p.queue.length}</span>
           <span className="chip">Закрыто 14 дн. {p.done14.length}</span>
           {p.github && <span className="chip">PR {p.pulls.length}</span>}
@@ -768,6 +790,16 @@ function PersonCard({
             </ul>
           ) : (
             <p className="muted">Ничего</p>
+          )}
+          {p.waiting.length > 0 && (
+            <>
+              <h3>Ждёт ревью или тестирования</h3>
+              <ul className="issues">
+                {p.waiting.map((i) => (
+                  <Issue key={i.key} i={i} links={links} stale={stale} />
+                ))}
+              </ul>
+            </>
           )}
           <h3>Очередь</h3>
           {p.queue.length ? (
