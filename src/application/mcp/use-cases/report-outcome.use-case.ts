@@ -52,23 +52,22 @@ export class ReportOutcomeUseCase {
       outcome: request.status,
     };
     // A report during a running round would be about the previous answer
-    // and get overwritten when the round ends: wait for it instead
-    const current = await this.tasks.findById(id, owner);
-    if (current?.roundInFlight(new Date())) {
-      return reportInFlightText(current);
-    }
-    const task = await this.tasks.report(id, owner, request.status, event);
+    // and get overwritten when the round ends: the write refuses it, and
+    // the caller is told to wait
+    const now = new Date();
+    const task = await this.tasks.report(id, owner, request.status, event, now);
     if (!task) {
       const existing = await this.tasks.findById(id, owner);
       if (!existing) return unknownText(id);
+      if (existing.roundInFlight(now)) return reportInFlightText(existing);
       if (existing.status === 'escalated' && request.status === 'solved') {
         const solved = await this.tasks.resolveEscalated(id, owner, event);
         if (solved) return reportedText(solved);
       }
       return closedText(existing);
     }
-    if (task.shouldEscalate(new Date())) {
-      await this.tasks.escalate(id);
+    if (task.shouldEscalate(now)) {
+      await this.tasks.escalate(id, now);
       return escalatedText(task);
     }
     return reportedText(task);

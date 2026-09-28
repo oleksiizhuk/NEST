@@ -262,7 +262,7 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     const bare = (l: string) =>
       l
         .trim()
-        .replace(/^(?:[#>*_`\-\s]|```\w*)+/, '')
+        .replace(/^(?:```\w*|[#>*_`\-\s])+/, '')
         // Bold, code and _emphasis_ marks, but not the _ inside NEED_INFO
         .replace(/[*`]+/g, '')
         .replace(/(^|\W)_+|_+(?=\W|$)/g, '$1');
@@ -271,7 +271,7 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
         .trim()
         .replace(
           new RegExp(
-            `^(?:[#>*_\`\\-\\s]|\`\`\`\\w*)*${marker}[*_\`]*\\s*[:.\\-—]?[*_\`]*\\s*`,
+            `^(?:\`\`\`\\w*|[#>*_\`\\-\\s])*${marker}[*_\`]*\\s*[:.\\-—]?[*_\`]*\\s*`,
             'i',
           ),
           '',
@@ -280,7 +280,7 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     const isFence = (l: string) => /^```\w*\s*$/.test(l.trim());
 
     let needInfo = false;
-    const first = lines.findIndex((l) => bare(l));
+    const first = lines.findIndex((l) => !isFence(l) && bare(l));
     if (first >= 0 && /^NEED_INFO\b/i.test(bare(lines[first]))) {
       needInfo = true;
       const rest = afterMarker(lines[first], 'NEED_INFO');

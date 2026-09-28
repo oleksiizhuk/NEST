@@ -93,7 +93,9 @@ describe('McpController (streamable HTTP)', () => {
     });
     expect(tools[2].inputSchema).toMatchObject({
       required: ['task_id', 'status', 'details'],
-      properties: { status: { enum: ['solved', 'not_solved', 'partial'] } },
+      properties: {
+        status: { enum: ['solved', 'not_solved', 'partial', 'abandoned'] },
+      },
     });
     expect(instructions).toContain('Always call report_outcome');
   });

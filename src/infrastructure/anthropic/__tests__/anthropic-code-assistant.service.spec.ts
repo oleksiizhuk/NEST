@@ -252,6 +252,11 @@ describe('AnthropicCodeAssistantService', () => {
       expect(
         parse('Fix.\nHYPOTHESIS: `__init__.py` imports twice').hypothesis,
       ).toBe('`__init__.py` imports twice');
+      // A fence with a language tag is a fence too
+      expect(parse('```markdown\nNEED_INFO\n1. send x\n```')).toEqual({
+        text: '1. send x',
+        needInfo: true,
+      });
       // A reply wrapped in a fence loses the fence pair, not the list
       expect(parse('```\nNEED_INFO\n1. send a.ts\n```')).toEqual({
         text: '1. send a.ts',

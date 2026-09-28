@@ -32,14 +32,24 @@ describe('McpDailyLimitGuard', () => {
     await expect(guard.canActivate(toolCall)).resolves.toBe(true);
   });
 
-  it('is a pass-through when MCP_DAILY_LIMIT is unset or not positive', async () => {
-    const model = modelReturning(999);
-    const guard = new McpDailyLimitGuard(configWith(undefined), model);
-    await expect(guard.canActivate(toolCall)).resolves.toBe(true);
-    expect(model.findOneAndUpdate).not.toHaveBeenCalled();
+  it('applies a default cap when MCP_DAILY_LIMIT is unset, and none at 0', async () => {
+    const unset = new McpDailyLimitGuard(
+      configWith(undefined),
+      modelReturning(200),
+    );
+    await expect(unset.canActivate(toolCall)).resolves.toBe(true);
+    const over = new McpDailyLimitGuard(
+      configWith(undefined),
+      modelReturning(201),
+    );
+    await expect(over.canActivate(toolCall)).rejects.toBeInstanceOf(
+      HttpException,
+    );
 
-    const zero = new McpDailyLimitGuard(configWith('0'), modelReturning(999));
+    const model = modelReturning(999);
+    const zero = new McpDailyLimitGuard(configWith('0'), model);
     await expect(zero.canActivate(toolCall)).resolves.toBe(true);
+    expect(model.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
   it('does not count handshake / non-tools-call messages', async () => {

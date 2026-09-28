@@ -13,6 +13,8 @@ import { Request } from 'express';
 import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
 import { FREE_TOOLS } from '@infrastructure/mcp/mcp-server.factory';
 
+// Paid calls per UTC day when MCP_DAILY_LIMIT is not set
+export const DEFAULT_DAILY_LIMIT = 200;
 // report_outcome / list_open_tasks per paid call before they are refused
 const FREE_CALLS_PER_PAID = 10;
 
@@ -31,9 +33,11 @@ export class McpDailyLimitGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const limit = Number(this.configService.get<string>('MCP_DAILY_LIMIT'));
-    if (!this.usage || !Number.isFinite(limit) || limit <= 0) {
-      return true; // cap disabled
+    const limit = McpDailyLimitGuard.limitFrom(
+      this.configService.get<string>('MCP_DAILY_LIMIT'),
+    );
+    if (!this.usage || limit === 0) {
+      return true; // cap switched off with MCP_DAILY_LIMIT=0
     }
 
     // Only tool calls that reach the model count toward the limit. In
@@ -68,6 +72,16 @@ export class McpDailyLimitGuard implements CanActivate {
       }
     }
     return true;
+  }
+
+  // Unset or unreadable = the default: per-task caps guide the protocol but
+  // do not bound spend (a caller can open new tasks), so the day needs one
+  private static limitFrom(value?: string): number {
+    const n = Number(value);
+    if (value === undefined || value === '' || !Number.isFinite(n) || n < 0) {
+      return DEFAULT_DAILY_LIMIT;
+    }
+    return Math.floor(n);
   }
 
   private static toolCalls(context: ExecutionContext): {

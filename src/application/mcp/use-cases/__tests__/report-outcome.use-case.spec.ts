@@ -100,6 +100,18 @@ describe('ReportOutcomeUseCase', () => {
     );
   });
 
+  it('closes a dropped task as abandoned, not as solved', async () => {
+    const reply = await useCase.execute({
+      taskId: ID,
+      status: 'abandoned',
+      details: 'user moved on',
+    });
+
+    expect(tasks.rows.get(ID).status).toBe('abandoned');
+    expect(tasks.rows.get(ID).isOpen).toBe(false);
+    expect(reply).toContain('closed as abandoned');
+  });
+
   it('accepts a late "solved" on an escalated task', async () => {
     await tasks.escalate(ID);
 

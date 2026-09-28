@@ -108,9 +108,25 @@ describe('MongoMcpTaskRepository', () => {
       kind: 'report' as const,
       outcome: 'solved' as const,
     };
-    const task = await repo.report('t-0000000001', 'kiro', 'solved', report);
+    const now = new Date('2026-09-28T12:00:00Z');
+    const task = await repo.report(
+      't-0000000001',
+      'kiro',
+      'solved',
+      report,
+      now,
+    );
     expect(model.findOneAndUpdate).toHaveBeenCalledWith(
-      { taskId: 't-0000000001', owner: 'kiro', status: OPEN },
+      {
+        taskId: 't-0000000001',
+        owner: 'kiro',
+        status: OPEN,
+        // Refused while a round runs
+        $or: [
+          { inFlightSince: null },
+          { inFlightSince: { $lt: new Date('2026-09-28T11:55:00Z') } },
+        ],
+      },
       {
         $set: { status: 'solved' },
         $push: { history: { $each: [report], $slice: -20 } },
@@ -118,6 +134,21 @@ describe('MongoMcpTaskRepository', () => {
       { new: true },
     );
     expect(task.isOpen).toBe(false);
+  });
+
+  it('escalates only an idle task whose last answer is not waiting for a report', async () => {
+    await repo.escalate('t-0000000001', new Date('2026-09-28T12:00:00Z'));
+    expect(model.updateOne).toHaveBeenCalledWith(
+      {
+        taskId: 't-0000000001',
+        status: { $in: ['gathering', 'not_solved', 'partial'] },
+        $or: [
+          { inFlightSince: null },
+          { inFlightSince: { $lt: new Date('2026-09-28T11:55:00Z') } },
+        ],
+      },
+      { $set: { status: 'escalated' } },
+    );
   });
 
   it('gives back only the claimed round and counts a failed attempt', async () => {

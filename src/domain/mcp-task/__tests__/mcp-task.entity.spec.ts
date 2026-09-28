@@ -86,6 +86,10 @@ describe('McpTask', () => {
         'ANTHROPIC_KEY=sk-ant-short and apiKey: xyz',
         'ANTHROPIC_KEY=*** and apiKey: ***',
       ],
+      ['export DB_PASS=hunter2', 'export DB_PASS=***'],
+      ['redis://:secretpw@host', 'redis://:***@host'],
+      ['Authorization: Token 9f8e7d', 'Authorization: Token ***'],
+      ['client_secret => "abc"', 'client_secret =› ***'],
       [`ghp_${'a1'.repeat(18)} ok`, '*** ok'],
     ];
     for (const [input, masked] of samples) {
@@ -99,6 +103,7 @@ describe('McpTask', () => {
       'tokenizer: fails on input',
       'keyboard: layout',
       'tokens: 5 left',
+      'passes: 3 tests',
     ]) {
       expect(McpTask.clean(text, 200)).toBe(text);
     }

@@ -118,9 +118,10 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     owner: string,
     outcome: McpOutcome,
     event: McpTaskEvent,
+    now = this.now(),
   ) {
     const t = this.own(id, owner);
-    if (!t?.isOpen) return null;
+    if (!t?.isOpen || t.roundInFlight(now)) return null;
     return this.put(t, { status: outcome, history: [...t.history, event] });
   }
 
@@ -130,9 +131,11 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     return this.put(t, { status: 'solved', history: [...t.history, event] });
   }
 
-  async escalate(id: string) {
+  async escalate(id: string, now = this.now()) {
     const t = this.rows.get(id);
-    if (t?.isOpen) this.put(t, { status: 'escalated' });
+    if (t?.isOpen && !t.awaitingReport && !t.roundInFlight(now)) {
+      this.put(t, { status: 'escalated' });
+    }
   }
 
   // Test helper: one full round, claimed and answered

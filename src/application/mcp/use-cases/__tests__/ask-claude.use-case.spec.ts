@@ -229,6 +229,37 @@ describe('AskClaudeUseCase', () => {
     expect(reply).toContain(`task_id "${ID}"`);
   });
 
+  it('on the last failed attempt, says to report and hand over, not to retry', async () => {
+    assistant.ask.mockRejectedValue(new Error('529'));
+    const errors: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      errors.push(
+        await useCase
+          .execute({ prompt: 'a', taskId: ID })
+          .catch((e: Error) => e.message),
+      );
+    }
+
+    expect(errors[0]).toContain('failed attempt 1 of 3');
+    expect(errors[0]).toContain('call ask_advice again');
+    expect(errors[2]).toContain('no attempts are left');
+    expect(errors[2]).not.toContain('call ask_advice again');
+  });
+
+  it('out of attempts with an unreported answer, asks for the report without claiming rounds ran out', async () => {
+    await useCase.execute({ prompt: 'a', taskId: ID });
+    assistant.ask.mockRejectedValue(new Error('529'));
+    for (let i = 0; i < 3; i++) {
+      await useCase.execute({ prompt: 'a', taskId: ID }).catch(() => undefined);
+    }
+
+    const reply = await useCase.execute({ prompt: 'a', taskId: ID });
+
+    expect(reply).toContain('has had 3 failed attempts');
+    expect(reply).not.toContain('rounds');
+    expect(tasks.rows.get(ID).isOpen).toBe(true);
+  });
+
   it('escalates a task after too many failed attempts', async () => {
     assistant.ask.mockRejectedValue(new Error('529'));
     for (let i = 0; i < 3; i++) {

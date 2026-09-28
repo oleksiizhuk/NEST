@@ -24,6 +24,7 @@ import {
   escalatedText,
   inFlightText,
   needInfoFooter,
+  failedCallText,
   noAnswerFooter,
   reportFirstText,
   unknownText,
@@ -116,14 +117,9 @@ export class AskClaudeUseCase {
       await this.bestEffort('releaseRound', () =>
         this.tasks.releaseRound(task.id, claimedAt),
       );
-      throw Object.assign(
-        new McpToolError(
-          'The advice call failed (the model service was busy or timed ' +
-            'out); this round was not counted. Call ask_advice again with ' +
-            `task_id "${task.id}" in a minute, or with a smaller context.`,
-        ),
-        { cause: error },
-      );
+      throw Object.assign(new McpToolError(failedCallText(task)), {
+        cause: error,
+      });
     }
 
     if (result.noAnswer) {
@@ -177,7 +173,7 @@ export class AskClaudeUseCase {
       return inFlightText(task);
     }
     if (task.awaitingReport) return reportFirstText(task);
-    await this.tasks.escalate(id);
+    await this.tasks.escalate(id, now);
     return escalatedText(task);
   }
 }

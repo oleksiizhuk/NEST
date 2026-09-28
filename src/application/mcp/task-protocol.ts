@@ -11,7 +11,16 @@ import {
 
 const reportCall = (id: string) =>
   `report_outcome { task_id: "${id}", status: "solved" | "not_solved" | ` +
-  `"partial", details: "<what you changed, what you ran, what you saw>" }`;
+  `"partial" | "abandoned", details: "<what you changed, what you ran, ` +
+  `what you saw>" }`;
+
+// The attempt that just failed was the last one allowed
+const lastAttempt = (task: McpTask) => task.failures + 1 >= MAX_FAILED_ATTEMPTS;
+
+const handOver = (task: McpTask) =>
+  `NEXT STEP: no attempts are left. Call report_outcome with status ` +
+  `"not_solved" or "partial" for task_id "${task.id}" and tell the user a ` +
+  'person needs to take over.';
 
 const round = (task: McpTask) =>
   `task_id: ${task.id} (round ${task.rounds} of ${MAX_TASK_ROUNDS})`;
@@ -21,7 +30,8 @@ export const checklistText = (task: McpTask): string =>
 
 export const waitingText = (tasks: McpTask[]): string =>
   [
-    'Your tasks still waiting for a report — call report_outcome for each:',
+    'Your tasks still waiting for a report — call report_outcome for each ' +
+      '("abandoned" if you dropped it):',
     ...tasks.map((t) => `- ${t.id}: "${t.goal}"`),
   ].join('\n');
 
@@ -86,13 +96,24 @@ export const noAnswerFooter = (task: McpTask): string =>
     '---',
     `task_id: ${task.id} (not counted as a round; failed attempts ` +
       `${task.failures + 1} of ${MAX_FAILED_ATTEMPTS})`,
-    'NEXT STEP: narrow the question (one file, one problem) or send less ' +
-      `context, then call ask_advice again with task_id "${task.id}".`,
+    lastAttempt(task)
+      ? handOver(task)
+      : 'NEXT STEP: narrow the question (one file, one problem) or send ' +
+        `less context, then call ask_advice again with task_id "${task.id}".`,
   ].join('\n');
 
+export const failedCallText = (task: McpTask): string =>
+  'The advice call failed (the model service was busy or timed out); it ' +
+  `counts as failed attempt ${task.failures + 1} of ${MAX_FAILED_ATTEMPTS}` +
+  ', not as a round. ' +
+  (lastAttempt(task)
+    ? handOver(task)
+    : `NEXT STEP: call ask_advice again with task_id "${task.id}" in a ` +
+      'minute, or with a smaller context.');
+
 export const reportedText = (task: McpTask): string => {
-  if (task.status === 'solved') {
-    return `Task ${task.id} closed as solved. Thank you for reporting.`;
+  if (task.status === 'solved' || task.status === 'abandoned') {
+    return `Task ${task.id} closed as ${task.status}. Thank you for reporting.`;
   }
   return [
     `Recorded: ${task.status} (round ${task.rounds} of ${MAX_TASK_ROUNDS}).`,
@@ -125,8 +146,11 @@ export const inFlightText = (task: McpTask): string =>
   'it and call report_outcome; do not ask again in parallel.';
 
 export const reportFirstText = (task: McpTask): string =>
-  `Task ${task.id} has used all ${MAX_TASK_ROUNDS} rounds. First apply the ` +
-  `last answer and call ${reportCall(task.id)}.`;
+  `Task ${task.id} ` +
+  (task.onLastRound
+    ? `has used all ${MAX_TASK_ROUNDS} rounds`
+    : `has had ${MAX_FAILED_ATTEMPTS} failed attempts`) +
+  `. First apply the last answer and call ${reportCall(task.id)}.`;
 
 export const closedText = (task: McpTask): string =>
   `Task ${task.id} is already closed (${task.status}). For a new problem ` +

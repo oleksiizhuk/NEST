@@ -15,6 +15,13 @@ import { McpTaskDocument } from '@infrastructure/database/schemas/mcp-task.schem
 import { McpTaskMapper } from '@infrastructure/database/mappers/mcp-task.mapper';
 
 const OPEN = { $in: [...OPEN_TASK_STATUSES] };
+// No round running: never claimed, or claimed by a function that died
+const idle = (now: Date) => ({
+  $or: [
+    { inFlightSince: null },
+    { inFlightSince: { $lt: new Date(now.getTime() - ROUND_MAX_MS) } },
+  ],
+});
 const push = (event: McpTaskEvent) => ({
   history: { $each: [event], $slice: -MAX_HISTORY },
 });
@@ -84,6 +91,8 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     return doc ? McpTaskMapper.toDomain(doc) : null;
   }
 
+  // After a takeover this also refunds the dead function's round: a dead
+  // round plus a failed one costs no round and one failed attempt
   async releaseRound(id: string, claimedAt: Date): Promise<void> {
     await this.tasks.updateOne(
       { taskId: id, inFlightSince: claimedAt },
@@ -117,10 +126,11 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     owner: string,
     outcome: McpOutcome,
     event: McpTaskEvent,
+    now: Date,
   ): Promise<McpTask | null> {
     const doc = await this.tasks
       .findOneAndUpdate(
-        { taskId: id, owner, status: OPEN },
+        { taskId: id, owner, status: OPEN, ...idle(now) },
         { $set: { status: outcome }, $push: push(event) },
         { new: true },
       )
@@ -143,9 +153,13 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     return doc ? McpTaskMapper.toDomain(doc) : null;
   }
 
-  async escalate(id: string): Promise<void> {
+  async escalate(id: string, now: Date): Promise<void> {
     await this.tasks.updateOne(
-      { taskId: id, status: OPEN },
+      {
+        taskId: id,
+        status: { $in: OPEN_TASK_STATUSES.filter((s) => s !== 'answered') },
+        ...idle(now),
+      },
       { $set: { status: 'escalated' } },
     );
   }

@@ -5,7 +5,13 @@
 
 import { randomBytes } from 'crypto';
 
-export const MCP_OUTCOMES = ['solved', 'not_solved', 'partial'] as const;
+// abandoned: the caller dropped the task; it closes without claiming success
+export const MCP_OUTCOMES = [
+  'solved',
+  'not_solved',
+  'partial',
+  'abandoned',
+] as const;
 export type McpOutcome = (typeof MCP_OUTCOMES)[number];
 
 // gathering: the last reply asked for more material
@@ -18,7 +24,8 @@ export type McpTaskStatus =
   | 'not_solved'
   | 'partial'
   | 'solved'
-  | 'escalated';
+  | 'escalated'
+  | 'abandoned';
 export const OPEN_TASK_STATUSES: readonly McpTaskStatus[] = [
   'gathering',
   'answered',
@@ -65,9 +72,11 @@ export const DEFAULT_TASK_OWNER = 'default';
 // Authorization schemes, and long random-looking runs. Paths and ordinary
 // words ("tokenizer", "keyboard", "tokens: 5") are left alone.
 const KEYED_SECRET =
-  /(["']?)\b([A-Za-z0-9_.-]*(?:secret|token|passw(?:or)?d|pwd|credentials?|key))\1(\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s"',;]+)/gi;
-const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]+:)[^\s@/]+@/gi;
-const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+  /(["']?)\b([A-Za-z0-9_.-]*(?:secret|token|passw(?:or)?d|pass|pwd|credentials?|key))\1(\s*(?:=>|[=:])\s*)(?:"[^"]*"|'[^']*'|[^\s"',;]+)/gi;
+const URL_PASSWORD = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s:@/]*:)[^\s@/]+@/gi;
+const AUTH_SCHEME = /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]+/gi;
+// Mixed letters and digits, 32+ long. No slashes: file paths matter more
+// to the protocol than a slashed secret in prose (best effort, not a DLP)
 const RANDOM_RUN =
   /\b(?=[A-Za-z0-9_+=-]*\d)(?=[A-Za-z0-9_+=-]*[A-Za-z])[A-Za-z0-9_+=-]{32,}/g;
 
