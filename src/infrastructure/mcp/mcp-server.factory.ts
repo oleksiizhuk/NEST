@@ -55,8 +55,9 @@ const INSTRUCTIONS =
   'to collect.\n' +
   '2. Collect the checklist from the codebase and docs: read the files, ' +
   'run the commands, open the docs. Always include package.json (RN and ' +
-  'Expo versions), which platform fails, and the right log (Metro, Xcode, ' +
-  'adb logcat or Gradle). Then call ask_advice with the task_id, ' +
+  'Expo versions); for a bug also which platform fails and the right log ' +
+  '(Metro, Xcode, adb logcat or Gradle). Then call ask_advice with the ' +
+  'task_id, ' +
   'your question in prompt and what you collected in context.\n' +
   '3. If the reply asks for more (NEED_INFO), collect exactly that and call ' +
   'ask_advice again with the same task_id.\n' +
