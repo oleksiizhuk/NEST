@@ -58,17 +58,17 @@ export function ChatDock({
   useEffect(() => {
     const open = state.mode !== 'closed';
     if (open) setMounted(true);
-    // Focus follows the window: into it on open, back to the button on fold
+    // Focus follows the window: into the question box on open (or, while
+    // the topic loads, the first control of the chat, not the header's
+    // resize button), back to the button on fold
     if (open && !wasOpen.current)
-      setTimeout(
-        () =>
-          (
-            panelRef.current?.querySelector(
-              'textarea, button',
-            ) as HTMLElement | null
-          )?.focus(),
-        0,
-      );
+      setTimeout(() => {
+        const body = panelRef.current?.querySelector('.dock-body');
+        (
+          (body?.querySelector('textarea') ??
+            body?.querySelector('button')) as HTMLElement | null
+        )?.focus();
+      }, 0);
     if (!open && wasOpen.current) setTimeout(() => fabRef.current?.focus(), 0);
     wasOpen.current = open;
   }, [state.mode]);
@@ -129,6 +129,7 @@ export function ChatDock({
               topicId={state.topicId}
               onOpen={(id) => set({ topicId: id })}
               onUnauthorized={onUnauthorized}
+              active={state.mode !== 'closed' && !suppressed}
             />
           </div>
         </section>

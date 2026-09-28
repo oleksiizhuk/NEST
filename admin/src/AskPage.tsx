@@ -8,6 +8,28 @@ const STARTERS = ['Почему так?', 'Это плохо или хорошо
 // the page and the window so one topic never asks twice
 const confirmedTopics = { current: new Set<string>() };
 
+// The page and the window are two separate views of the same topics. The
+// question being answered and news of changed topics are shared, so one
+// view never offers a second question the server would refuse, and an
+// answer, a new topic or a deletion shows up in both.
+interface TopicNews {
+  id: string;
+  topic?: Topic;
+  removed?: boolean;
+  // A question that failed: the view showing its topic puts it back
+  failed?: { question: string; error: string };
+}
+const shared = {
+  waiting: null as { id: string; text: string } | null,
+  listeners: new Set<(news?: TopicNews) => void>(),
+};
+const publish = (news?: TopicNews) =>
+  shared.listeners.forEach((listener) => listener(news));
+const setSharedWaiting = (waiting: typeof shared.waiting) => {
+  shared.waiting = waiting;
+  publish();
+};
+
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', {
     day: 'numeric',
@@ -23,24 +45,28 @@ export function AskPage({
   onOpen,
   onUnauthorized,
   variant = 'page',
+  active = true,
 }: {
   topicId: string | null;
   onOpen: (id: string | null) => void;
   onUnauthorized: () => void;
   // 'dock' = the floating window: topics fold into a list above the chat
   variant?: 'page' | 'dock';
+  // False while the view is hidden: an open confirmation is cancelled, so
+  // it cannot hold the keyboard from behind the page
+  active?: boolean;
 }) {
-  const [modal, ask] = useConfirm();
+  const [modal, ask, cancelConfirm] = useConfirm();
   const confirmed = confirmedTopics;
   const [showTopics, setShowTopics] = useState(false);
   const [list, setList] = useState<TopicList | null>(null);
   const [topic, setTopic] = useState<Topic | null>(null);
   const [draft, setDraft] = useState('');
-  // The question being answered and its topic, shown until the answer
-  // arrives; switching topics meanwhile leaves it running there
-  const [waiting, setWaiting] = useState<{ id: string; text: string } | null>(
-    null,
-  );
+  // The question being answered and its topic (shared with the other
+  // view), shown until the answer arrives; switching topics meanwhile
+  // leaves it running there
+  const [, rerender] = useState(0);
+  const waiting = shared.waiting;
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   // The topic on screen now, for answers that arrive after a switch
@@ -54,11 +80,37 @@ export function AskPage({
   };
 
   const loadList = () => api.topics().then(setList).catch(handle);
+  // The latest callbacks for the shared listener, subscribed once
+  const onOpenRef = useRef(onOpen);
+  onOpenRef.current = onOpen;
+  const loadListRef = useRef(loadList);
+  loadListRef.current = loadList;
 
   useEffect(() => {
     loadList();
+    const listener = (news?: TopicNews) => {
+      rerender((n) => n + 1);
+      if (!news) return;
+      loadListRef.current();
+      if (news.id !== shown.current) return;
+      if (news.removed) onOpenRef.current(null);
+      else if (news.topic) setTopic(news.topic);
+      else if (news.failed) {
+        setDraft(news.failed.question);
+        setError(news.failed.error);
+      }
+    };
+    shared.listeners.add(listener);
+    return () => {
+      shared.listeners.delete(listener);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!active) cancelConfirm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   useEffect(() => {
     setTopic(null);
@@ -75,8 +127,10 @@ export function AskPage({
         if (list && !list.topics.some((x) => x.id === t.id)) loadList();
       })
       .catch((e) => {
-        // A remembered topic deleted meanwhile: start clean, not stuck on it
-        if (variant === 'dock' && !(e instanceof Unauthorized)) onOpen(null);
+        // A remembered topic deleted meanwhile: start clean, not stuck on
+        // it. Anything else (network, 5xx) keeps the topic for a retry.
+        if (variant === 'dock' && (e as { status?: number }).status === 404)
+          onOpen(null);
         else handle(e);
       });
     return () => {
@@ -109,28 +163,29 @@ export function AskPage({
       if (!ok) return;
       confirmed.current.add(id);
     }
-    setWaiting({ id, text: question });
+    // Re-checked after the confirmation: the other view may have sent one
+    if (shared.waiting) return;
+    setSharedWaiting({ id, text: question });
     setError(null);
     setDraft('');
     try {
       const answered = await api.askTopic(id, question);
-      if (shown.current === id) setTopic(answered);
-      loadList();
+      // Both views: whichever shows this topic gets the answer
+      publish({ id, topic: answered });
     } catch (e) {
-      // Keep the question so it can be sent again, in its own topic only
-      if (shown.current === id) {
-        setDraft(question);
-        handle(e);
-      } else if (e instanceof Unauthorized) onUnauthorized();
+      // Keep the question so it can be sent again, in its own topic and in
+      // whichever view shows it now (the one that sent may be gone)
+      if (e instanceof Unauthorized) onUnauthorized();
+      else publish({ id, failed: { question, error: (e as Error).message } });
     } finally {
-      setWaiting(null);
+      setSharedWaiting(null);
     }
   };
 
   const create = async () => {
     try {
       const t = await api.createTopic('Новая тема', null);
-      await loadList();
+      publish({ id: t.id });
       onOpen(t.id);
     } catch (e) {
       handle(e);
@@ -140,8 +195,8 @@ export function AskPage({
   const remove = async (id: string) => {
     try {
       await api.removeTopic(id);
-      if (id === topicId) onOpen(null);
-      loadList();
+      // Every view showing it leaves it, and both lists drop it
+      publish({ id, removed: true });
     } catch (e) {
       handle(e);
     }

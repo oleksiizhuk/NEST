@@ -50,7 +50,11 @@ async function call<T>(
     const message = Array.isArray(data.message)
       ? data.message.join('; ')
       : data.message;
-    throw new Error(message || `Ошибка ${res.status}`);
+    // The status rides along so a caller can tell "gone" (404) from a
+    // passing failure
+    throw Object.assign(new Error(message || `Ошибка ${res.status}`), {
+      status: res.status,
+    });
   }
   return data as T;
 }

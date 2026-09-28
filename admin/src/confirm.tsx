@@ -11,6 +11,8 @@ export interface ConfirmOptions {
 export function useConfirm(): [
   ReactNode,
   (options: ConfirmOptions) => Promise<boolean>,
+  // Closes an open confirmation as "no" (its view was hidden)
+  () => void,
 ] {
   const [state, setState] = useState<{
     options: ConfirmOptions;
@@ -28,10 +30,15 @@ export function useConfirm(): [
     state?.resolve(ok);
     setState(null);
   };
+  const cancel = () =>
+    setState((prev) => {
+      prev?.resolve(false);
+      return null;
+    });
   const modal = state ? (
     <ConfirmModal options={state.options} onClose={close} />
   ) : null;
-  return [modal, ask];
+  return [modal, ask, cancel];
 }
 
 function ConfirmModal({
