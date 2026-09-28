@@ -225,6 +225,32 @@ describe('MongoMcpTaskRepository', () => {
     expect(task.failures).toBe(0);
   });
 
+  it('reads tasks started since a date for stats, without their notes or checklist', async () => {
+    const limit = jest
+      .fn()
+      .mockReturnValue(
+        lean([
+          row({
+            checklist: undefined,
+            history: [{ at: '2026-09-28T10:00:00Z', kind: 'answer' }],
+          }),
+        ]),
+      );
+    const sort = jest.fn().mockReturnValue({ limit });
+    const select = jest.fn().mockReturnValue({ sort });
+    model.find.mockReturnValue({ select });
+    const since = new Date('2026-09-21T12:00:00Z');
+
+    const tasks = await repo.listCreatedSince(since, 5001);
+
+    expect(model.find).toHaveBeenCalledWith({ createdAt: { $gte: since } });
+    expect(select).toHaveBeenCalledWith('-checklist -history.note');
+    expect(sort).toHaveBeenCalledWith({ createdAt: -1 });
+    expect(limit).toHaveBeenCalledWith(5001);
+    expect(tasks[0].checklist).toEqual([]);
+    expect(tasks[0].history[0]).toMatchObject({ kind: 'answer', note: '' });
+  });
+
   it("lists the owner's open tasks, most recently touched first", async () => {
     const limit = jest.fn().mockReturnValue(lean([row()]));
     const sort = jest.fn().mockReturnValue({ limit });

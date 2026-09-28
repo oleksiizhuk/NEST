@@ -62,6 +62,9 @@ export class McpTaskDocument extends Document {
 
 export const McpTaskSchema = SchemaFactory.createForClass(McpTaskDocument);
 
+// GET /mcp/stats: tasks started since a date
+McpTaskSchema.index({ createdAt: -1 });
+
 // list_open_tasks and the start_task reminder
 McpTaskSchema.index({ owner: 1, status: 1, updatedAt: -1 });
 

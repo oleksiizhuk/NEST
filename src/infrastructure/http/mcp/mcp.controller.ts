@@ -1,12 +1,15 @@
 import {
   All,
   Controller,
+  Get,
   HttpCode,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -14,10 +17,17 @@ import { AskClaudeUseCase } from '@application/mcp/use-cases/ask-claude.use-case
 import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case';
 import { ReportOutcomeUseCase } from '@application/mcp/use-cases/report-outcome.use-case';
 import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks.use-case';
+import {
+  GetMcpStatsUseCase,
+  McpStatsReport,
+} from '@application/mcp/use-cases/get-mcp-stats.use-case';
 import { createMcpServer } from '@infrastructure/mcp/mcp-server.factory';
 import { DEFAULT_TASK_OWNER } from '@domain/mcp-task/mcp-task.entity';
 import { McpTokenGuard } from '@infrastructure/http/mcp/guards/mcp-token.guard';
-import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
+import {
+  McpDailyLimitGuard,
+  mcpDailyLimit,
+} from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
 
 // MCP Streamable HTTP endpoint. Point an MCP client (Kiro, Claude Code,
 // Cursor...) at POST /mcp with `Authorization: Bearer <MCP_TOKEN>`.
@@ -30,7 +40,21 @@ export class McpController {
     private readonly startTask: StartTaskUseCase,
     private readonly reportOutcome: ReportOutcomeUseCase,
     private readonly listOpenTasks: ListOpenTasksUseCase,
+    private readonly getStats: GetMcpStatsUseCase,
+    private readonly configService: ConfigService,
   ) {}
+
+  // How the bridge is used: tasks and outcomes, whether IDEs report back,
+  // where tasks get stuck, today's budget. Same MCP_TOKEN, no model call,
+  // not counted by the daily limit. ?days=1..30 (default 7).
+  @Get('stats')
+  stats(@Query('days') days?: string): Promise<McpStatsReport> {
+    return this.getStats.execute({
+      // Absent or empty (?days=) means the default, not zero days
+      days: days ? Number(days) : undefined,
+      limit: mcpDailyLimit(this.configService.get<string>('MCP_DAILY_LIMIT')),
+    });
+  }
 
   @Post()
   @UseGuards(McpDailyLimitGuard)

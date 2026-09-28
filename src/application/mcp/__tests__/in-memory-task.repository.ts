@@ -151,6 +151,13 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     });
   }
 
+  async listCreatedSince(since: Date, limit: number) {
+    return [...this.rows.values()]
+      .filter((t) => t.createdAt.getTime() >= since.getTime())
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
   async listOpen(owner: string, limit: number) {
     return [...this.rows.values()]
       .filter((t) => t.isOpen && t.owner === owner)
