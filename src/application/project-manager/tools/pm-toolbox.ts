@@ -46,6 +46,9 @@ export interface ToolContext {
   requesterName?: string;
   // Code and PR deep-dive tools; only the owner (and owner-run diagnostics)
   canReadCode?: boolean;
+  // No propose_* here (the admin page has no Confirm); the specs stay the
+  // same so the cached prompt prefix is shared with Telegram
+  noActions?: boolean;
   // Filled when this turn stored a proposal; one per turn
   proposal: PendingAction | null;
   // Taken synchronously by the first propose_* call of the turn, so tool
@@ -635,6 +638,11 @@ export class PmToolbox {
     if (CODE_TOOLS.has(name) && !ctx.canReadCode) {
       throw new Error(
         'Reading code and reviewing PRs in depth is reserved for the owner. Answer from the snapshot (PR list, review state, CI) and say the owner can ask for a deep look.',
+      );
+    }
+    if (ctx.noActions && name.startsWith('propose_')) {
+      throw new Error(
+        'Proposals cannot be confirmed on the admin page. Say this is done in the Telegram chat with the bot.',
       );
     }
     switch (name) {
