@@ -1,3 +1,8 @@
+import type {
+  McpOutcome,
+  McpTaskEventKind,
+} from '@domain/mcp-task/mcp-task.entity';
+
 export const CODE_ASSISTANT_SERVICE = 'CODE_ASSISTANT_SERVICE';
 
 // Short model names an IDE can pick per call. The infrastructure service maps
@@ -6,6 +11,18 @@ export const CODE_ASSISTANT_SERVICE = 'CODE_ASSISTANT_SERVICE';
 export const ASSISTANT_MODELS = ['opus', 'sonnet', 'fable'] as const;
 export type AssistantModel = (typeof ASSISTANT_MODELS)[number];
 export const DEFAULT_ASSISTANT_MODEL: AssistantModel = 'opus';
+
+// The task a question belongs to, so the answer can ask for what is missing
+// and not repeat a fix that was already reported as not working
+export interface IAskTask {
+  goal: string;
+  checklist: string[];
+  history: { kind: McpTaskEventKind; note: string; outcome?: McpOutcome }[];
+  round: number;
+  maxRounds: number;
+  // The caller did not report on the previous answer
+  unreported: boolean;
+}
 
 export interface IAskRequest {
   // The question or instruction
@@ -16,8 +33,27 @@ export interface IAskRequest {
   context?: string;
   // Which model answers this call; omitted = the configured default
   model?: AssistantModel;
+  task?: IAskTask;
+}
+
+export interface IAskResult {
+  text: string;
+  // The reply asks for more material instead of answering
+  needInfo: boolean;
+  // One line: the cause being fixed and the fix, kept on the task
+  hypothesis?: string;
+  // No usable answer (refusal, budget spent on thinking): the round is
+  // given back
+  noAnswer?: boolean;
+}
+
+export interface IPlanRequest {
+  goal: string;
+  context?: string;
 }
 
 export interface ICodeAssistantService {
-  ask(request: IAskRequest): Promise<string>;
+  ask(request: IAskRequest): Promise<IAskResult>;
+  // What to collect before the goal can be solved reliably: a short list
+  plan(request: IPlanRequest): Promise<string[]>;
 }

@@ -47,7 +47,7 @@ describe('AnthropicCodeAssistantService', () => {
       context: 'x.y',
     });
 
-    expect(answer).toBe('use optional chaining');
+    expect(answer.text).toBe('use optional chaining');
     const request = mockStream.mock.calls[0][0] as any;
     expect(request.model).toBe('claude-opus-5-5');
     expect(request.output_config).toEqual({ effort: 'high' });
@@ -66,7 +66,7 @@ describe('AnthropicCodeAssistantService', () => {
     mockFinalMessage.mockResolvedValue(textMessage('ok'));
 
     await new AnthropicCodeAssistantService(
-      configWith({ MCP_AI_MODEL: 'sonnet', MCP_AI_EFFORT: 'low' }),
+      configWith({ MCP_AI_MODEL: ' sonnet ', MCP_AI_EFFORT: 'low' }),
     ).ask({ prompt: 'a' });
     await new AnthropicCodeAssistantService(
       configWith({
@@ -126,7 +126,7 @@ describe('AnthropicCodeAssistantService', () => {
       prompt: 'x',
     });
 
-    expect(answer).toBe('first\n\nsecond');
+    expect(answer.text).toBe('first\n\nsecond');
   });
 
   it('flags a truncated answer', async () => {
@@ -136,7 +136,7 @@ describe('AnthropicCodeAssistantService', () => {
       prompt: 'x',
     });
 
-    expect(answer).toMatch(/^partial\n\n\[answer truncated at 16384/);
+    expect(answer.text).toMatch(/^partial\n\n\[answer truncated at 16384/);
   });
 
   it('explains when the whole budget went to thinking and no text came back', async () => {
@@ -149,7 +149,7 @@ describe('AnthropicCodeAssistantService', () => {
       prompt: 'x',
     });
 
-    expect(answer).toMatch(/spent the whole 16384-token budget thinking/);
+    expect(answer.text).toMatch(/spent the whole 16384-token budget thinking/);
   });
 
   it('asks for adaptive thinking with a 16k budget, no retries and a timeout under the Vercel cap', async () => {
@@ -180,7 +180,149 @@ describe('AnthropicCodeAssistantService', () => {
       prompt: 'x',
     });
 
-    expect(answer).toBe('Claude declined to answer this request: policy');
+    expect(answer.text).toBe('Claude declined to answer this request: policy');
+  });
+
+  describe('task protocol', () => {
+    it('sends the task before the context and the question', async () => {
+      mockFinalMessage.mockResolvedValue(textMessage('ok'));
+
+      await new AnthropicCodeAssistantService(configWith({})).ask({
+        prompt: 'q',
+        context: 'code',
+        task: {
+          goal: 'fix login',
+          checklist: ['the error'],
+          history: [
+            { kind: 'answer', note: 'token expired' },
+            { kind: 'report', note: 'still 401', outcome: 'not_solved' },
+          ],
+          round: 2,
+          maxRounds: 5,
+          unreported: false,
+        },
+      });
+
+      const request = mockStream.mock.calls[0][0] as any;
+      expect(request.messages[0].content).toEqual([
+        {
+          type: 'text',
+          text:
+            '<task>\ngoal: fix login\nround: 2 of 5\nchecklist:\n- the error\n' +
+            'earlier rounds:\n- [answer] token expired\n' +
+            '- [report: not_solved] still 401\n</task>',
+        },
+        { type: 'text', text: '<context>\ncode\n</context>' },
+        { type: 'text', text: 'q' },
+      ]);
+      expect(request.system).toContain('NEED_INFO');
+      expect(request.system).toContain('HYPOTHESIS:');
+    });
+
+    it('reads NEED_INFO and HYPOTHESIS lines in the formats models use', () => {
+      const parse = AnthropicCodeAssistantService.parseReply;
+      expect(parse('\nNEED_INFO\n1. Send src/a.ts\n2. Run npm test')).toEqual({
+        text: '1. Send src/a.ts\n2. Run npm test',
+        needInfo: true,
+      });
+      for (const first of [
+        '**NEED_INFO:** send src/a.ts',
+        '## NEED_INFO: send src/a.ts',
+        '`NEED_INFO` send src/a.ts',
+        'NEED_INFO — send src/a.ts',
+      ]) {
+        expect(parse(first)).toEqual({ text: 'send src/a.ts', needInfo: true });
+      }
+
+      expect(
+        parse(
+          'Fix it.\n\nHow to verify: run it\n\n**HYPOTHESIS:** stale token; refresh first\n```\n',
+        ),
+      ).toEqual({
+        text: 'Fix it.\n\nHow to verify: run it\n\n```',
+        needInfo: false,
+        hypothesis: 'stale token; refresh first',
+      });
+      expect(parse('Fix.\n- _HYPOTHESIS:_ x\nGood luck!')).toEqual({
+        text: 'Fix.\nGood luck!',
+        needInfo: false,
+        hypothesis: 'x',
+      });
+      // What is kept comes from the raw line: `__init__.py` survives
+      expect(
+        parse('Fix.\nHYPOTHESIS: `__init__.py` imports twice').hypothesis,
+      ).toBe('`__init__.py` imports twice');
+      // A fence with a language tag is a fence too
+      expect(parse('```markdown\nNEED_INFO\n1. send x\n```')).toEqual({
+        text: '1. send x',
+        needInfo: true,
+      });
+      // A reply wrapped in a fence loses the fence pair, not the list
+      expect(parse('```\nNEED_INFO\n1. send a.ts\n```')).toEqual({
+        text: '1. send a.ts',
+        needInfo: true,
+      });
+
+      // NEED_INFO only as the first line; no colon, no hypothesis
+      expect(parse('See NEED_INFO docs\nHypothesis testing matters')).toEqual({
+        text: 'See NEED_INFO docs\nHypothesis testing matters',
+        needInfo: false,
+      });
+    });
+
+    it('marks a refusal or an empty budget as no answer', async () => {
+      mockFinalMessage.mockResolvedValueOnce(textMessage('', 'refusal'));
+      mockFinalMessage.mockResolvedValueOnce(textMessage('', 'max_tokens'));
+      const service = new AnthropicCodeAssistantService(configWith({}));
+
+      expect((await service.ask({ prompt: 'x' })).noAnswer).toBe(true);
+      expect((await service.ask({ prompt: 'x' })).noAnswer).toBe(true);
+    });
+
+    it('tells the model about the last round and an unreported answer', async () => {
+      mockFinalMessage.mockResolvedValue(textMessage('ok'));
+
+      await new AnthropicCodeAssistantService(configWith({})).ask({
+        prompt: 'q',
+        task: {
+          goal: 'g',
+          checklist: [],
+          history: [],
+          round: 5,
+          maxRounds: 5,
+          unreported: true,
+        },
+      });
+
+      const block = (mockStream.mock.calls[0][0] as any).messages[0].content[0]
+        .text;
+      expect(block).toContain('this is the last round');
+      expect(block).toContain('never reported on');
+    });
+
+    it('plans a checklist with the fast model and falls back on failure', async () => {
+      mockFinalMessage.mockResolvedValueOnce(
+        textMessage('Here:\n- src/login.ts\n2. the 401 body\n* versions'),
+      );
+      const service = new AnthropicCodeAssistantService(configWith({}));
+
+      const items = await service.plan({ goal: 'fix login', context: 'c' });
+
+      expect(items).toEqual(['src/login.ts', 'the 401 body', 'versions']);
+      const request = mockStream.mock.calls[0][0] as any;
+      expect(request.model).toBe('claude-sonnet-5');
+      expect(request.output_config).toEqual({ effort: 'low' });
+      expect(request.messages[0].content).toEqual([
+        { type: 'text', text: '<goal>\nfix login\n</goal>' },
+        { type: 'text', text: '<context>\nc\n</context>' },
+      ]);
+
+      mockFinalMessage.mockRejectedValueOnce(
+        Object.assign(new Error('bad'), { status: 400 }),
+      );
+      const fallback = await service.plan({ goal: 'fix login' });
+      expect(fallback.length).toBeGreaterThanOrEqual(3);
+    });
   });
 
   describe('retry', () => {
@@ -211,7 +353,7 @@ describe('AnthropicCodeAssistantService', () => {
         new AnthropicCodeAssistantService(configWith({})),
       );
 
-      expect(answer).toBe('ok');
+      expect(answer.text).toBe('ok');
       expect(mockStream).toHaveBeenCalledTimes(2);
       const [first, second] = mockStream.mock.calls.map(
         (c) => (c as unknown[])[1] as { timeout: number },
@@ -242,7 +384,7 @@ describe('AnthropicCodeAssistantService', () => {
         new AnthropicCodeAssistantService(configWith({})),
       );
 
-      expect(answer).toBe('ok');
+      expect(answer.text).toBe('ok');
       expect(mockStream).toHaveBeenCalledTimes(2);
     });
 

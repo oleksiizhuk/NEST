@@ -11,7 +11,11 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { AskClaudeUseCase } from '@application/mcp/use-cases/ask-claude.use-case';
+import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case';
+import { ReportOutcomeUseCase } from '@application/mcp/use-cases/report-outcome.use-case';
+import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks.use-case';
 import { createMcpServer } from '@infrastructure/mcp/mcp-server.factory';
+import { DEFAULT_TASK_OWNER } from '@domain/mcp-task/mcp-task.entity';
 import { McpTokenGuard } from '@infrastructure/http/mcp/guards/mcp-token.guard';
 import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
 
@@ -21,7 +25,12 @@ import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-li
 @Controller('mcp')
 @UseGuards(McpTokenGuard)
 export class McpController {
-  constructor(private readonly askClaude: AskClaudeUseCase) {}
+  constructor(
+    private readonly askClaude: AskClaudeUseCase,
+    private readonly startTask: StartTaskUseCase,
+    private readonly reportOutcome: ReportOutcomeUseCase,
+    private readonly listOpenTasks: ListOpenTasksUseCase,
+  ) {}
 
   @Post()
   @UseGuards(McpDailyLimitGuard)
@@ -33,7 +42,22 @@ export class McpController {
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
     });
-    const server = createMcpServer(this.askClaude);
+    // A shared token cannot tell IDEs apart, so each names itself; tasks
+    // and reminders are scoped to that name
+    const client = req.headers['x-mcp-client'];
+    const owner =
+      typeof client === 'string' && /^[\w.-]{1,64}$/.test(client)
+        ? client
+        : DEFAULT_TASK_OWNER;
+    const server = createMcpServer(
+      {
+        ask: this.askClaude,
+        startTask: this.startTask,
+        reportOutcome: this.reportOutcome,
+        listOpenTasks: this.listOpenTasks,
+      },
+      owner,
+    );
 
     res.on('close', () => {
       transport.close().catch(() => undefined);

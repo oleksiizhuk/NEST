@@ -8,7 +8,12 @@ import { McpController } from '@infrastructure/http/mcp/mcp.controller';
 import { McpTokenGuard } from '@infrastructure/http/mcp/guards/mcp-token.guard';
 import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
 import { AskClaudeUseCase } from '@application/mcp/use-cases/ask-claude.use-case';
+import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case';
+import { ReportOutcomeUseCase } from '@application/mcp/use-cases/report-outcome.use-case';
+import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks.use-case';
 import { CODE_ASSISTANT_SERVICE } from '@application/mcp/code-assistant.service.interface';
+import { MCP_TASK_REPOSITORY } from '@domain/mcp-task/mcp-task.repository.interface';
+import { InMemoryTaskRepository } from '@application/mcp/__tests__/in-memory-task.repository';
 
 const TOKEN = 'test-mcp-token';
 
@@ -17,12 +22,18 @@ const TOKEN = 'test-mcp-token';
 describe('McpController (streamable HTTP)', () => {
   let app: INestApplication;
   let url: string;
-  const assistant = { ask: jest.fn() };
+  const assistant = { ask: jest.fn(), plan: jest.fn() };
+  const tasks = new InMemoryTaskRepository();
+  const text = (result: unknown) =>
+    ((result as { content: { text: string }[] }).content ?? [])
+      .map((c) => c.text)
+      .join('\n');
 
-  const connect = async (token = TOKEN) => {
+  const CODE = 'const x = null; x.y;\n'.repeat(20);
+  const connect = async (token = TOKEN, extra: Record<string, string> = {}) => {
     const client = new Client({ name: 'test', version: '0.0.0' });
     const transport = new StreamableHTTPClientTransport(new URL(url), {
-      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      requestInit: { headers: { Authorization: `Bearer ${token}`, ...extra } },
     });
     await client.connect(transport);
     return client;
@@ -37,7 +48,11 @@ describe('McpController (streamable HTTP)', () => {
         // MCP_DAILY_LIMIT unset the cap is off, so it is a pass-through here.
         McpDailyLimitGuard,
         AskClaudeUseCase,
+        StartTaskUseCase,
+        ReportOutcomeUseCase,
+        ListOpenTasksUseCase,
         { provide: CODE_ASSISTANT_SERVICE, useValue: assistant },
+        { provide: MCP_TASK_REPOSITORY, useValue: tasks },
         {
           provide: ConfigService,
           useValue: {
@@ -54,41 +69,116 @@ describe('McpController (streamable HTTP)', () => {
   });
 
   afterAll(() => app.close());
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    tasks.rows.clear();
+  });
 
-  it('lists the ask_advice tool', async () => {
+  it('lists the task tools and sends the protocol as instructions', async () => {
     const client = await connect();
     const { tools } = await client.listTools();
+    const instructions = client.getInstructions();
     await client.close();
 
-    expect(tools.map((t) => t.name)).toEqual(['ask_advice']);
-    expect(tools[0].inputSchema).toMatchObject({
+    expect(tools.map((t) => t.name)).toEqual([
+      'start_task',
+      'ask_advice',
+      'report_outcome',
+      'list_open_tasks',
+    ]);
+    expect(tools[1].inputSchema).toMatchObject({
       type: 'object',
       required: ['prompt'],
       properties: { model: { enum: ['opus', 'sonnet', 'fable'] } },
     });
+    expect(tools[2].inputSchema).toMatchObject({
+      required: ['task_id', 'status', 'details'],
+      properties: {
+        status: { enum: ['solved', 'not_solved', 'partial', 'abandoned'] },
+      },
+    });
+    expect(instructions).toContain('Always call report_outcome');
   });
 
-  it('routes ask_advice to the use case and returns the answer', async () => {
-    assistant.ask.mockResolvedValue('Use ?. here.');
+  it('runs a task from start to a report', async () => {
+    assistant.plan.mockResolvedValue(['the failing test output']);
+    assistant.ask.mockResolvedValue({
+      text: 'Guard x.',
+      needInfo: false,
+      hypothesis: 'x is null',
+    });
+    const client = await connect();
+
+    const started = text(
+      await client.callTool({
+        name: 'start_task',
+        arguments: { goal: 'fix the crash' },
+      }),
+    );
+    const taskId = /Task (t-[0-9a-f]{10}) started/.exec(started)[1];
+    const answer = text(
+      await client.callTool({
+        name: 'ask_advice',
+        arguments: { task_id: taskId, prompt: 'how?', context: 'log' },
+      }),
+    );
+    const open = text(
+      await client.callTool({ name: 'list_open_tasks', arguments: {} }),
+    );
+    const reported = text(
+      await client.callTool({
+        name: 'report_outcome',
+        arguments: { task_id: taskId, status: 'solved', details: 'tests pass' },
+      }),
+    );
+    await client.close();
+
+    expect(started).toContain('1. the failing test output');
+    expect(answer).toContain('Guard x.');
+    expect(answer).toContain(`report_outcome { task_id: "${taskId}"`);
+    expect(open).toContain(
+      `${taskId}: "fix the crash" [WAITING FOR YOUR REPORT`,
+    );
+    expect(reported).toContain('closed as solved');
+    expect(tasks.rows.get(taskId).status).toBe('solved');
+  });
+
+  it('rejects a malformed task_id before touching the model', async () => {
+    const client = await connect();
+    const result = await client.callTool({
+      name: 'ask_advice',
+      arguments: { task_id: '../x', prompt: 'hi' },
+    });
+    await client.close();
+
+    expect(result.isError).toBe(true);
+    expect(assistant.ask).not.toHaveBeenCalled();
+  });
+
+  it('routes ask_advice without a task to the use case and returns the answer', async () => {
+    assistant.ask.mockResolvedValue({ text: 'Use ?. here.', needInfo: false });
     const client = await connect();
 
     const result = await client.callTool({
       name: 'ask_advice',
       arguments: {
         prompt: 'why does this throw?',
-        context: 'x.y',
+        context: CODE,
         model: 'fable',
+        task_id: '',
       },
     });
     await client.close();
 
-    expect(assistant.ask).toHaveBeenCalledWith({
-      prompt: 'why does this throw?',
-      context: 'x.y',
-      model: 'fable',
-    });
-    expect(result.content).toEqual([{ type: 'text', text: 'Use ?. here.' }]);
+    expect(assistant.ask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: 'why does this throw?',
+        context: CODE.trim(),
+        model: 'fable',
+        task: expect.objectContaining({ goal: 'why does this throw?' }),
+      }),
+    );
+    expect(text(result)).toMatch(/^Use \?\. here\.\n\n---\ntask_id: t-/);
     expect(result.isError).toBeFalsy();
   });
 
@@ -98,17 +188,47 @@ describe('McpController (streamable HTTP)', () => {
 
     const result = await client.callTool({
       name: 'ask_advice',
-      arguments: { prompt: 'hi', model: 'sonnet' },
+      arguments: { prompt: 'hi', model: 'sonnet', context: CODE },
+    });
+    assistant.plan.mockRejectedValue(new Error('db down'));
+    const other = await client.callTool({
+      name: 'list_open_tasks',
+      arguments: {},
     });
     await client.close();
 
+    // The caller learns the task_id and what to do; no upstream detail
     expect(result.isError).toBe(true);
-    expect(result.content).toEqual([
-      {
-        type: 'text',
-        text: 'ask_advice could not complete the request. Check the server logs for the cause.',
-      },
-    ]);
+    expect(text(result)).toMatch(
+      /^The advice call failed .*task_id "t-[0-9a-f]{10}"/,
+    );
+    expect(text(result)).not.toContain('rate limited');
+    expect(other.isError).toBeFalsy();
+  });
+
+  it('answers a bare question with the checklist and scopes lists to the client', async () => {
+    assistant.plan.mockResolvedValue(['the code']);
+    const kiro = await connect(TOKEN, { 'X-MCP-Client': 'kiro' });
+    const bare = text(
+      await kiro.callTool({
+        name: 'ask_advice',
+        arguments: { prompt: 'why?' },
+      }),
+    );
+    const mine = text(
+      await kiro.callTool({ name: 'list_open_tasks', arguments: {} }),
+    );
+    await kiro.close();
+    const cursor = await connect(TOKEN, { 'X-MCP-Client': 'cursor' });
+    const theirs = text(
+      await cursor.callTool({ name: 'list_open_tasks', arguments: {} }),
+    );
+    await cursor.close();
+
+    expect(assistant.ask).not.toHaveBeenCalled();
+    expect(bare).toContain('Your question is not answered yet');
+    expect(mine).toContain('"why?"');
+    expect(theirs).toBe('No open tasks.');
   });
 
   it('rejects a wrong token with 401 before touching MCP', async () => {
