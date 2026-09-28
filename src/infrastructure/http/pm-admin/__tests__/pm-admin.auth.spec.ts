@@ -12,6 +12,7 @@ const config = (values: Record<string, string>) =>
 describe('PmAdminAuth', () => {
   const jwt = new JwtService({});
   const links = { issue: jest.fn(), consume: jest.fn() };
+  const access = { isAdmin: jest.fn(async (id: number) => id === 77) };
   let epoch = 0;
   const settings = {
     get: jest.fn(),
@@ -66,6 +67,7 @@ describe('PmAdminAuth', () => {
     throttle as any,
     telegram as any,
     approvals as any,
+    access as any,
   );
   const sign = (payload: object, secret = 's3cret') =>
     jwt.sign(payload, { secret });
@@ -149,6 +151,7 @@ describe('PmAdminAuth', () => {
       throttle as any,
       telegram as any,
       approvals as any,
+      access as any,
     );
     await expect(off.loginWithPassword('a@b.c', 'x')).resolves.toEqual({
       error: 'off',
@@ -156,17 +159,17 @@ describe('PmAdminAuth', () => {
   });
 
   it('turns a valid one-time link into a session only the owner holds', async () => {
-    links.consume.mockResolvedValueOnce(true);
+    links.consume.mockResolvedValueOnce(42);
     const session = await auth.login('token-from-the-bot-1234567890');
     expect(session).toEqual(expect.any(String));
     await expect(auth.verify(session as string)).resolves.toBe(42);
 
-    links.consume.mockResolvedValueOnce(false);
+    links.consume.mockResolvedValueOnce(null);
     await expect(auth.login('used-or-expired-1234567890')).resolves.toBeNull();
   });
 
   it('logs every session out when the owner asks', async () => {
-    links.consume.mockResolvedValueOnce(true);
+    links.consume.mockResolvedValueOnce(42);
     const session = (await auth.login(
       'token-from-the-bot-1234567890',
     )) as string;
@@ -196,8 +199,9 @@ describe('PmAdminAuth', () => {
       throttle as any,
       telegram as any,
       approvals as any,
+      access as any,
     );
-    links.consume.mockResolvedValue(true);
+    links.consume.mockResolvedValue(42);
     await expect(
       closed.login('token-from-the-bot-1234567890'),
     ).resolves.toBeNull();
@@ -219,5 +223,27 @@ describe('PmAdminAuth', () => {
     await expect(guard.canActivate(ctx('Basic abc'))).rejects.toThrow(
       UnauthorizedException,
     );
+  });
+
+  it('lets an added admin in by their own link, and drops them when removed', async () => {
+    const auth = new PmAdminAuth(
+      config({ JWT_SECRET: 's3cret', TELEGRAM_OWNER_ID: '42' }),
+      jwt,
+      links,
+      settings,
+      {} as any,
+      {} as any,
+      {} as any,
+      access as any,
+    );
+    links.consume.mockResolvedValueOnce(77);
+    const session = (await auth.login('t'.repeat(30))) as string;
+    expect(session).toBeTruthy();
+    await expect(auth.verify(session)).resolves.toBe(77);
+    access.isAdmin.mockResolvedValueOnce(false);
+    await expect(auth.verify(session)).resolves.toBeNull();
+    // A link for someone no longer on the list gives no session
+    links.consume.mockResolvedValueOnce(8);
+    await expect(auth.login('u'.repeat(30))).resolves.toBeNull();
   });
 });

@@ -10,6 +10,7 @@ import { FlowPage } from './FlowPage';
 import { ReleasePage } from './ReleasePage';
 import { QualityPage } from './QualityPage';
 import { HangingPage } from './HangingPage';
+import { AdminsPanel } from './AdminsPanel';
 import { DataPage } from './DataPage';
 import {
   IconChats,
@@ -334,6 +335,7 @@ export function App() {
               onUnauthorized={logout}
             />
           )}
+          {page === 'settings' && <AdminsPanel onUnauthorized={logout} />}
         </main>
       </div>
     </div>

@@ -486,6 +486,22 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     });
     expect(telegram.sendMessage).not.toHaveBeenCalled();
     expect(links.issue).toHaveBeenCalledTimes(1);
+    expect(links.issue).toHaveBeenLastCalledWith(expect.any(Date), OWNER);
+
+    // Someone the owner added gets their own link
+    (useCase as any).adminAccess = {
+      allowTelegram: jest.fn(async (from: { id: number }) => from.id === 555),
+    };
+    await useCase.execute({
+      ...group(555, '/admin', 555),
+      chatType: 'private',
+      from: { id: 555, username: 'dmytro_aa', firstName: 'D', lastName: null },
+    });
+    expect(links.issue).toHaveBeenLastCalledWith(expect.any(Date), 555);
+    expect(telegram.sendMessage).toHaveBeenLastCalledWith(
+      555,
+      expect.stringContaining('login=abc'),
+    );
   });
 
   it('uses the owner overrides from the admin page', async () => {

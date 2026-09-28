@@ -13,6 +13,7 @@ import {
   todayItems,
 } from '@application/project-manager/team';
 import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
+import { AdminAccess } from '@application/project-manager/admin-access';
 import { IQuota, PM_QUOTA } from '@application/project-manager/quota.interface';
 import {
   ITelegramMessageRepository,
@@ -45,6 +46,7 @@ export class PmAdminUseCase {
     @Inject(TELEGRAM_GATEWAY) private readonly telegram: ITelegramGateway,
     @Inject(TELEGRAM_CONFIG) private readonly telegramConfig: ITelegramConfig,
     private readonly team: TeamReviewUseCase,
+    private readonly access: AdminAccess,
   ) {}
 
   // Groups the bot has seen and their PM mode:
@@ -100,6 +102,23 @@ export class PmAdminUseCase {
     else delete current[name];
     await this.store.save(cleanSettings({ githubLogins: current }), by);
     this.runtime.invalidate();
+  }
+
+  // Who else may open the admin page (the owner manages this list)
+  async admins() {
+    return this.access.list();
+  }
+
+  async addAdmin(username: string, by: number) {
+    try {
+      return await this.access.add(username, by);
+    } catch (error) {
+      throw new SettingsError((error as Error).message);
+    }
+  }
+
+  async removeAdmin(username: string, by: number) {
+    return this.access.remove(username, by);
   }
 
   // Jira name → Telegram username on the Сотрудники page
@@ -242,6 +261,7 @@ export class PmAdminUseCase {
       releaseBaseline: null,
       telegramUsernames: {},
       todayHidden: [],
+      adminUsers: [],
     };
     const overrides: PmSettings = {};
     for (const key of SETTING_KEYS) {

@@ -32,6 +32,13 @@ export interface PmSettings {
   telegramUsernames?: Record<string, string> | null;
   // Релиз: the day scope growth is counted from
   releaseBaseline?: string | null;
+  // People besides the owner with admin access; managed by its own
+  // owner-only endpoints, never through the settings form
+  adminUsers?: Array<{
+    username: string;
+    userId: number | null;
+    addedAt: string;
+  }> | null;
   // "Сегодня" items the owner marked done or snoozed, until an ISO time.
   // Written by its own endpoint, not through the settings form.
   todayHidden?: Array<{ id: string; until: string }> | null;

@@ -56,6 +56,7 @@ import { PM_ADMIN_APPROVALS } from '@application/project-manager/admin-approvals
 import { MongoAdminApprovals } from '@infrastructure/project-manager/admin-approvals';
 import { PM_TEAM_REVIEWS } from '@application/project-manager/team-reviews.interface';
 import { PM_TEAM_HISTORY } from '@application/project-manager/team-history';
+import { AdminAccess } from '@application/project-manager/admin-access';
 import { MongoTeamHistory } from '@infrastructure/database/repositories/mongo-team-history';
 import { PmTeamDaySchema } from '@infrastructure/database/schemas/pm-team-day.schema';
 import { MongoTeamReviews } from '@infrastructure/database/repositories/mongo-team-reviews';
@@ -157,6 +158,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     { provide: PM_ADMIN_APPROVALS, useClass: MongoAdminApprovals },
     { provide: PM_TEAM_REVIEWS, useClass: MongoTeamReviews },
     { provide: PM_TEAM_HISTORY, useClass: MongoTeamHistory },
+    AdminAccess,
     { provide: PM_INDEX, useClass: MongoProjectIndex },
     { provide: PM_INDEX_JOB, useClass: MongoIndexJob },
     JiraIndexReader,
@@ -194,6 +196,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     PM_SETTINGS,
     PM_ADMIN_LINKS,
     PM_ADMIN_APPROVALS,
+    AdminAccess,
     PM_TEAM_HISTORY,
     PM_TEAM_REVIEWS,
     PM_INDEX,

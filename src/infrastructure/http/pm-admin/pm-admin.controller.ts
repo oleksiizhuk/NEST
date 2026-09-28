@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Get,
@@ -139,6 +140,12 @@ export class AdminNudgeBody {
   chatId: number;
 }
 
+export class AdminUserBody {
+  @IsString()
+  @MaxLength(33)
+  username: string;
+}
+
 export class AdminChatBody {
   @IsInt()
   chatId: number;
@@ -236,6 +243,48 @@ export class PmAdminController {
   }
 
   // Ends every admin session, this one included
+  // Who is signed in: the page shows the access list only to the owner
+  @Get('me')
+  @UseGuards(PmAdminGuard)
+  me(@Req() req: { pmAdmin: number }) {
+    return { userId: req.pmAdmin, owner: req.pmAdmin === this.auth.ownerId };
+  }
+
+  // Who else may open the admin page; only the owner changes the list, so
+  // nobody can lock the owner out
+  @Get('admins')
+  @UseGuards(PmAdminGuard)
+  admins() {
+    return this.admin.admins();
+  }
+
+  @Post('admins')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async addAdmin(@Body() body: AdminUserBody, @Req() req: { pmAdmin: number }) {
+    this.ownerOnly(req);
+    try {
+      return await this.admin.addAdmin(body.username, req.pmAdmin);
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  @Post('admins/remove')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  removeAdmin(@Body() body: AdminUserBody, @Req() req: { pmAdmin: number }) {
+    this.ownerOnly(req);
+    return this.admin.removeAdmin(body.username, req.pmAdmin);
+  }
+
+  private ownerOnly(req: { pmAdmin: number }) {
+    if (req.pmAdmin !== this.auth.ownerId)
+      throw new ForbiddenException('only the owner changes admin access');
+  }
+
   @Post('logout-all')
   @HttpCode(200)
   @UseGuards(PmAdminGuard)

@@ -129,6 +129,7 @@ describe('PmAdminUseCase', () => {
       telegram as any,
       { ownerId: 42 } as any,
       { team: jest.fn() } as any,
+      {} as any,
     );
     const settings = await admin.settings();
     expect(settings.defaults.dailyQuestionLimit).toBe(7);
@@ -239,6 +240,7 @@ describe('PmAdminUseCase — Сегодня and absences', () => {
       {} as any,
       { ownerId: 42 } as any,
       team as any,
+      {} as any,
     );
     return { admin, store };
   };

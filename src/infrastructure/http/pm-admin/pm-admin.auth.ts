@@ -20,6 +20,7 @@ import {
   TELEGRAM_GATEWAY,
 } from '@application/telegram/telegram.gateway.interface';
 import * as bcrypt from 'bcryptjs';
+import { AdminAccess } from '@application/project-manager/admin-access';
 import {
   PasswordThrottle,
   WINDOW_MS,
@@ -59,6 +60,7 @@ export class PmAdminAuth {
     private readonly throttle: PasswordThrottle,
     @Inject(TELEGRAM_GATEWAY) private readonly telegram: ITelegramGateway,
     @Inject(PM_ADMIN_APPROVALS) private readonly approvals: IAdminApprovals,
+    private readonly access: AdminAccess,
   ) {
     this.email = (config.get<string>('PM_ADMIN_EMAIL') ?? '')
       .trim()
@@ -70,8 +72,12 @@ export class PmAdminAuth {
 
   async login(token: string, now = new Date()): Promise<string | null> {
     if (!this.secret || !this.ownerId) return null;
-    if (!(await this.links.consume(token, now))) return null;
-    return this.session();
+    const userId = await this.links.consume(token, now);
+    if (userId === null) return null;
+    // 0 = an old link without a user: it was the owner's
+    const who = userId || this.ownerId;
+    if (who !== this.ownerId && !(await this.access.isAdmin(who))) return null;
+    return this.session(who);
   }
 
   // Email + password (bcrypt hash in PM_ADMIN_PASSWORD_HASH), then a tap
@@ -124,7 +130,8 @@ export class PmAdminAuth {
   // Polled by the page while it waits for the tap
   async approval(id: string, now = new Date()): Promise<ApprovalResult> {
     const state = await this.approvals.take(id, now);
-    if (state === 'approved') return { session: await this.session() };
+    if (state === 'approved')
+      return { session: await this.session(this.ownerId) };
     if (state === 'pending') return { pending: true };
     return {
       error:
@@ -136,15 +143,16 @@ export class PmAdminAuth {
     };
   }
 
-  private async session(): Promise<string> {
+  private async session(userId: number): Promise<string> {
     const v = await this.settings.sessionEpoch();
     return this.jwt.sign(
-      { sub: String(this.ownerId), typ: TYP, v },
+      { sub: String(userId), typ: TYP, v },
       { secret: this.secret, expiresIn: SESSION_TTL },
     );
   }
 
-  // The owner's id when the session is valid and not revoked, else null
+  // The user's id when the session is valid, not revoked and the user is
+  // the owner or still on the admin list, else null
   async verify(session: string): Promise<number | null> {
     if (!this.secret || !this.ownerId) return null;
     let payload: { sub?: string; typ?: string; v?: number };
@@ -153,12 +161,15 @@ export class PmAdminAuth {
     } catch {
       return null;
     }
-    if (payload.typ !== TYP || payload.sub !== String(this.ownerId))
+    const userId = Number(payload.sub);
+    if (payload.typ !== TYP || !Number.isSafeInteger(userId) || !userId)
+      return null;
+    if (userId !== this.ownerId && !(await this.access.isAdmin(userId)))
       return null;
     // "Log out everywhere" raises the epoch; older sessions stop working
     const epoch = await this.settings.sessionEpoch().catch(() => null);
     if (epoch === null || (payload.v ?? 0) !== epoch) return null;
-    return this.ownerId;
+    return userId;
   }
 
   async revokeAll(): Promise<void> {
