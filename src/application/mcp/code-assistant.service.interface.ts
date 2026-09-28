@@ -20,6 +20,8 @@ export interface IAskTask {
   history: { kind: McpTaskEventKind; note: string; outcome?: McpOutcome }[];
   round: number;
   maxRounds: number;
+  // The caller did not report on the previous answer
+  unreported: boolean;
 }
 
 export interface IAskRequest {
@@ -40,6 +42,9 @@ export interface IAskResult {
   needInfo: boolean;
   // One line: the cause being fixed and the fix, kept on the task
   hypothesis?: string;
+  // No usable answer (refusal, budget spent on thinking): the round is
+  // given back
+  noAnswer?: boolean;
 }
 
 export interface IPlanRequest {

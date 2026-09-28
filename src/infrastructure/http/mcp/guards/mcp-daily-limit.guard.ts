@@ -13,6 +13,9 @@ import { Request } from 'express';
 import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
 import { FREE_TOOLS } from '@infrastructure/mcp/mcp-server.factory';
 
+// report_outcome / list_open_tasks per paid call before they are refused
+const FREE_CALLS_PER_PAID = 10;
+
 // A leaked MCP_TOKEN would otherwise buy unlimited paid model calls (a
 // financial DoS). This caps calls per UTC day with a shared Mongo counter,
 // incremented atomically so concurrent serverless invocations still count.
@@ -33,46 +36,61 @@ export class McpDailyLimitGuard implements CanActivate {
       return true; // cap disabled
     }
 
-    // Only tool calls that reach the model count. In stateless Streamable
-    // HTTP the handshake (initialize, tools/list) and notifications are each
-    // their own POST, and report_outcome / list_open_tasks are free; charging
-    // them would make the effective cap a fraction of MCP_DAILY_LIMIT.
-    if (!McpDailyLimitGuard.isPaidToolCall(context)) {
-      return true;
-    }
-
+    // Only tool calls that reach the model count toward the limit. In
+    // stateless Streamable HTTP the handshake (initialize, tools/list) and
+    // notifications are each their own POST; charging them would make the
+    // effective cap a fraction of MCP_DAILY_LIMIT. A JSON-RPC batch counts
+    // every call in it. Free tools (report_outcome, list_open_tasks) only
+    // touch Mongo and get their own, looser cap.
+    const { paid, free } = McpDailyLimitGuard.toolCalls(context);
     // Counted before the call, on purpose: each attempt reaches the paid API,
     // so a hard DoS cap must count attempts (including failures and client
-    // retries), not only completions.
+    // retries), not only completions. A retried model call can bill twice.
     const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
-    const count = await this.incrementForDay(this.usage, day);
-
-    if (count > limit) {
-      throw new HttpException(
-        `Daily /mcp call limit of ${limit} reached. Try again tomorrow (UTC).`,
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
+    if (paid) {
+      const count = await this.incrementForDay(this.usage, day, paid);
+      if (count > limit) {
+        throw new HttpException(
+          `Daily /mcp call limit of ${limit} reached. Try again tomorrow (UTC).`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+    if (free) {
+      const freeLimit = limit * FREE_CALLS_PER_PAID;
+      const count = await this.incrementForDay(this.usage, `${day}:free`, free);
+      if (count > freeLimit) {
+        throw new HttpException(
+          `Daily /mcp limit of ${freeLimit} task calls reached. Try again tomorrow (UTC).`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
     }
     return true;
   }
 
-  private static isPaidToolCall(context: ExecutionContext): boolean {
+  private static toolCalls(context: ExecutionContext): {
+    paid: number;
+    free: number;
+  } {
     const body = context.switchToHttp().getRequest<Request>().body as unknown;
     // A JSON-RPC request may arrive alone or batched in an array.
     const messages = Array.isArray(body) ? body : [body];
-    return messages.some((m) => {
-      if (!m || typeof m !== 'object') return false;
+    let paid = 0;
+    let free = 0;
+    for (const m of messages) {
+      if (!m || typeof m !== 'object') continue;
       const { method, params } = m as {
         method?: unknown;
         params?: { name?: unknown };
       };
-      return (
-        method === 'tools/call' &&
-        // An unknown or missing name still counts: better one call too many
-        // than a way around the cap
-        !FREE_TOOLS.includes(String(params?.name ?? ''))
-      );
-    });
+      if (method !== 'tools/call') continue;
+      // An unknown or missing name counts as paid: better one call too many
+      // than a way around the cap
+      if (FREE_TOOLS.includes(String(params?.name ?? ''))) free += 1;
+      else paid += 1;
+    }
+    return { paid, free };
   }
 
   // An upsert against the unique `day` index can race two first-of-day inserts
@@ -81,12 +99,13 @@ export class McpDailyLimitGuard implements CanActivate {
   private async incrementForDay(
     usage: Model<McpUsageDocument>,
     day: string,
+    by: number,
   ): Promise<number> {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const doc = await usage.findOneAndUpdate(
           { day },
-          { $inc: { count: 1 } },
+          { $inc: { count: by } },
           { upsert: true, new: true },
         );
         return doc.count;

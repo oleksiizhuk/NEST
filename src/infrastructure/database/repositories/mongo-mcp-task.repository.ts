@@ -7,12 +7,16 @@ import {
   McpTask,
   McpTaskEvent,
   OPEN_TASK_STATUSES,
+  ROUND_MAX_MS,
 } from '@domain/mcp-task/mcp-task.entity';
 import { IMcpTaskRepository } from '@domain/mcp-task/mcp-task.repository.interface';
 import { McpTaskDocument } from '@infrastructure/database/schemas/mcp-task.schema';
 import { McpTaskMapper } from '@infrastructure/database/mappers/mcp-task.mapper';
 
 const OPEN = { $in: [...OPEN_TASK_STATUSES] };
+const push = (event: McpTaskEvent) => ({
+  history: { $each: [event], $slice: -MAX_HISTORY },
+});
 
 @Injectable()
 export class MongoMcpTaskRepository implements IMcpTaskRepository {
@@ -23,16 +27,19 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
 
   async create(
     id: string,
+    owner: string,
     goal: string,
     checklist: string[],
   ): Promise<McpTask> {
     const doc = await this.tasks.create({
       taskId: id,
+      owner,
       goal,
       checklist,
       status: 'gathering',
       rounds: 0,
       history: [],
+      inFlightSince: null,
     });
     return McpTaskMapper.toDomain(doc);
   }
@@ -42,25 +49,54 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     return doc ? McpTaskMapper.toDomain(doc) : null;
   }
 
-  async claimRound(id: string, maxRounds: number): Promise<McpTask | null> {
+  async claimRound(
+    id: string,
+    maxRounds: number,
+    now: Date,
+  ): Promise<McpTask | null> {
     const doc = await this.tasks
       .findOneAndUpdate(
-        { taskId: id, status: OPEN, rounds: { $lt: maxRounds } },
-        { $inc: { rounds: 1 } },
+        {
+          taskId: id,
+          status: OPEN,
+          rounds: { $lt: maxRounds },
+          // A round left behind by a function that died does not block
+          $or: [
+            { inFlightSince: null },
+            {
+              inFlightSince: {
+                $lt: new Date(now.getTime() - ROUND_MAX_MS),
+              },
+            },
+          ],
+        },
+        { $inc: { rounds: 1 }, $set: { inFlightSince: now } },
         { new: true },
       )
       .lean();
     return doc ? McpTaskMapper.toDomain(doc) : null;
   }
 
-  async recordReply(id: string, event: McpTaskEvent): Promise<void> {
+  async releaseRound(id: string): Promise<void> {
+    await this.tasks.updateOne(
+      { taskId: id, rounds: { $gt: 0 }, inFlightSince: { $ne: null } },
+      { $inc: { rounds: -1 }, $set: { inFlightSince: null } },
+    );
+  }
+
+  async recordReply(
+    id: string,
+    kind: 'need_info' | 'answer',
+    event: McpTaskEvent,
+  ): Promise<void> {
     await this.tasks.updateOne(
       { taskId: id, status: OPEN },
       {
         $set: {
-          status: event.kind === 'need_info' ? 'gathering' : 'answered',
+          status: McpTask.statusAfterReply(kind),
+          inFlightSince: null,
         },
-        $push: { history: { $each: [event], $slice: -MAX_HISTORY } },
+        $push: push(event),
       },
     );
   }
@@ -73,10 +109,21 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     const doc = await this.tasks
       .findOneAndUpdate(
         { taskId: id, status: OPEN },
-        {
-          $set: { status: outcome },
-          $push: { history: { $each: [event], $slice: -MAX_HISTORY } },
-        },
+        { $set: { status: outcome }, $push: push(event) },
+        { new: true },
+      )
+      .lean();
+    return doc ? McpTaskMapper.toDomain(doc) : null;
+  }
+
+  async resolveEscalated(
+    id: string,
+    event: McpTaskEvent,
+  ): Promise<McpTask | null> {
+    const doc = await this.tasks
+      .findOneAndUpdate(
+        { taskId: id, status: 'escalated' },
+        { $set: { status: 'solved' }, $push: push(event) },
         { new: true },
       )
       .lean();
@@ -90,9 +137,9 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
     );
   }
 
-  async listOpen(limit: number): Promise<McpTask[]> {
+  async listOpen(owner: string, limit: number): Promise<McpTask[]> {
     const docs = await this.tasks
-      .find({ status: OPEN })
+      .find({ owner, status: OPEN })
       .sort({ updatedAt: -1 })
       .limit(limit)
       .lean();

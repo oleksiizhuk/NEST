@@ -3,11 +3,15 @@ import {
   IMcpTaskRepository,
   MCP_TASK_REPOSITORY,
 } from '@domain/mcp-task/mcp-task.repository.interface';
-import { MAX_TASK_ROUNDS } from '@domain/mcp-task/mcp-task.entity';
+import {
+  DEFAULT_TASK_OWNER,
+  MAX_TASK_ROUNDS,
+} from '@domain/mcp-task/mcp-task.entity';
 
 const LIMIT = 20;
 
-// Open tasks, so a caller that lost the thread can pick one up or report it
+// The caller's open tasks, so one that lost the thread can pick a task up
+// or report on it
 @Injectable()
 export class ListOpenTasksUseCase {
   constructor(
@@ -15,8 +19,8 @@ export class ListOpenTasksUseCase {
     private readonly tasks: IMcpTaskRepository,
   ) {}
 
-  async execute(now = new Date()): Promise<string> {
-    const open = await this.tasks.listOpen(LIMIT);
+  async execute(owner = DEFAULT_TASK_OWNER, now = new Date()): Promise<string> {
+    const open = await this.tasks.listOpen(owner, LIMIT);
     if (!open.length) {
       return 'No open tasks.';
     }
@@ -28,7 +32,7 @@ export class ListOpenTasksUseCase {
           `round ${t.rounds} of ${MAX_TASK_ROUNDS}`,
           t.isStale(now) ? 'no activity for over a day' : '',
         ].filter(Boolean);
-        return `- ${t.id}: ${t.goal} [${flags.join(', ')}]`;
+        return `- ${t.id}: "${t.goal}" [${flags.join(', ')}]`;
       }),
       '',
       'Continue one with ask_advice { task_id }, or close it with ' +

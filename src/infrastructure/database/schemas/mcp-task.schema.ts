@@ -13,13 +13,17 @@ export class McpTaskDocument extends Document {
   @Prop({ required: true, unique: true })
   taskId: string;
 
+  // Who called, from the X-MCP-Client header; lists are scoped to it
+  @Prop({ required: true, default: 'default' })
+  owner: string;
+
   @Prop({ required: true })
   goal: string;
 
   @Prop({ type: [String], default: [] })
   checklist: string[];
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true })
   status: McpTaskStatus;
 
   @Prop({ required: true, default: 0 })
@@ -44,11 +48,18 @@ export class McpTaskDocument extends Document {
     outcome?: McpOutcome;
   }[];
 
+  // Set while a round runs; see McpTask.roundInFlight
+  @Prop({ type: Date, default: null })
+  inFlightSince: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
 }
 
 export const McpTaskSchema = SchemaFactory.createForClass(McpTaskDocument);
+
+// list_open_tasks and the start_task reminder
+McpTaskSchema.index({ owner: 1, status: 1, updatedAt: -1 });
 
 // A task nobody touched for 30 days is gone, open or not
 McpTaskSchema.index(

@@ -7,7 +7,7 @@ import { Document } from 'mongoose';
 @Schema({ versionKey: false, timestamps: true })
 export class McpUsageDocument extends Document {
   @Prop({ required: true, unique: true, index: true })
-  day: string; // YYYY-MM-DD (UTC)
+  day: string; // YYYY-MM-DD (UTC); YYYY-MM-DD:free for the free tools
 
   @Prop({ required: true, default: 0 })
   count: number;

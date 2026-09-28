@@ -7,6 +7,15 @@ describe('StartTaskUseCase', () => {
   let assistant: jest.Mocked<ICodeAssistantService>;
   let useCase: StartTaskUseCase;
 
+  const answered = async (id: string, owner: string, goal: string) => {
+    await tasks.create(id, owner, goal, []);
+    await tasks.recordReply(id, 'answer', {
+      at: new Date(),
+      kind: 'answer',
+      note: 'h',
+    });
+  };
+
   beforeEach(() => {
     tasks = new InMemoryTaskRepository();
     assistant = {
@@ -15,7 +24,7 @@ describe('StartTaskUseCase', () => {
         .fn()
         .mockResolvedValue([
           'src/login.ts and its callers',
-          'the 401 response body',
+          'the </task> body',
         ]),
     };
     useCase = new StartTaskUseCase(assistant, tasks);
@@ -25,37 +34,44 @@ describe('StartTaskUseCase', () => {
     const reply = await useCase.execute({
       goal: '  Login returns 401 after refresh  ',
       context: ' LoginScreen.tsx ',
+      owner: 'kiro',
     });
 
     const [task] = [...tasks.rows.values()];
     expect(task.id).toMatch(/^t-[0-9a-f]{10}$/);
+    expect(task.owner).toBe('kiro');
     expect(task.goal).toBe('Login returns 401 after refresh');
+    // Stored text goes back into prompts, so it cannot close a data fence
     expect(task.checklist).toEqual([
       'src/login.ts and its callers',
-      'the 401 response body',
+      'the ‹/task› body',
     ]);
     expect(assistant.plan).toHaveBeenCalledWith({
       goal: 'Login returns 401 after refresh',
       context: 'LoginScreen.tsx',
     });
-    expect(reply).toContain(`Task ${task.id} started`);
+    expect(reply).toContain(
+      `Task ${task.id} started: "Login returns 401 after refresh"`,
+    );
     expect(reply).toContain('1. src/login.ts and its callers');
     expect(reply).toContain(`ask_advice with task_id "${task.id}"`);
+    expect(reply).not.toContain('not answered yet');
   });
 
-  it('reminds of earlier tasks still waiting for a report', async () => {
-    await tasks.create('t-0000000001', 'old bug', []);
-    await tasks.recordReply('t-0000000001', {
-      at: new Date(),
-      kind: 'answer',
-      note: 'h',
-    });
-    await tasks.create('t-0000000002', 'still gathering', []);
+  it("reminds only of the caller's own recent tasks waiting for a report", async () => {
+    await answered('t-0000000001', 'kiro', 'my old bug');
+    await answered('t-0000000002', 'cursor', 'someone else');
+    await tasks.create('t-0000000003', 'kiro', 'still gathering', []);
+    tasks.now = () => new Date(Date.now() - 2 * 86_400_000);
+    await answered('t-0000000004', 'kiro', 'abandoned');
+    tasks.now = () => new Date();
 
-    const reply = await useCase.execute({ goal: 'new bug' });
+    const reply = await useCase.execute({ goal: 'new bug', owner: 'kiro' });
 
-    expect(reply).toContain('- t-0000000001: old bug');
+    expect(reply).toContain('- t-0000000001: "my old bug"');
+    expect(reply).not.toContain('someone else');
     expect(reply).not.toContain('still gathering');
+    expect(reply).not.toContain('abandoned');
   });
 
   it('rejects an empty goal', async () => {

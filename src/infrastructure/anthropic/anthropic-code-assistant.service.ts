@@ -193,6 +193,7 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
       return {
         text: `Claude declined to answer this request${why ? `: ${why}` : '.'}`,
         needInfo: false,
+        noAnswer: true,
       };
     }
 
@@ -207,6 +208,7 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
             'produced no answer. Ask a narrower question (one file, one ' +
             'problem) or send less context.',
           needInfo: false,
+          noAnswer: true,
         };
       }
       return {
@@ -250,23 +252,39 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     }
   }
 
-  // The first line NEED_INFO marks a request for material; a last
-  // HYPOTHESIS: line is kept on the task. Both are stripped from the text.
+  // A first line NEED_INFO marks a request for material (text after the
+  // marker is kept); a HYPOTHESIS: line among the last few is kept on the
+  // task. Markdown around the markers is tolerated; both lines are stripped.
   static parseReply(raw: string): IAskResult {
     const lines = raw.split('\n');
-    const first = lines.findIndex((l) => l.trim());
-    const needInfo =
-      first >= 0 && /^\**NEED_INFO\b\**:?\s*$/i.test(lines[first].trim());
-    if (needInfo) lines.splice(first, 1);
+    const bare = (l: string) =>
+      l
+        .trim()
+        .replace(/^(?:[#>*_`\-\s]|```\w*)+/, '')
+        // Bold, code and _emphasis_ marks, but not the _ inside NEED_INFO
+        .replace(/[*`]+/g, '')
+        .replace(/(^|\W)_+|_+(?=\W|$)/g, '$1');
+    let needInfo = false;
+    const first = lines.findIndex((l) => bare(l));
+    if (first >= 0) {
+      const m = /^NEED_INFO\b[\s:.\-—]*(.*)$/i.exec(bare(lines[first]));
+      if (m) {
+        needInfo = true;
+        if (m[1].trim()) lines[first] = m[1].trim();
+        else lines.splice(first, 1);
+      }
+    }
     let hypothesis: string | undefined;
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const m = /^\**HYPOTHESIS:?\**:?\s*(.+)$/i.exec(lines[i].trim());
+    let seen = 0;
+    for (let i = lines.length - 1; i >= 0 && seen < 3; i--) {
+      if (!lines[i].trim() || /^```\s*$/.test(lines[i].trim())) continue;
+      seen += 1;
+      const m = /^HYPOTHESIS\s*:\s*(.+)$/i.exec(bare(lines[i]));
       if (m) {
         hypothesis = m[1].trim();
         lines.splice(i, 1);
         break;
       }
-      if (lines[i].trim()) break;
     }
     return {
       text: lines.join('\n').trim(),
@@ -280,6 +298,18 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
       `goal: ${task.goal}`,
       `round: ${task.round} of ${task.maxRounds}`,
     ];
+    if (task.round >= task.maxRounds) {
+      parts.push(
+        'this is the last round: answer with your best fix and what is ' +
+          'still uncertain; do not reply NEED_INFO',
+      );
+    }
+    if (task.unreported) {
+      parts.push(
+        'the caller has not reported whether the previous answer worked; ' +
+          'start by asking them to say what happened',
+      );
+    }
     if (task.checklist.length) {
       parts.push('checklist:', ...task.checklist.map((c) => `- ${c}`));
     }

@@ -29,10 +29,11 @@ describe('McpController (streamable HTTP)', () => {
       .map((c) => c.text)
       .join('\n');
 
-  const connect = async (token = TOKEN) => {
+  const CODE = 'const x = null; x.y;\n'.repeat(20);
+  const connect = async (token = TOKEN, extra: Record<string, string> = {}) => {
     const client = new Client({ name: 'test', version: '0.0.0' });
     const transport = new StreamableHTTPClientTransport(new URL(url), {
-      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      requestInit: { headers: { Authorization: `Bearer ${token}`, ...extra } },
     });
     await client.connect(transport);
     return client;
@@ -94,7 +95,7 @@ describe('McpController (streamable HTTP)', () => {
       required: ['task_id', 'status', 'details'],
       properties: { status: { enum: ['solved', 'not_solved', 'partial'] } },
     });
-    expect(instructions).toContain('Always finish with report_outcome');
+    expect(instructions).toContain('Always call report_outcome');
   });
 
   it('runs a task from start to a report', async () => {
@@ -133,7 +134,9 @@ describe('McpController (streamable HTTP)', () => {
     expect(started).toContain('1. the failing test output');
     expect(answer).toContain('Guard x.');
     expect(answer).toContain(`report_outcome { task_id: "${taskId}"`);
-    expect(open).toContain(`${taskId}: fix the crash [WAITING FOR YOUR REPORT`);
+    expect(open).toContain(
+      `${taskId}: "fix the crash" [WAITING FOR YOUR REPORT`,
+    );
     expect(reported).toContain('closed as solved');
     expect(tasks.rows.get(taskId).status).toBe('solved');
   });
@@ -158,8 +161,9 @@ describe('McpController (streamable HTTP)', () => {
       name: 'ask_advice',
       arguments: {
         prompt: 'why does this throw?',
-        context: 'x.y',
+        context: CODE,
         model: 'fable',
+        task_id: '',
       },
     });
     await client.close();
@@ -167,7 +171,7 @@ describe('McpController (streamable HTTP)', () => {
     expect(assistant.ask).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: 'why does this throw?',
-        context: 'x.y',
+        context: CODE.trim(),
         model: 'fable',
         task: expect.objectContaining({ goal: 'why does this throw?' }),
       }),
@@ -182,17 +186,47 @@ describe('McpController (streamable HTTP)', () => {
 
     const result = await client.callTool({
       name: 'ask_advice',
-      arguments: { prompt: 'hi', model: 'sonnet' },
+      arguments: { prompt: 'hi', model: 'sonnet', context: CODE },
+    });
+    assistant.plan.mockRejectedValue(new Error('db down'));
+    const other = await client.callTool({
+      name: 'list_open_tasks',
+      arguments: {},
     });
     await client.close();
 
+    // The caller learns the task_id and what to do; no upstream detail
     expect(result.isError).toBe(true);
-    expect(result.content).toEqual([
-      {
-        type: 'text',
-        text: 'ask_advice could not complete the request. Check the server logs for the cause.',
-      },
-    ]);
+    expect(text(result)).toMatch(
+      /^The advice call failed .*task_id "t-[0-9a-f]{10}"/,
+    );
+    expect(text(result)).not.toContain('rate limited');
+    expect(other.isError).toBeFalsy();
+  });
+
+  it('answers a bare question with the checklist and scopes lists to the client', async () => {
+    assistant.plan.mockResolvedValue(['the code']);
+    const kiro = await connect(TOKEN, { 'X-MCP-Client': 'kiro' });
+    const bare = text(
+      await kiro.callTool({
+        name: 'ask_advice',
+        arguments: { prompt: 'why?' },
+      }),
+    );
+    const mine = text(
+      await kiro.callTool({ name: 'list_open_tasks', arguments: {} }),
+    );
+    await kiro.close();
+    const cursor = await connect(TOKEN, { 'X-MCP-Client': 'cursor' });
+    const theirs = text(
+      await cursor.callTool({ name: 'list_open_tasks', arguments: {} }),
+    );
+    await cursor.close();
+
+    expect(assistant.ask).not.toHaveBeenCalled();
+    expect(bare).toContain('Your question is not answered yet');
+    expect(mine).toContain('"why?"');
+    expect(theirs).toBe('No open tasks.');
   });
 
   it('rejects a wrong token with 401 before touching MCP', async () => {

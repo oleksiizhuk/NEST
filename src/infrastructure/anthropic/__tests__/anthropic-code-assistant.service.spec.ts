@@ -199,6 +199,7 @@ describe('AnthropicCodeAssistantService', () => {
           ],
           round: 2,
           maxRounds: 5,
+          unreported: false,
         },
       });
 
@@ -218,32 +219,71 @@ describe('AnthropicCodeAssistantService', () => {
       expect(request.system).toContain('HYPOTHESIS:');
     });
 
-    it('reads NEED_INFO and HYPOTHESIS lines and strips them', () => {
-      expect(
-        AnthropicCodeAssistantService.parseReply(
-          '\nNEED_INFO\n1. Send src/a.ts\n2. Run npm test',
-        ),
-      ).toEqual({ text: '1. Send src/a.ts\n2. Run npm test', needInfo: true });
+    it('reads NEED_INFO and HYPOTHESIS lines in the formats models use', () => {
+      const parse = AnthropicCodeAssistantService.parseReply;
+      expect(parse('\nNEED_INFO\n1. Send src/a.ts\n2. Run npm test')).toEqual({
+        text: '1. Send src/a.ts\n2. Run npm test',
+        needInfo: true,
+      });
+      for (const first of [
+        '**NEED_INFO:** send src/a.ts',
+        '## NEED_INFO: send src/a.ts',
+        '`NEED_INFO` send src/a.ts',
+        'NEED_INFO — send src/a.ts',
+      ]) {
+        expect(parse(first)).toEqual({ text: 'send src/a.ts', needInfo: true });
+      }
 
       expect(
-        AnthropicCodeAssistantService.parseReply(
-          'Fix it.\n\nHow to verify: run it\n\n**HYPOTHESIS:** stale token; refresh first\n',
+        parse(
+          'Fix it.\n\nHow to verify: run it\n\n**HYPOTHESIS:** stale token; refresh first\n```\n',
         ),
       ).toEqual({
-        text: 'Fix it.\n\nHow to verify: run it',
+        text: 'Fix it.\n\nHow to verify: run it\n\n```',
         needInfo: false,
         hypothesis: 'stale token; refresh first',
       });
+      expect(parse('Fix.\n- _HYPOTHESIS:_ x\nGood luck!')).toEqual({
+        text: 'Fix.\nGood luck!',
+        needInfo: false,
+        hypothesis: 'x',
+      });
 
-      // Only a NEED_INFO first line counts, and only a last HYPOTHESIS line
-      expect(
-        AnthropicCodeAssistantService.parseReply(
-          'See NEED_INFO docs\nHYPOTHESIS: x\nmore text',
-        ),
-      ).toEqual({
-        text: 'See NEED_INFO docs\nHYPOTHESIS: x\nmore text',
+      // NEED_INFO only as the first line; no colon, no hypothesis
+      expect(parse('See NEED_INFO docs\nHypothesis testing matters')).toEqual({
+        text: 'See NEED_INFO docs\nHypothesis testing matters',
         needInfo: false,
       });
+    });
+
+    it('marks a refusal or an empty budget as no answer', async () => {
+      mockFinalMessage.mockResolvedValueOnce(textMessage('', 'refusal'));
+      mockFinalMessage.mockResolvedValueOnce(textMessage('', 'max_tokens'));
+      const service = new AnthropicCodeAssistantService(configWith({}));
+
+      expect((await service.ask({ prompt: 'x' })).noAnswer).toBe(true);
+      expect((await service.ask({ prompt: 'x' })).noAnswer).toBe(true);
+    });
+
+    it('tells the model about the last round and an unreported answer', async () => {
+      mockFinalMessage.mockResolvedValue(textMessage('ok'));
+
+      await new AnthropicCodeAssistantService(configWith({})).ask({
+        prompt: 'q',
+        task: {
+          goal: 'g',
+          checklist: [],
+          history: [],
+          round: 5,
+          maxRounds: 5,
+          unreported: true,
+        },
+      });
+
+      const block = (mockStream.mock.calls[0][0] as any).messages[0].content[0]
+        .text;
+      expect(block).toContain('this is the last round');
+      expect(block).toContain('has not reported');
     });
 
     it('plans a checklist with the fast model and falls back on failure', async () => {

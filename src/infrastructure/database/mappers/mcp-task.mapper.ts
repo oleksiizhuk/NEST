@@ -1,9 +1,10 @@
-import { McpTask } from '@domain/mcp-task/mcp-task.entity';
+import { DEFAULT_TASK_OWNER, McpTask } from '@domain/mcp-task/mcp-task.entity';
 import { McpTaskDocument } from '@infrastructure/database/schemas/mcp-task.schema';
 
 type McpTaskRow = Pick<
   McpTaskDocument,
   | 'taskId'
+  | 'owner'
   | 'goal'
   | 'checklist'
   | 'status'
@@ -11,12 +12,14 @@ type McpTaskRow = Pick<
   | 'history'
   | 'createdAt'
   | 'updatedAt'
+  | 'inFlightSince'
 >;
 
 export class McpTaskMapper {
   static toDomain(doc: McpTaskRow): McpTask {
     return new McpTask(
       doc.taskId,
+      doc.owner ?? DEFAULT_TASK_OWNER,
       doc.goal,
       [...(doc.checklist ?? [])],
       doc.status,
@@ -29,6 +32,7 @@ export class McpTaskMapper {
       })),
       new Date(doc.createdAt),
       new Date(doc.updatedAt),
+      doc.inFlightSince ? new Date(doc.inFlightSince) : null,
     );
   }
 }

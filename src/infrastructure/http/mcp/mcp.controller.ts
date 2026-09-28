@@ -15,6 +15,7 @@ import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case
 import { ReportOutcomeUseCase } from '@application/mcp/use-cases/report-outcome.use-case';
 import { ListOpenTasksUseCase } from '@application/mcp/use-cases/list-open-tasks.use-case';
 import { createMcpServer } from '@infrastructure/mcp/mcp-server.factory';
+import { DEFAULT_TASK_OWNER } from '@domain/mcp-task/mcp-task.entity';
 import { McpTokenGuard } from '@infrastructure/http/mcp/guards/mcp-token.guard';
 import { McpDailyLimitGuard } from '@infrastructure/http/mcp/guards/mcp-daily-limit.guard';
 
@@ -41,12 +42,22 @@ export class McpController {
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
     });
-    const server = createMcpServer({
-      ask: this.askClaude,
-      startTask: this.startTask,
-      reportOutcome: this.reportOutcome,
-      listOpenTasks: this.listOpenTasks,
-    });
+    // A shared token cannot tell IDEs apart, so each names itself; tasks
+    // and reminders are scoped to that name
+    const client = req.headers['x-mcp-client'];
+    const owner =
+      typeof client === 'string' && /^[\w.-]{1,64}$/.test(client)
+        ? client
+        : DEFAULT_TASK_OWNER;
+    const server = createMcpServer(
+      {
+        ask: this.askClaude,
+        startTask: this.startTask,
+        reportOutcome: this.reportOutcome,
+        listOpenTasks: this.listOpenTasks,
+      },
+      owner,
+    );
 
     res.on('close', () => {
       transport.close().catch(() => undefined);

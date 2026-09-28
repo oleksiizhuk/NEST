@@ -10,6 +10,7 @@ import {
   MCP_OUTCOMES,
   MAX_TASK_ROUNDS,
 } from '@domain/mcp-task/mcp-task.entity';
+import { McpToolError } from '@application/mcp/mcp-tool.error';
 
 export const MCP_SERVER_NAME = 'nest-claude';
 export const MCP_SERVER_VERSION = '2.0.0';
@@ -20,10 +21,20 @@ export const MAX_PROMPT_CHARS = 50_000;
 export const MAX_CONTEXT_CHARS = 200_000;
 const MAX_GOAL_INPUT_CHARS = 2_000;
 const MAX_DETAILS_INPUT_CHARS = 10_000;
+// Tolerant of the slips a weak model makes: spaces, upper case, and "" for
+// an optional id (= no task)
 const TASK_ID = z
   .string()
-  .regex(/^t-[0-9a-f]{10}$/)
+  .regex(/^\s*t-[0-9a-f]{10}\s*$/i)
   .describe('The task_id from start_task or an earlier ask_advice');
+const OPTIONAL_TASK_ID = z
+  .string()
+  .regex(/^\s*(t-[0-9a-f]{10})?\s*$/i)
+  .optional()
+  .describe(
+    'The task_id from start_task or an earlier ask_advice; leave it out ' +
+      'only for a first question that already has the code in context',
+  );
 
 // Tools that never call the model: the daily limit skips only these
 export const FREE_TOOLS = ['report_outcome', 'list_open_tasks'];
@@ -48,14 +59,12 @@ const INSTRUCTIONS =
   '3. If the reply asks for more (NEED_INFO), collect exactly that and call ' +
   'ask_advice again with the same task_id.\n' +
   '4. Apply the answer and run its "How to verify" check.\n' +
-  '5. Always finish with report_outcome: solved, not_solved or partial, ' +
-  'with what you ran and saw. If it is not solved, go back to step 3 with ' +
-  `the new output. A task has ${MAX_TASK_ROUNDS} rounds; then hand it to ` +
-  'the user. Never leave a task without a report; list_open_tasks shows ' +
-  'what is waiting.\n' +
-  'Privacy: your code and context are never stored or logged. A task keeps ' +
-  'only its goal, the checklist, one-line notes per round and your reports, ' +
-  'for 30 days.';
+  '5. Always call report_outcome: solved, not_solved or partial, with what ' +
+  'you ran and saw. If it is not solved, call ask_advice again with the ' +
+  'same task_id and the new output.\n' +
+  `A task has ${MAX_TASK_ROUNDS} rounds; after that, hand it to the user. ` +
+  'Every reply ends with a NEXT STEP line: do exactly that. ' +
+  'list_open_tasks shows what is waiting for your report.';
 
 const logger = new Logger('McpServerFactory');
 
@@ -67,6 +76,8 @@ type ToolResult = {
 // Log the real cause server-side (message + stack carry no request body),
 // but hand the client a generic failure so SDK internals and upstream
 // detail do not leak over the wire.
+// McpToolError messages are written for the caller (what to do next, the
+// task_id) and pass through; anything else gets the generic text.
 const run = async (
   tool: string,
   work: () => Promise<string>,
@@ -74,15 +85,16 @@ const run = async (
   try {
     return { content: [{ type: 'text', text: await work() }] };
   } catch (error) {
-    logger.error(
-      `${tool} failed: ${(error as Error).message}`,
-      (error as Error).stack,
-    );
+    const cause = ((error as { cause?: unknown }).cause ?? error) as Error;
+    logger.error(`${tool} failed: ${cause.message}`, cause.stack);
     return {
       content: [
         {
           type: 'text',
-          text: `${tool} could not complete the request. Check the server logs for the cause.`,
+          text:
+            error instanceof McpToolError
+              ? error.message
+              : `${tool} could not complete the request. Check the server logs for the cause.`,
         },
       ],
       isError: true,
@@ -92,7 +104,11 @@ const run = async (
 
 // One MCP server per HTTP request: the transport is stateless (serverless),
 // so there is nothing to keep between calls; task state lives in Mongo.
-export function createMcpServer(useCases: McpUseCases): McpServer {
+// `owner` names the calling client (X-MCP-Client); its task lists are its own
+export function createMcpServer(
+  useCases: McpUseCases,
+  owner: string,
+): McpServer {
   const server = new McpServer(
     { name: MCP_SERVER_NAME, version: MCP_SERVER_VERSION },
     { instructions: INSTRUCTIONS },
@@ -121,7 +137,9 @@ export function createMcpServer(useCases: McpUseCases): McpServer {
       },
     },
     ({ goal, context }) =>
-      run('start_task', () => useCases.startTask.execute({ goal, context })),
+      run('start_task', () =>
+        useCases.startTask.execute({ goal, context, owner }),
+      ),
   );
 
   server.registerTool(
@@ -130,8 +148,10 @@ export function createMcpServer(useCases: McpUseCases): McpServer {
       title: 'Ask for coding advice',
       description:
         'Ask an expert software engineer: explain code, review a diff, ' +
-        'suggest an implementation, debug an error. Pass the task_id from ' +
-        'start_task (without one a new task is opened). Put the question in ' +
+        'suggest an implementation, debug an error. Call start_task first ' +
+        'and pass its task_id; always pass it on follow-ups. Without a ' +
+        'task_id and without code in context you get a checklist to collect ' +
+        'instead of an answer. Put the question in ' +
         '`prompt` and the collected file contents, diff, logs and docs in ' +
         '`context` so the answer is grounded in the real code. The reply ' +
         'either asks for missing material (NEED_INFO) or answers with a ' +
@@ -142,9 +162,11 @@ export function createMcpServer(useCases: McpUseCases): McpServer {
         'work, including design, reviews and hard bugs; fable is the ' +
         'strongest and slowest, for the hardest problems opus cannot crack. ' +
         'Privacy: prompt, context and the answer are never stored or ' +
-        'logged; the task keeps only a one-line note per round.',
+        'logged. A task keeps for 30 days its goal (without start_task: the ' +
+        'first line of the question, up to 200 characters), the checklist, ' +
+        'a one-line note per round and your reports, with credentials masked.',
       inputSchema: {
-        task_id: TASK_ID.optional(),
+        task_id: OPTIONAL_TASK_ID,
         prompt: z
           .string()
           .min(1)
@@ -168,7 +190,13 @@ export function createMcpServer(useCases: McpUseCases): McpServer {
     },
     ({ task_id, prompt, context, model }) =>
       run('ask_advice', () =>
-        useCases.ask.execute({ taskId: task_id, prompt, context, model }),
+        useCases.ask.execute({
+          taskId: task_id,
+          prompt,
+          context,
+          model,
+          owner,
+        }),
       ),
   );
 
@@ -212,7 +240,7 @@ export function createMcpServer(useCases: McpUseCases): McpServer {
         'report. Use it when you lost the task_id or before finishing work.',
       inputSchema: {},
     },
-    () => run('list_open_tasks', () => useCases.listOpenTasks.execute()),
+    () => run('list_open_tasks', () => useCases.listOpenTasks.execute(owner)),
   );
 
   return server;

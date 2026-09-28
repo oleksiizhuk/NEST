@@ -49,22 +49,43 @@ describe('McpDailyLimitGuard', () => {
     expect(model.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  it('does not count tools that never call the model', async () => {
+  it('counts tools that never call the model on their own, looser cap', async () => {
     const model = modelReturning(1);
     const guard = new McpDailyLimitGuard(configWith('5'), model);
-    for (const name of ['report_outcome', 'list_open_tasks']) {
-      await expect(
-        guard.canActivate(ctxWith({ method: 'tools/call', params: { name } })),
-      ).resolves.toBe(true);
-    }
-    expect(model.findOneAndUpdate).not.toHaveBeenCalled();
-
-    // start_task plans with the model, and an unnamed call counts too
     await guard.canActivate(
-      ctxWith({ method: 'tools/call', params: { name: 'start_task' } }),
+      ctxWith({ method: 'tools/call', params: { name: 'report_outcome' } }),
     );
-    await guard.canActivate(ctxWith({ method: 'tools/call' }));
-    expect(model.findOneAndUpdate).toHaveBeenCalledTimes(2);
+    expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+      { day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}:free$/) },
+      { $inc: { count: 1 } },
+      { upsert: true, new: true },
+    );
+
+    const busy = new McpDailyLimitGuard(configWith('5'), modelReturning(51));
+    await expect(
+      busy.canActivate(
+        ctxWith({ method: 'tools/call', params: { name: 'list_open_tasks' } }),
+      ),
+    ).rejects.toBeInstanceOf(HttpException);
+  });
+
+  it('counts every paid call in a batch, and an unnamed call as paid', async () => {
+    const model = modelReturning(3);
+    const guard = new McpDailyLimitGuard(configWith('5'), model);
+    await guard.canActivate(
+      ctxWith([
+        { method: 'tools/call', params: { name: 'ask_advice' } },
+        { method: 'tools/call', params: { name: 'start_task' } },
+        { method: 'tools/call' },
+        { method: 'tools/list' },
+      ]),
+    );
+    expect(model.findOneAndUpdate).toHaveBeenCalledTimes(1);
+    expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+      { day: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) },
+      { $inc: { count: 3 } },
+      { upsert: true, new: true },
+    );
   });
 
   it('allows a tools/call at or below the limit and counts it', async () => {
