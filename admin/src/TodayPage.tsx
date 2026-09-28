@@ -4,6 +4,7 @@ import { Key, RULES } from './signals';
 import { NoData } from './empty';
 import { Guide } from './guide';
 import { NudgeForm } from './nudge';
+import { AskButton, signalContext } from './ask';
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', {
@@ -91,6 +92,12 @@ function Item({
         <button className="ghost" onClick={() => hide(1)} disabled={busy}>
           Напомнить завтра
         </button>
+        <AskButton
+          title={`${item.person}: ${help?.title ?? item.rule}`}
+          context={() => signalContext(item, item.person)}
+          label="Спросить бота"
+          className="ghost"
+        />
       </div>
     </article>
   );

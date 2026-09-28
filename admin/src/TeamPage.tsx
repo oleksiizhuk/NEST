@@ -765,6 +765,7 @@ function PersonCard({
             key={i}
             s={s}
             links={links}
+            person={p.name}
             onSay={s.say ? () => setNudge(s.say ?? '') : undefined}
           />
         ))}

@@ -88,6 +88,10 @@ import { FigmaDesignHost } from '@infrastructure/project-manager/figma-design.ho
 import { PM_CHAT_REGISTRY } from '@application/project-manager/pm-chat-registry.interface';
 import { PmChatSchema } from '@infrastructure/database/schemas/pm-chat.schema';
 import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo-pm-chat.registry';
+import { PM_ADMIN_TOPICS } from '@application/project-manager/admin-topics.interface';
+import { MongoAdminTopics } from '@infrastructure/database/repositories/mongo-admin-topics';
+import { PmAdminTopicSchema } from '@infrastructure/database/schemas/pm-admin-topic.schema';
+import { PmAdminTopicDaySchema } from '@infrastructure/database/schemas/pm-admin-topic-day.schema';
 
 @Module({
   imports: [
@@ -108,6 +112,8 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
       { name: 'PmTeamDay', schema: PmTeamDaySchema },
       { name: 'PmIndex', schema: PmIndexSchema },
       { name: 'PmIndexJob', schema: PmIndexJobSchema },
+      { name: 'PmAdminTopic', schema: PmAdminTopicSchema },
+      { name: 'PmAdminTopicDay', schema: PmAdminTopicDaySchema },
     ]),
   ],
   providers: [
@@ -158,6 +164,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     { provide: PM_ADMIN_APPROVALS, useClass: MongoAdminApprovals },
     { provide: PM_TEAM_REVIEWS, useClass: MongoTeamReviews },
     { provide: PM_TEAM_HISTORY, useClass: MongoTeamHistory },
+    { provide: PM_ADMIN_TOPICS, useClass: MongoAdminTopics },
     AdminAccess,
     { provide: PM_INDEX, useClass: MongoProjectIndex },
     { provide: PM_INDEX_JOB, useClass: MongoIndexJob },
@@ -199,6 +206,7 @@ import { MongoPmChatRegistry } from '@infrastructure/database/repositories/mongo
     AdminAccess,
     PM_TEAM_HISTORY,
     PM_TEAM_REVIEWS,
+    PM_ADMIN_TOPICS,
     PM_INDEX,
     BuildIndexUseCase,
     PmRuntimeConfig,

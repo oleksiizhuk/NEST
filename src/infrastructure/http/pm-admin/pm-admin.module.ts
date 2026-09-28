@@ -13,6 +13,7 @@ import {
 } from '@infrastructure/http/pm-admin/pm-admin.auth';
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
 import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
+import { AdminTopicsUseCase } from '@application/project-manager/use-cases/admin-topics.use-case';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-r
     PmAdminUseCase,
     PasswordThrottle,
     TeamReviewUseCase,
+    AdminTopicsUseCase,
   ],
 })
 export class PmAdminHttpModule {}

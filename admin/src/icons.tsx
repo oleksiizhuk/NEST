@@ -21,6 +21,12 @@ export const IconChats = () => (
     <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z" />
   </svg>
 );
+export const IconAsk = () => (
+  <svg {...base}>
+    <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z" />
+    <path d="M10 10a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.2M12 15.5h.01" />
+  </svg>
+);
 export const IconSettings = () => (
   <svg {...base}>
     <path d="M4 7h10M18 7h2M4 17h4M12 17h8" />

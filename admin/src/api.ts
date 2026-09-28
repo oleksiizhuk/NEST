@@ -541,4 +541,41 @@ export const api = {
     call<Chat[]>('PUT', 'chats', { chatId, on }),
   setChatAlerts: (chatId: number, alerts: boolean) =>
     call<Chat[]>('PUT', 'chats', { chatId, alerts }),
+  topics: () => call<TopicList>('GET', 'topics'),
+  topic: (id: string) => call<Topic>('GET', `topics/${id}`),
+  createTopic: (title: string, context: string | null) =>
+    call<Topic>('POST', 'topics', {
+      title,
+      ...(context ? { context } : {}),
+    }),
+  askTopic: (id: string, text: string) =>
+    call<Topic>('POST', `topics/${id}/ask`, { text }),
+  removeTopic: (id: string) =>
+    call<{ ok: boolean }>('POST', `topics/${id}/remove`),
 };
+
+export interface TopicMessage {
+  role: 'user' | 'bot';
+  text: string;
+  at: string;
+  choices?: string[];
+}
+
+export interface Topic {
+  id: string;
+  title: string;
+  context: string | null;
+  messages: TopicMessage[];
+  updatedAt: string;
+}
+
+export interface TopicList {
+  topics: Array<{
+    id: string;
+    title: string;
+    count: number;
+    updatedAt: string;
+  }>;
+  used: number;
+  limit: number;
+}
