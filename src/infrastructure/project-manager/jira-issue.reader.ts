@@ -157,6 +157,20 @@ export const assigneeAt = (
   return sorted.length ? sorted[0].from : current;
 };
 
+// Epoch ms or an ISO / Jira date string → ISO; unknown → epoch 0 so it
+// sorts first instead of breaking string comparisons
+export const isoTime = (value: unknown): string => {
+  const ms =
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+      ? /^\d+$/.test(value)
+        ? Number(value)
+        : Date.parse(value)
+      : NaN;
+  return new Date(Number.isFinite(ms) ? ms : 0).toISOString();
+};
+
 // A missing "toString" key would read Object.prototype.toString
 const str = (value: unknown): string | null =>
   typeof value === 'string' ? value : null;
@@ -795,7 +809,17 @@ export class JiraIssueReader implements IProjectSource {
             },
           },
         );
-        out.push(...(data.issueChangeLogs ?? []));
+        // The bulk API gives "created" as epoch milliseconds; everything
+        // downstream compares ISO strings
+        out.push(
+          ...(data.issueChangeLogs ?? []).map((log) => ({
+            ...log,
+            changeHistories: (log.changeHistories ?? []).map((h) => ({
+              ...h,
+              created: isoTime(h.created as unknown),
+            })),
+          })),
+        );
         nextPageToken = data.nextPageToken;
         pages += 1;
       } while (nextPageToken && pages < 20);

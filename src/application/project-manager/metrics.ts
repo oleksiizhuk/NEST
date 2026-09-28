@@ -197,7 +197,9 @@ export const issueMetrics = (
         i.statusSince &&
         workingDaysBetween(new Date(i.statusSince), now) > STALE_WORKING_DAYS,
     )
-    .sort((a, b) => (a.statusSince ?? '').localeCompare(b.statusSince ?? ''));
+    .sort((a, b) =>
+      String(a.statusSince ?? '').localeCompare(String(b.statusSince ?? '')),
+    );
   out.stale = stale.length;
   if (stale.length) {
     lines.push(
