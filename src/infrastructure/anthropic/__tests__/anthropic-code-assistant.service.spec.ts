@@ -236,6 +236,16 @@ describe('AnthropicCodeAssistantService', () => {
       ]) {
         expect(request.system).toContain(token);
       }
+      // Rules whose loss would do damage, pinned by their own words
+      expect(request.system).toMatch(/never run prebuild --clean/);
+      expect(request.system).toContain('at most 3 items');
+      expect(request.system).toContain('keep Podfile.lock');
+      expect(request.system).toContain('adb reverse tcp:8081');
+      expect(request.system).toMatch(/only below 0\.82/);
+      // The markers stay English whatever the reply language
+      expect(request.system).toMatch(
+        /markers NEED_INFO\s+and HYPOTHESIS: in English/,
+      );
       // HYPOTHESIS comes last, after How to verify
       expect(request.system).toMatch(
         /How to verify included, the very last line/,
@@ -266,6 +276,18 @@ describe('AnthropicCodeAssistantService', () => {
         needInfo: false,
         hypothesis: 'stale token; refresh first',
       });
+      // A reply in Russian keeps working: the markers stay English
+      expect(
+        parse(
+          'NEED_INFO\n1. Пришлите package.json\n2. Лог adb logcat -b crash',
+        ),
+      ).toEqual({
+        text: '1. Пришлите package.json\n2. Лог adb logcat -b crash',
+        needInfo: true,
+      });
+      expect(
+        parse('Поправьте импорт.\n\nHYPOTHESIS: старый кеш Metro').hypothesis,
+      ).toBe('старый кеш Metro');
       // Found among the last 6 non-blank lines, not further up
       expect(
         parse('Fix.\nHYPOTHESIS: far\n1\n2\n3\n4\n5\n6').hypothesis,
