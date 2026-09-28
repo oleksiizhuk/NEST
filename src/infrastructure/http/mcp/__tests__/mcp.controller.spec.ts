@@ -135,6 +135,7 @@ describe('McpController (streamable HTTP)', () => {
       tools.find((t) => t.name === name)?.description ?? '';
     expect(described('start_task')).toContain('React Native');
     expect(described('ask_advice')).toContain('React Native');
+    expect(described('ask_advice')).toContain('when there is a change');
   });
 
   it('runs a task from start to a report', async () => {

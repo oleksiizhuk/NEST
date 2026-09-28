@@ -242,8 +242,6 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     }
     let hypothesis: string | undefined;
     let seen = 0;
-    // How to verify comes before it and may end with a command or a note,
-    // so look a few lines up
     for (
       let i = lines.length - 1;
       i >= 0 && seen < HYPOTHESIS_TAIL_LINES;

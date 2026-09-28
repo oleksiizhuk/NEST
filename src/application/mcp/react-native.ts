@@ -23,7 +23,8 @@ export const RN_LOGS =
   'Xcode build log; iOS crash: the Xcode debug console, on a simulator ' +
   "`xcrun simctl spawn booted log stream --predicate 'process == " +
   '"<executable name>"\'`, on a device Console.app or Xcode > Devices > ' +
-  'View Device Logs; Android build: the Gradle output; Android crash at ' +
+  'View Device Logs, from TestFlight / App Store Xcode Organizer > ' +
+  'Crashes; Android build: the Gradle output; Android crash at ' +
   'launch: `adb logcat -b crash` (or `adb logcat AndroidRuntime:E ' +
   'ReactNativeJS:V *:S`), in a running app `adb logcat --pid=<pid>` from ' +
   '`adb shell pidof -s <applicationId>`';
@@ -35,7 +36,7 @@ export const RN_LOGS_SHORT =
   'crash for Android';
 
 export const RN_NATIVE_CONFIG =
-  'app.json / app.config.js, eas.json, ios/Podfile, Podfile.properties.json, ' +
+  'app.json / app.config.js (with expo-build-properties), eas.json, ios/Podfile, Podfile.properties.json, ' +
   'Gemfile, ios/.xcode.env(.local), Info.plist, *.entitlements, ' +
   'AppDelegate, android/build.gradle (sdk and Kotlin versions), ' +
   'android/settings.gradle, android/gradle/wrapper/gradle-wrapper.properties, ' +

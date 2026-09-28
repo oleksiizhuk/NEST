@@ -226,7 +226,6 @@ describe('AnthropicCodeAssistantService', () => {
         'adb logcat',
         'expo start -c',
         '--reset-cache',
-        'prebuild --clean',
         'Expo Go',
         'development build',
         'react-native-config',
@@ -240,11 +239,16 @@ describe('AnthropicCodeAssistantService', () => {
       expect(request.system).toMatch(/never run prebuild --clean/);
       expect(request.system).toContain('at most 3 items');
       expect(request.system).toContain('keep Podfile.lock');
+      expect(request.system).toContain('bundle exec pod install');
+      expect(request.system).toContain('compose-source-maps.js');
+      expect(request.system).toContain('mapping.txt');
+      expect(request.system).toContain('dSYM');
+      expect(request.system).toContain('expo-build-properties');
       expect(request.system).toContain('adb reverse tcp:8081');
       expect(request.system).toMatch(/only below 0\.82/);
       // The markers stay English whatever the reply language
       expect(request.system).toMatch(
-        /markers NEED_INFO\s+and HYPOTHESIS: in English/,
+        /markers NEED_INFO\s+and HYPOTHESIS: and the heading "How to verify" in English/,
       );
       // HYPOTHESIS comes last, after How to verify
       expect(request.system).toMatch(
@@ -276,7 +280,8 @@ describe('AnthropicCodeAssistantService', () => {
         needInfo: false,
         hypothesis: 'stale token; refresh first',
       });
-      // A reply in Russian keeps working: the markers stay English
+      // Cyrillic around the English markers parses (the prompt, pinned above,
+      // is what keeps the markers themselves in English)
       expect(
         parse(
           'NEED_INFO\n1. Пришлите package.json\n2. Лог adb logcat -b crash',
