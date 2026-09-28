@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Get,
@@ -139,6 +140,23 @@ export class AdminNudgeBody {
   chatId: number;
 }
 
+// Settings that give someone access; only the owner changes them
+const ACCESS_KEYS = [
+  // 0 = no limit: model spend is the owner's call too
+  'dailyQuestionLimit',
+  'unlimitedUsernames',
+  'dmUsernames',
+  'actionUserIds',
+  'alertChatIds',
+  'pmInOwnerGroups',
+];
+
+export class AdminUserBody {
+  @IsString()
+  @MaxLength(33)
+  username: string;
+}
+
 export class AdminChatBody {
   @IsInt()
   chatId: number;
@@ -225,6 +243,15 @@ export class PmAdminController {
     @Body() body: AdminSettingsBody,
     @Req() req: { pmAdmin: number },
   ) {
+    // Who may talk to the bot, confirm actions or get alerts is the owner's
+    // call: another admin's grants would outlive their removal
+    if (
+      req.pmAdmin !== this.auth.ownerId &&
+      Object.keys(body.settings ?? {}).some((k) => ACCESS_KEYS.includes(k))
+    )
+      throw new ForbiddenException(
+        'Кто может писать боту, подтверждать действия и получать уведомления, меняет только владелец',
+      );
     try {
       return await this.admin.update(body.settings, req.pmAdmin);
     } catch (error) {
@@ -235,11 +262,56 @@ export class PmAdminController {
     }
   }
 
-  // Ends every admin session, this one included
+  // Who is signed in: the page shows the access list only to the owner
+  @Get('me')
+  @UseGuards(PmAdminGuard)
+  me(@Req() req: { pmAdmin: number }) {
+    return { userId: req.pmAdmin, owner: req.pmAdmin === this.auth.ownerId };
+  }
+
+  // Who else may open the admin page; only the owner changes the list, so
+  // nobody can lock the owner out
+  @Get('admins')
+  @UseGuards(PmAdminGuard)
+  admins(@Req() req: { pmAdmin: number }) {
+    this.ownerOnly(req);
+    return this.admin.admins();
+  }
+
+  @Post('admins')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async addAdmin(@Body() body: AdminUserBody, @Req() req: { pmAdmin: number }) {
+    this.ownerOnly(req);
+    try {
+      return await this.admin.addAdmin(body.username, req.pmAdmin);
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  @Post('admins/remove')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  removeAdmin(@Body() body: AdminUserBody, @Req() req: { pmAdmin: number }) {
+    this.ownerOnly(req);
+    return this.admin.removeAdmin(body.username, req.pmAdmin);
+  }
+
+  private ownerOnly(req: { pmAdmin: number }) {
+    if (req.pmAdmin !== this.auth.ownerId)
+      throw new ForbiddenException('Список доступа меняет только владелец');
+  }
+
+  // Ends every admin session, this one included (owner only)
   @Post('logout-all')
   @HttpCode(200)
   @UseGuards(PmAdminGuard)
-  async logoutAll() {
+  async logoutAll(@Req() req: { pmAdmin: number }) {
+    if (req.pmAdmin !== this.auth.ownerId)
+      throw new ForbiddenException('«Выйти везде» доступно только владельцу');
     await this.auth.revokeAll();
     return { ok: true };
   }
@@ -394,9 +466,17 @@ export class PmAdminController {
   @Post('team/nudge')
   @HttpCode(200)
   @UseGuards(PmAdminGuard)
-  async teamNudge(@Body() body: AdminNudgeBody) {
+  async teamNudge(
+    @Body() body: AdminNudgeBody,
+    @Req() req: { pmAdmin: number },
+  ) {
     try {
-      return await this.admin.nudge(body.name, body.text, body.chatId);
+      return await this.admin.nudge(
+        body.name,
+        body.text,
+        body.chatId,
+        req.pmAdmin,
+      );
     } catch (error) {
       if (error instanceof SettingsError)
         throw new BadRequestException(error.message);
@@ -494,6 +574,11 @@ export class PmAdminController {
   @Put('chats')
   @UseGuards(PmAdminGuard)
   async setChat(@Body() body: AdminChatBody, @Req() req: { pmAdmin: number }) {
+    // Opening project data to a chat is the owner's call (as /pm_on)
+    if (req.pmAdmin !== this.auth.ownerId)
+      throw new ForbiddenException(
+        'Включать бота в группах и оповещения меняет только владелец',
+      );
     try {
       if (body.alerts !== undefined)
         return await this.admin.setAlerts(

@@ -12,6 +12,10 @@ export class PmAdminLoginDocument extends Document {
 
   @Prop({ type: Date, default: null })
   usedAt: Date | null;
+
+  // Whose link it is (the owner or another admin); older links have none
+  @Prop({ type: Number, default: null })
+  userId: number | null;
 }
 
 export const PmAdminLoginSchema =

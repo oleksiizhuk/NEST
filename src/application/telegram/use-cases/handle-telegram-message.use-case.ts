@@ -39,6 +39,7 @@ import {
 } from '@application/project-manager/memory.interface';
 import { IQuota, PM_QUOTA } from '@application/project-manager/quota.interface';
 import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
+import { AdminAccess } from '@application/project-manager/admin-access';
 import {
   IAdminLinks,
   PM_ADMIN_LINKS,
@@ -148,6 +149,7 @@ export class HandleTelegramMessageUseCase {
     @Optional()
     @Inject(PM_ADMIN_APPROVALS)
     private readonly adminApprovals?: IAdminApprovals,
+    @Optional() private readonly adminAccess?: AdminAccess,
   ) {}
 
   // The config with the owner's admin-page overrides, loaded at the start
@@ -478,22 +480,44 @@ export class HandleTelegramMessageUseCase {
     }
   }
 
-  // A one-time login link to the admin page, only to the owner and only in
-  // the private chat; anyone else gets no reply
+  // A one-time login link to the admin page, only to the owner or someone
+  // the owner added, only in the private chat; anyone else gets no reply
   private async sendAdminLink(
     msg: IncomingTelegramMessage,
     isPrivate: boolean,
   ): Promise<void> {
-    if (msg.from.id !== this.config.ownerId || !this.adminLinks) return;
+    if (!this.adminLinks) return;
+    const isOwner = msg.from.id === this.config.ownerId;
     if (!isPrivate) {
-      await this.telegram.sendMessage(
-        msg.chatId,
-        'Ссылку на админку пришлю только в личку: напишите /admin мне в личные сообщения.',
-      );
+      // Only the owner is pointed to the private chat; a listed person
+      // asking in a group is not revealed (and not bound) there
+      if (isOwner)
+        await this.telegram.sendMessage(
+          msg.chatId,
+          'Ссылку на админку пришлю только в личку: напишите /admin мне в личные сообщения.',
+        );
       return;
     }
+    const access = isOwner
+      ? 'known'
+      : await this.adminAccess?.allowTelegram(msg.from).catch(() => false);
+    if (!access) return;
+    if (access === 'bound') {
+      try {
+        await this.telegram.sendMessage(
+          this.config.ownerId,
+          `В админку впервые вошёл(а) ${[msg.from.firstName, msg.from.lastName]
+            .filter(Boolean)
+            .join(' ')} (@${msg.from.username ?? '—'}, id ${
+            msg.from.id
+          }). Если это не тот человек — уберите доступ на странице «Доступы и лимиты».`,
+        );
+      } catch {
+        // The link still goes out; the owner sees the person on the list
+      }
+    }
     try {
-      const link = await this.adminLinks.issue(new Date());
+      const link = await this.adminLinks.issue(new Date(), msg.from.id);
       await this.telegram.sendMessage(
         msg.chatId,
         `Вход в админку (одноразовая ссылка, 10 минут):\n${link}`,

@@ -13,6 +13,7 @@ import {
   todayItems,
 } from '@application/project-manager/team';
 import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
+import { AdminAccess } from '@application/project-manager/admin-access';
 import { IQuota, PM_QUOTA } from '@application/project-manager/quota.interface';
 import {
   ITelegramMessageRepository,
@@ -45,6 +46,7 @@ export class PmAdminUseCase {
     @Inject(TELEGRAM_GATEWAY) private readonly telegram: ITelegramGateway,
     @Inject(TELEGRAM_CONFIG) private readonly telegramConfig: ITelegramConfig,
     private readonly team: TeamReviewUseCase,
+    private readonly access: AdminAccess,
   ) {}
 
   // Groups the bot has seen and their PM mode:
@@ -102,6 +104,23 @@ export class PmAdminUseCase {
     this.runtime.invalidate();
   }
 
+  // Who else may open the admin page (the owner manages this list)
+  async admins() {
+    return this.access.list();
+  }
+
+  async addAdmin(username: string, by: number) {
+    try {
+      return await this.access.add(username, by);
+    } catch (error) {
+      throw new SettingsError((error as Error).message);
+    }
+  }
+
+  async removeAdmin(username: string, by: number) {
+    return this.access.remove(username, by);
+  }
+
   // Jira name → Telegram username on the Сотрудники page
   async setTelegramUsername(name: string, username: string | null, by: number) {
     const current = {
@@ -115,7 +134,7 @@ export class PmAdminUseCase {
 
   // "Написать в чат": the owner's message to a PM group the bot works in,
   // with the person mentioned when their username is linked
-  async nudge(name: string, text: string, chatId: number) {
+  async nudge(name: string, text: string, chatId: number, by?: number) {
     const message = String(text ?? '').trim();
     if (!message || message.length > 800)
       throw new SettingsError('text: 1-800 characters');
@@ -124,7 +143,16 @@ export class PmAdminUseCase {
     // From the store: a link saved a moment ago may not be in the cache
     const username = (await this.store.get()).values.telegramUsernames?.[name];
     const to = username ? `@${username}` : name;
-    await this.telegram.sendMessage(chatId, `${to}, ${message}`);
+    // Someone other than the owner signs the message, so the group knows
+    // who is speaking through the bot
+    const sender =
+      by && by !== this.telegramConfig.ownerId
+        ? (await this.access.list()).find((u) => u.userId === by)?.username
+        : null;
+    await this.telegram.sendMessage(
+      chatId,
+      `${to}, ${message}${sender ? `\n\n— от @${sender}` : ''}`,
+    );
     return { sent: true, chatId, mention: Boolean(username) };
   }
 
@@ -242,6 +270,7 @@ export class PmAdminUseCase {
       releaseBaseline: null,
       telegramUsernames: {},
       todayHidden: [],
+      adminUsers: [],
     };
     const overrides: PmSettings = {};
     for (const key of SETTING_KEYS) {

@@ -440,6 +440,12 @@ export interface ReleaseView {
   release: ReleaseData | null;
 }
 
+export interface AdminUser {
+  username: string;
+  userId: number | null;
+  addedAt: string;
+}
+
 export type IndexSource = 'jira' | 'confluence' | 'figma' | 'github';
 
 export interface IndexJob {
@@ -476,6 +482,12 @@ export const api = {
   save: (settings: Settings) =>
     call<SettingsView>('PUT', 'settings', { settings }),
   usage: () => call<Usage>('GET', 'usage'),
+  me: () => call<{ userId: number; owner: boolean }>('GET', 'me'),
+  admins: () => call<AdminUser[]>('GET', 'admins'),
+  addAdmin: (username: string) =>
+    call<AdminUser[]>('POST', 'admins', { username }),
+  removeAdmin: (username: string) =>
+    call<AdminUser[]>('POST', 'admins/remove', { username }),
   logoutAll: () => call<{ ok: boolean }>('POST', 'logout-all'),
   chats: () => call<Chat[]>('GET', 'chats'),
   team: () => call<TeamView>('GET', 'team'),

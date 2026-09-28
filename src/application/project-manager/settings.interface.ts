@@ -32,6 +32,13 @@ export interface PmSettings {
   telegramUsernames?: Record<string, string> | null;
   // Релиз: the day scope growth is counted from
   releaseBaseline?: string | null;
+  // People besides the owner with admin access; managed by its own
+  // owner-only endpoints, never through the settings form
+  adminUsers?: Array<{
+    username: string;
+    userId: number | null;
+    addedAt: string;
+  }> | null;
   // "Сегодня" items the owner marked done or snoozed, until an ISO time.
   // Written by its own endpoint, not through the settings form.
   todayHidden?: Array<{ id: string; until: string }> | null;
@@ -64,6 +71,15 @@ export interface IPmSettingsStore {
   // Adds or replaces one hidden "Сегодня" item and drops expired ones,
   // atomically, so two quick clicks cannot overwrite each other
   hideToday(id: string, until: string, now: string, by: number): Promise<void>;
+  // Admin list changes, each atomic so concurrent calls cannot undo one
+  // another: add only if the username is new, bind only an unbound entry
+  addAdmin(
+    user: { username: string; userId: null; addedAt: string },
+    by: number,
+  ): Promise<void>;
+  removeAdmin(username: string, by: number): Promise<void>;
+  // True when this call bound the id (the entry existed and was unbound)
+  bindAdmin(username: string, userId: number): Promise<boolean>;
   // Admin sessions carry this number; raising it logs every session out
   sessionEpoch(): Promise<number>;
   bumpSessionEpoch(): Promise<number>;

@@ -40,25 +40,28 @@ export class MongoAdminLinks implements IAdminLinks {
     this.base = adminBaseUrl(config);
   }
 
-  async issue(now: Date): Promise<string> {
+  async issue(now: Date, userId: number): Promise<string> {
     if (!this.base)
       throw new Error('admin URL is not configured (PM_ADMIN_URL)');
     const token = randomBytes(32).toString('base64url');
     await this.model.create({
       tokenHash: hash(token),
       expiresAt: new Date(now.getTime() + LINK_TTL_MS),
+      userId,
     });
     // In the fragment: it never reaches server logs or the Referer header
     return `${this.base}/admin/#login=${token}`;
   }
 
   // Atomic: a link works once even if opened twice at the same moment
-  async consume(token: string, now: Date): Promise<boolean> {
-    if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return false;
+  async consume(token: string, now: Date): Promise<number | null> {
+    if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return null;
     const doc = await this.model.findOneAndUpdate(
       { tokenHash: hash(token), usedAt: null, expiresAt: { $gt: now } },
       { $set: { usedAt: now } },
     );
-    return Boolean(doc);
+    if (!doc) return null;
+    // Links made before per-user links existed were the owner's
+    return doc.userId ?? 0;
   }
 }
