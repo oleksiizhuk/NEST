@@ -18,8 +18,8 @@ export function NoData({
     <section className="card">
       <h2>{title}</h2>
       <p className="muted">
-        Бот ещё не заглядывал в Jira и GitHub. Соберите данные — это около
-        минуты. Дальше они обновляются сами несколько раз в день.
+        Для этой страницы у бота ещё нет данных из Jira и GitHub. Соберите их —
+        это около минуты. Дальше они обновляются сами несколько раз в день.
       </p>
       {error && <p className="error small">{error}</p>}
       <div className="actions">
@@ -29,8 +29,19 @@ export function NoData({
             setBusy(true);
             setError(null);
             try {
-              await api.refreshData();
-              onDone();
+              const r = await api.refreshData();
+              const failed = r.sources.filter((x) => !x.ok);
+              const jira = r.sources.find((x) => x.source === 'issues');
+              if (failed.length)
+                setError(
+                  `Не прочитались: ${failed
+                    .map((x) => `${x.source} (${x.error})`)
+                    .join(
+                      ', ',
+                    )}. Если ошибка повторяется — передайте её разработчику.`,
+                );
+              // Without Jira the page would come back empty again
+              if (!jira || jira.ok) onDone();
             } catch (e) {
               if (e instanceof Unauthorized) onUnauthorized();
               else setError((e as Error).message);

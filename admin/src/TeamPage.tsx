@@ -160,7 +160,10 @@ function ThresholdsPanel({
   if (!open)
     return (
       <button className="link small" onClick={() => setOpen(true)}>
-        Настроить, когда показывать замечания
+        Настроить, когда показывать замечания (сейчас: в работе больше{' '}
+        {value.wipLimit}, застряла дольше {value.staleDays} дн., ревью дольше{' '}
+        {value.reviewWaitDays} дн.
+        {value.off.length ? `, выключено ${value.off.length}` : ''})
       </button>
     );
   return (
@@ -456,7 +459,9 @@ function MeetingCard({
     <section className="card">
       <div className="review-head">
         <h2>Подготовка к встрече</h2>
-        {current && <span className="muted small">от {when(current.at)}</span>}
+        {current && !who && (
+          <span className="muted small">от {when(current.at)}</span>
+        )}
       </div>
       <div className="tabs" role="tablist">
         {KINDS.map((k) => (
@@ -858,25 +863,28 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
       {error && <p className="error">{error}</p>}
 
       {!team || !team.hasDetails ? (
-        <section className="card">
-          <h2>Данных по людям пока нет</h2>
-          <p className="muted">
-            {team
-              ? `Последний снимок проекта (${when(
-                  team.asOf,
-                )}) собран до появления этой вкладки.`
-              : 'Снимок проекта ещё не собран.'}{' '}
-            Обновите данные — это займёт до минуты. Дальше они обновляются сами
-            утром и в 08, 11 и 14 UTC.
-          </p>
-          <div className="actions">
-            <button onClick={refreshData} disabled={refreshing}>
-              {refreshing
-                ? 'Собираю данные из Jira и GitHub…'
-                : 'Обновить данные сейчас'}
-            </button>
-          </div>
-        </section>
+        <>
+          <section className="card">
+            <h2>Данных по людям пока нет</h2>
+            <p className="muted">
+              {team
+                ? `Последний снимок проекта (${when(
+                    team.asOf,
+                  )}) собран до появления этой вкладки.`
+                : 'Снимок проекта ещё не собран.'}{' '}
+              Обновите данные — это займёт до минуты. Дальше они обновляются
+              сами утром и ещё несколько раз в день.
+            </p>
+            <div className="actions">
+              <button onClick={refreshData} disabled={refreshing}>
+                {refreshing
+                  ? 'Собираю данные из Jira и GitHub…'
+                  : 'Обновить данные сейчас'}
+              </button>
+            </div>
+          </section>
+          <MeetingCard initial={view.review} onError={handle} people={[]} />
+        </>
       ) : (
         <>
           {(() => {

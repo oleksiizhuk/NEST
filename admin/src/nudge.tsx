@@ -74,7 +74,7 @@ export function NudgeForm({
         </select>
       )}
       <p className="small">
-        Сообщение увидит вся выбранная группа, {person} будет упомянут(а).
+        Сообщение увидит вся выбранная группа, не только {person}.
       </p>
       <textarea
         value={message}
