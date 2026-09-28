@@ -14,6 +14,7 @@ import {
 import { Key, RULES, SignalLine } from './signals';
 import { LoadHeatmap, Sparkline, TeamFlowChart } from './charts';
 import { NudgeForm } from './nudge';
+import { modelCallBody, TokenBadge, useConfirm } from './confirm';
 
 const TOGGLEABLE: SignalRule[] = [
   'wip',
@@ -429,6 +430,7 @@ function MeetingCard({
     meeting: initial,
   });
   const [busy, setBusy] = useState(false);
+  const [modal, ask] = useConfirm();
   const current = notes[kind];
   const meta = KINDS.find((k) => k.id === kind) ?? KINDS[0];
 
@@ -444,6 +446,21 @@ function MeetingCard({
   };
 
   const prepare = async () => {
+    const ok = await ask({
+      title:
+        kind === 'standup'
+          ? 'Подготовить стендап?'
+          : kind === 'retro'
+          ? 'Подготовить ретро?'
+          : 'Подготовить разбор для встречи?',
+      body: modelCallBody(
+        current
+          ? 'Разбор за сегодня уже есть — будет подготовлен новый.'
+          : 'Модель разберёт данные по каждому человеку.',
+      ),
+      confirm: 'Подтвердить',
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const n = await api.teamReview(Boolean(current), kind);
@@ -509,14 +526,17 @@ function MeetingCard({
             <button onClick={prepare} disabled={busy}>
               {current ? 'Подготовить заново' : 'Подготовить'}
             </button>
+            <TokenBadge />
           </div>
         </>
       )}
+      {modal}
     </section>
   );
 }
 
 function OneOnOne({ name }: { name: string }) {
+  const [modal, ask] = useConfirm();
   const [notes, setNotes] = useState<Notes | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -529,6 +549,16 @@ function OneOnOne({ name }: { name: string }) {
   }, [name]);
 
   const prepare = async () => {
+    const ok = await ask({
+      title: `Подготовить 1:1 с ${name}?`,
+      body: modelCallBody(
+        notes
+          ? 'Повестка за сегодня уже есть — будет подготовлена новая.'
+          : 'Модель соберёт повестку разговора по данным этого человека.',
+      ),
+      confirm: 'Подтвердить',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -557,9 +587,13 @@ function OneOnOne({ name }: { name: string }) {
           нагрузке. Без оценок и сравнений с другими.
         </p>
       )}
-      <button className="ghost" onClick={prepare} disabled={busy}>
-        {notes ? 'Подготовить заново' : 'Подготовить повестку'}
-      </button>
+      <div className="actions">
+        <button className="ghost" onClick={prepare} disabled={busy}>
+          {notes ? 'Подготовить заново' : 'Подготовить повестку'}
+        </button>
+        <TokenBadge />
+      </div>
+      {modal}
     </div>
   );
 }

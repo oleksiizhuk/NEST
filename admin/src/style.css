@@ -1209,3 +1209,39 @@ select.tab {
     height: 18px;
   }
 }
+
+/* ---------- token badge and confirm modal ---------- */
+.token-badge {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--warn-line);
+  color: var(--warn);
+  white-space: nowrap;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+.modal {
+  width: 100%;
+  max-width: 440px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+.modal h2 {
+  margin-top: 0;
+}
+.modal-body p {
+  margin: 0 0 8px;
+}
