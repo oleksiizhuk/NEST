@@ -36,7 +36,9 @@ const MAX_RETRIES = 0;
 // Our own single retry instead: an overloaded or rate-limited API usually
 // answers within seconds, so one more try fits when the failure came fast.
 // The retry gets only what is left of REQUEST_TIMEOUT_MS, never a fresh one.
+// An error event in the middle of a stream carries no status, only its type.
 const RETRY_STATUSES = [429, 500, 502, 503, 529];
+const RETRY_TYPES = ['overloaded_error', 'rate_limit_error', 'api_error'];
 const RETRY_WINDOW_MS = 30_000;
 const RETRY_DELAY_MS = 2_000;
 
@@ -159,18 +161,22 @@ export class AnthropicCodeAssistantService implements ICodeAssistantService {
     for (let attempt = 0; ; attempt++) {
       const left = startedAt + REQUEST_TIMEOUT_MS - Date.now();
       try {
+        // The SDK timeout only covers the wait for the response headers; the
+        // signal holds the whole stream to the budget
         return await this.client.messages
-          .stream(body, { timeout: left })
+          .stream(body, { timeout: left, signal: AbortSignal.timeout(left) })
           .finalMessage();
       } catch (error) {
-        const status = (error as { status?: unknown }).status;
+        const { status, type } = error as { status?: unknown; type?: unknown };
+        const transient =
+          (typeof status === 'number' && RETRY_STATUSES.includes(status)) ||
+          (typeof type === 'string' && RETRY_TYPES.includes(type));
         const retry =
           attempt === 0 &&
-          typeof status === 'number' &&
-          RETRY_STATUSES.includes(status) &&
+          transient &&
           Date.now() - startedAt < RETRY_WINDOW_MS;
         if (!retry) throw error;
-        this.logger.warn(`Anthropic answered ${status}, retrying once`);
+        this.logger.warn(`Anthropic answered ${status ?? type}, retrying once`);
         await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
       }
     }

@@ -231,6 +231,33 @@ describe('AnthropicCodeAssistantService', () => {
       expect(mockStream).toHaveBeenCalledTimes(2);
     });
 
+    it('retries an overload that arrives mid-stream as an error event', async () => {
+      mockFinalMessage
+        .mockRejectedValueOnce(
+          Object.assign(new Error('busy'), { type: 'overloaded_error' }),
+        )
+        .mockResolvedValueOnce(textMessage('ok'));
+
+      const answer = await run(
+        new AnthropicCodeAssistantService(configWith({})),
+      );
+
+      expect(answer).toBe('ok');
+      expect(mockStream).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry when the failure came after the retry window', async () => {
+      mockFinalMessage.mockImplementationOnce(async () => {
+        jest.setSystemTime(Date.now() + 31_000);
+        throw Object.assign(new Error('late'), { status: 529 });
+      });
+
+      await expect(
+        run(new AnthropicCodeAssistantService(configWith({}))),
+      ).rejects.toThrow('late');
+      expect(mockStream).toHaveBeenCalledTimes(1);
+    });
+
     it('does not retry a client error', async () => {
       mockFinalMessage.mockRejectedValue(
         Object.assign(new Error('bad'), { status: 400 }),
