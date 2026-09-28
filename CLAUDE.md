@@ -227,7 +227,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS`, chats switched on with `/pm_on`, and 
 
 ### MCP endpoint (`/mcp`)
 
-Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405.
+Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. It exists for React Native work only (Expo or bare, iOS and Android): the answer prompt, the start_task checklist, NEED_INFO and "How to verify" all speak mobile — Expo vs bare and versions, the failing platform, the right log (Metro, Xcode, adb logcat, Gradle), native config, Metro reload vs native rebuild. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405.
 
 The caller is often a weak model that gets lost in a lot of code, so the bridge runs a task protocol (sent as server `instructions` and repeated as a NEXT STEP line at the end of every reply):
 - `start_task { goal, context? }` opens a task (`t-` + 10 hex) and returns a checklist of what to collect (code, errors, docs, versions, constraints, how to verify), planned by sonnet at low effort (a generic list if that fails), plus the caller's tasks from the last day still waiting for a report.
