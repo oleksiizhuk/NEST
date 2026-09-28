@@ -35,6 +35,8 @@ export interface McpStatsReport extends McpStats {
     left: number | null;
     freeCalls: number | null;
     freeLimit: number | null;
+    // Free-tool calls refused past their cap (a looping IDE shows up here)
+    refusedFreeCalls: number | null;
   };
   // Which task list hit MAX_TASKS: its counts are lower bounds
   capped: { started: boolean; open: boolean };
@@ -84,6 +86,7 @@ export class GetMcpStatsUseCase {
             left: Math.max(0, limit - usage.units),
             freeCalls: usage.free,
             freeLimit: limit * FREE_CALLS_PER_PAID,
+            refusedFreeCalls: usage.refusedFree,
           }
         : {
             day,
@@ -93,6 +96,7 @@ export class GetMcpStatsUseCase {
             left: null,
             freeCalls: null,
             freeLimit: null,
+            refusedFreeCalls: null,
           },
       capped: {
         started: started.length > MAX_TASKS,

@@ -51,6 +51,7 @@ export class MongoMcpUsageRepository implements IMcpUsageRepository {
       units: usageKey(day, 'paid'),
       free: usageKey(day, 'free'),
       refused: usageKey(day, 'refused'),
+      refusedFree: usageKey(day, 'refusedFree'),
     };
     const rows = await this.usage
       .find({ day: { $in: Object.values(keys) } })
@@ -60,6 +61,7 @@ export class MongoMcpUsageRepository implements IMcpUsageRepository {
       units: count(keys.units),
       free: count(keys.free),
       refused: count(keys.refused),
+      refusedFree: count(keys.refusedFree),
     };
   }
 }

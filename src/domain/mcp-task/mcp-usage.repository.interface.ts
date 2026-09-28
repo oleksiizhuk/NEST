@@ -8,6 +8,8 @@ export interface McpDayUsage {
   free: number;
   // Units asked for past the budget and refused
   refused: number;
+  // Free-tool calls refused past their cap
+  refusedFree: number;
 }
 
 // The /mcp daily counters (keys from application/mcp/mcp-budget): the

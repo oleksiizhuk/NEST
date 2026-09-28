@@ -8,6 +8,7 @@ describe('MongoMcpUsageRepository', () => {
       { day: '2026-09-28', count: 14 },
       { day: '2026-09-28:free', count: 6 },
       { day: '2026-09-28:refused', count: 4 },
+      { day: '2026-09-28:refusedFree', count: 2 },
     ]);
     const model = { find: jest.fn().mockReturnValue({ lean }) };
     const repo = new MongoMcpUsageRepository(
@@ -18,9 +19,17 @@ describe('MongoMcpUsageRepository', () => {
       units: 14,
       free: 6,
       refused: 4,
+      refusedFree: 2,
     });
     expect(model.find).toHaveBeenCalledWith({
-      day: { $in: ['2026-09-28', '2026-09-28:free', '2026-09-28:refused'] },
+      day: {
+        $in: [
+          '2026-09-28',
+          '2026-09-28:free',
+          '2026-09-28:refused',
+          '2026-09-28:refusedFree',
+        ],
+      },
     });
   });
 
@@ -37,6 +46,7 @@ describe('MongoMcpUsageRepository', () => {
       units: 0,
       free: 0,
       refused: 0,
+      refusedFree: 0,
     });
   });
 

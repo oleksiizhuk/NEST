@@ -66,7 +66,12 @@ describe('McpController (streamable HTTP)', () => {
           useValue: {
             increment: async () => 1,
             giveBack: async () => undefined,
-            usageOn: async () => ({ units: 7, free: 2, refused: 0 }),
+            usageOn: async () => ({
+              units: 7,
+              free: 2,
+              refused: 0,
+              refusedFree: 0,
+            }),
           },
         },
         GetMcpStatsUseCase,

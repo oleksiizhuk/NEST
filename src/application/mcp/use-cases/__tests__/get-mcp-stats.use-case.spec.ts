@@ -5,10 +5,10 @@ import { McpTask } from '@domain/mcp-task/mcp-task.entity';
 
 describe('GetMcpStatsUseCase', () => {
   const now = new Date('2026-09-28T12:00:00Z');
-  const usage = (units: number, free = 0, refused = 0) => ({
+  const usage = (units: number, free = 0, refused = 0, refusedFree = 0) => ({
     increment: jest.fn(),
     giveBack: jest.fn(),
-    usageOn: jest.fn().mockResolvedValue({ units, free, refused }),
+    usageOn: jest.fn().mockResolvedValue({ units, free, refused, refusedFree }),
   });
 
   it('counts tasks started in the period, open tasks of any age, and splits spend from refusals', async () => {
@@ -17,7 +17,7 @@ describe('GetMcpStatsUseCase', () => {
     await tasks.create('t-0000000001', 'kiro', 'recent', []);
     tasks.now = () => new Date('2026-09-10T12:00:00Z');
     await tasks.create('t-0000000002', 'kiro', 'old and still open', []);
-    const counters = usage(199, 30, 4);
+    const counters = usage(199, 30, 4, 12);
 
     const report = await new GetMcpStatsUseCase(tasks, counters, 200).execute({
       days: 7,
@@ -36,8 +36,18 @@ describe('GetMcpStatsUseCase', () => {
       left: 1,
       freeCalls: 30,
       freeLimit: 2000,
+      refusedFreeCalls: 12,
     });
     expect(report.capped).toEqual({ started: false, open: false });
+  });
+
+  it('never shows a negative remainder while two refused calls are being given back', async () => {
+    const report = await new GetMcpStatsUseCase(
+      new InMemoryTaskRepository(),
+      usage(203),
+      200,
+    ).execute({ now });
+    expect(report.budget.left).toBe(0);
   });
 
   it('shows no usage when the budget is off: nothing is counted then', async () => {

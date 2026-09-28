@@ -91,6 +91,32 @@ describe('McpDailyLimitGuard', () => {
       ),
     ).rejects.toBeInstanceOf(HttpException);
     expect(busy.giveBack).toHaveBeenCalledWith(expect.stringMatching(FREE), 1);
+    expect(busy.increment).toHaveBeenLastCalledWith(
+      expect.stringMatching(/:refusedFree$/),
+      1,
+    );
+  });
+
+  it('refuses a batch bigger than the whole day without touching the counter', async () => {
+    const repo = counterAt(1);
+    await expect(
+      new McpDailyLimitGuard(config(), 5, repo).canActivate(
+        ctxWith([call('ask_advice', 'fable'), call('ask_advice', 'fable')]),
+      ),
+    ).rejects.toBeInstanceOf(HttpException);
+    expect(repo.increment).not.toHaveBeenCalled();
+    expect(repo.giveBack).not.toHaveBeenCalled();
+  });
+
+  it('still refuses with 429 when recording the refusal fails', async () => {
+    const repo = counterAt(6);
+    repo.increment
+      .mockResolvedValueOnce(9)
+      .mockRejectedValueOnce(new Error('mongo down'));
+    const refusal = new McpDailyLimitGuard(config(), 5, repo)
+      .canActivate(toolCall)
+      .catch((e: HttpException) => e.getStatus());
+    await expect(refusal).resolves.toBe(429);
   });
 
   it('a batch refused on the paid budget gives back its free calls too', async () => {

@@ -29,5 +29,7 @@ export const usageDay = (now: Date) => now.toISOString().slice(0, 10);
 
 // The counter row for a day: paid units, calls to the free tools, or units
 // asked for past the budget and refused (they spend nothing)
-export const usageKey = (day: string, kind: 'paid' | 'free' | 'refused') =>
-  kind === 'paid' ? day : `${day}:${kind}`;
+export const usageKey = (
+  day: string,
+  kind: 'paid' | 'free' | 'refused' | 'refusedFree',
+) => (kind === 'paid' ? day : `${day}:${kind}`);

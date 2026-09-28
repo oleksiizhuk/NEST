@@ -74,6 +74,14 @@ export class McpDailyLimitGuard implements CanActivate {
     // units are kept apart as refused, so the stats tell spend from
     // hammering.
     const day = usageDay(new Date());
+    // A batch bigger than a whole day can never pass: refuse it before it
+    // touches the counter, so it cannot lock the day out for others
+    if (paid > limit || free > limit * FREE_CALLS_PER_PAID) {
+      throw new HttpException(
+        `This request asks for more than the whole daily /mcp budget of ${limit} units.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     const freeKey = usageKey(day, 'free');
     const paidKey = usageKey(day, 'paid');
     // Free first: a batch refused on the free cap must not use paid quota
@@ -81,6 +89,9 @@ export class McpDailyLimitGuard implements CanActivate {
       const freeLimit = limit * FREE_CALLS_PER_PAID;
       if ((await usage.increment(freeKey, free)) > freeLimit) {
         await usage.giveBack(freeKey, free);
+        await usage
+          .increment(usageKey(day, 'refusedFree'), free)
+          .catch(() => undefined);
         throw new HttpException(
           `Daily /mcp limit of ${freeLimit} task calls reached. Try again tomorrow (UTC).`,
           HttpStatus.TOO_MANY_REQUESTS,
