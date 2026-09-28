@@ -109,7 +109,10 @@ export function TokenBadge() {
 }
 
 // The same words everywhere a model call is confirmed
-export const modelCallBody = (what: string) => (
+export const modelCallBody = (
+  what: string,
+  limit = 'Не больше 20 таких запросов в сутки.',
+) => (
   <>
     <p>
       {what} Это отдельный запрос к модели Claude: он <b>тратит токены</b>{' '}
@@ -117,7 +120,7 @@ export const modelCallBody = (what: string) => (
     </p>
     <p className="muted small">
       Готовый результат сохраняется: открыть его снова — бесплатно. Платные
-      только кнопки с пометкой ⚡. Не больше 20 таких запросов в сутки.
+      только кнопки с пометкой ⚡. {limit}
     </p>
   </>
 );

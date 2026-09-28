@@ -1,12 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, Topic, TopicList, TopicMessage, Unauthorized } from './api';
-import { TokenBadge } from './confirm';
+import { modelCallBody, TokenBadge, useConfirm } from './confirm';
 
-const STARTERS = [
-  'Почему так?',
-  'Это плохо или хорошо?',
-  'Что с этим делать?',
-];
+const STARTERS = ['Почему так?', 'Это плохо или хорошо?', 'Что с этим делать?'];
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString('ru-RU', {
@@ -22,11 +18,18 @@ export function AskPage({
   topicId,
   onOpen,
   onUnauthorized,
+  variant = 'page',
 }: {
   topicId: string | null;
   onOpen: (id: string | null) => void;
   onUnauthorized: () => void;
+  // 'dock' = the floating window: topics fold into a list above the chat
+  variant?: 'page' | 'dock';
 }) {
+  const [modal, ask] = useConfirm();
+  // Topics where the first paid question was confirmed in this visit
+  const confirmed = useRef(new Set<string>());
+  const [showTopics, setShowTopics] = useState(false);
   const [list, setList] = useState<TopicList | null>(null);
   const [topic, setTopic] = useState<Topic | null>(null);
   const [draft, setDraft] = useState('');
@@ -78,6 +81,22 @@ export function AskPage({
     const question = text.trim();
     if (!topic || !question || waiting) return;
     const id = topic.id;
+    // The first question of a topic asks once; the rest of the topic is
+    // one conversation the person already agreed to
+    if (!confirmed.current.has(id)) {
+      const ok = await ask({
+        title: 'Задать вопрос боту?',
+        body: modelCallBody(
+          'Бот ответит по данным проекта и тому, что было на экране. Дальше в этой теме подтверждать не нужно.',
+          `Из админки — не больше ${
+            list?.limit ?? 60
+          } вопросов в сутки на всех.`,
+        ),
+        confirm: 'Спросить',
+      });
+      if (!ok) return;
+      confirmed.current.add(id);
+    }
     setWaiting({ id, text: question });
     setError(null);
     setDraft('');
@@ -120,8 +139,26 @@ export function AskPage({
   const last = topic?.messages[topic.messages.length - 1];
 
   return (
-    <div className="ask">
-      <aside className="ask-topics card">
+    <div className={variant === 'dock' ? 'ask ask-dock-body' : 'ask'}>
+      {modal}
+      {variant === 'dock' && (
+        <div className="ask-dock-bar">
+          <button
+            className="link small"
+            onClick={() => setShowTopics((v) => !v)}
+            aria-expanded={showTopics}
+          >
+            {showTopics ? 'Скрыть темы' : 'Все темы'}
+          </button>
+          <button className="link small" onClick={create}>
+            Новая тема
+          </button>
+        </div>
+      )}
+      <aside
+        className="ask-topics card"
+        hidden={variant === 'dock' && !showTopics}
+      >
         <button onClick={create}>Новая тема</button>
         {list && list.topics.length === 0 && (
           <p className="muted small">
@@ -137,6 +174,7 @@ export function AskPage({
                 onClick={(e) => {
                   e.preventDefault();
                   onOpen(t.id);
+                  setShowTopics(false);
                 }}
               >
                 <span className="ask-topic-title">{t.title}</span>
@@ -162,8 +200,8 @@ export function AskPage({
             <p className="muted">
               Бот отвечает по тем же данным, что и в Telegram: задачи, PR,
               документация, дизайн. Удобно спросить, почему появился сигнал,
-              хорошо это или плохо и что делать. У каждой темы своя история,
-              так бот помнит, о чём шла речь.
+              хорошо это или плохо и что делать. У каждой темы своя история, так
+              бот помнит, о чём шла речь.
             </p>
             <p className="muted small">
               Здесь бот только отвечает: создать бренд, изменить магазин или

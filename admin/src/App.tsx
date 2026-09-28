@@ -15,6 +15,7 @@ import { showGuide } from './guide';
 import { DataPage } from './DataPage';
 import { AskPage } from './AskPage';
 import { AskButton, AskContext, pageContext } from './ask';
+import { ChatDock, DockState, loadDock, saveDock } from './dock';
 import {
   IconAsk,
   IconChats,
@@ -245,6 +246,12 @@ export function App() {
     load();
   };
 
+  const [dock, setDock] = useState<DockState>(loadDock);
+  const changeDock = (next: DockState) => {
+    setDock(next);
+    saveDock(next);
+  };
+
   const openTopic = (id: string | null) => {
     window.location.hash = id ? `#/ask/${id}` : '#/ask';
     setPage('ask');
@@ -252,12 +259,17 @@ export function App() {
     setMenuOpen(false);
   };
 
-  // A new topic about what is on the screen; the question is the person's
+  // A new topic about what is on the screen, opened in the window over the
+  // page (the page stays where it is); the question is the person's
   const startTopic = async (title: string, context: string) => {
     try {
       const topic = await api.createTopic(title, context);
-      openTopic(topic.id);
-      window.scrollTo(0, 0);
+      if (page === 'ask') openTopic(topic.id);
+      else
+        changeDock({
+          mode: dock.mode === 'max' ? 'max' : 'open',
+          topicId: topic.id,
+        });
     } catch (e) {
       if (e instanceof Unauthorized) logout();
       else setError((e as Error).message);
@@ -298,144 +310,151 @@ export function App() {
 
   return (
     <AskContext.Provider value={startTopic}>
-    <div className="shell">
-      <aside
-        className={`sidebar${menuOpen ? ' open' : ''}`}
-        aria-label="Разделы"
-      >
-        <div className="sidebar-head">
-          <span className="logo">PM</span>
-          <span className="brand">PM-бот</span>
-          <button
-            className="icon-btn only-mobile"
-            aria-label="Закрыть меню"
-            onClick={() => setMenuOpen(false)}
-          >
-            <IconClose />
-          </button>
-        </div>
-        <nav className="nav">
-          {PAGES.map((p, i) => (
-            <Fragment key={p.id}>
-              {(i === 0 || PAGES[i - 1].group !== p.group) && (
-                <div className="nav-group">{p.group}</div>
+      <div className="shell">
+        <aside
+          className={`sidebar${menuOpen ? ' open' : ''}`}
+          aria-label="Разделы"
+        >
+          <div className="sidebar-head">
+            <span className="logo">PM</span>
+            <span className="brand">PM-бот</span>
+            <button
+              className="icon-btn only-mobile"
+              aria-label="Закрыть меню"
+              onClick={() => setMenuOpen(false)}
+            >
+              <IconClose />
+            </button>
+          </div>
+          <nav className="nav">
+            {PAGES.map((p, i) => (
+              <Fragment key={p.id}>
+                {(i === 0 || PAGES[i - 1].group !== p.group) && (
+                  <div className="nav-group">{p.group}</div>
+                )}
+                <a
+                  href={`#/${p.id}`}
+                  className={`nav-item${p.id === page ? ' active' : ''}`}
+                  aria-current={p.id === page ? 'page' : undefined}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    go(p.id);
+                  }}
+                >
+                  {p.icon}
+                  <span>{p.title}</span>
+                </a>
+              </Fragment>
+            ))}
+          </nav>
+          <div className="sidebar-foot">
+            <button
+              className="nav-item subtle"
+              onClick={() => {
+                showGuide();
+                setGuideTick((t) => t + 1);
+                go('today');
+              }}
+            >
+              <span className="nav-spacer" />
+              <span>Как пользоваться</span>
+            </button>
+            <button className="nav-item" onClick={logout}>
+              <IconLogout />
+              <span>Выйти</span>
+            </button>
+            <button
+              className="nav-item subtle"
+              title="Закрыть все сессии админки на всех устройствах"
+              onClick={() => {
+                api
+                  .logoutAll()
+                  .catch(() => undefined)
+                  .finally(logout);
+              }}
+            >
+              <span className="nav-spacer" />
+              <span>Выйти везде</span>
+            </button>
+          </div>
+        </aside>
+        {menuOpen && (
+          <div className="backdrop" onClick={() => setMenuOpen(false)} />
+        )}
+
+        <div className="main">
+          <header className="topbar">
+            <button
+              className="icon-btn"
+              aria-label="Открыть меню"
+              onClick={() => setMenuOpen(true)}
+            >
+              <IconMenu />
+            </button>
+            <span className="topbar-title">{current.title}</span>
+          </header>
+
+          <main className="content">
+            <div className="page-head">
+              <div>
+                <h1>{current.title}</h1>
+                <p className="muted">{current.lead}</p>
+              </div>
+              {ASKABLE.includes(page) && (
+                <AskButton
+                  title={`Раздел «${current.title}»`}
+                  context={() => pageContext(current.title)}
+                  label="Спросить бота об этом"
+                  className="ghost"
+                />
               )}
-              <a
-                href={`#/${p.id}`}
-                className={`nav-item${p.id === page ? ' active' : ''}`}
-                aria-current={p.id === page ? 'page' : undefined}
-                onClick={(e) => {
-                  e.preventDefault();
-                  go(p.id);
-                }}
-              >
-                {p.icon}
-                <span>{p.title}</span>
-              </a>
-            </Fragment>
-          ))}
-        </nav>
-        <div className="sidebar-foot">
-          <button
-            className="nav-item subtle"
-            onClick={() => {
-              showGuide();
-              setGuideTick((t) => t + 1);
-              go('today');
-            }}
-          >
-            <span className="nav-spacer" />
-            <span>Как пользоваться</span>
-          </button>
-          <button className="nav-item" onClick={logout}>
-            <IconLogout />
-            <span>Выйти</span>
-          </button>
-          <button
-            className="nav-item subtle"
-            title="Закрыть все сессии админки на всех устройствах"
-            onClick={() => {
-              api
-                .logoutAll()
-                .catch(() => undefined)
-                .finally(logout);
-            }}
-          >
-            <span className="nav-spacer" />
-            <span>Выйти везде</span>
-          </button>
-        </div>
-      </aside>
-      {menuOpen && (
-        <div className="backdrop" onClick={() => setMenuOpen(false)} />
-      )}
-
-      <div className="main">
-        <header className="topbar">
-          <button
-            className="icon-btn"
-            aria-label="Открыть меню"
-            onClick={() => setMenuOpen(true)}
-          >
-            <IconMenu />
-          </button>
-          <span className="topbar-title">{current.title}</span>
-        </header>
-
-        <main className="content">
-          <div className="page-head">
-            <div>
-              <h1>{current.title}</h1>
-              <p className="muted">{current.lead}</p>
             </div>
-            {ASKABLE.includes(page) && (
-              <AskButton
-                title={`Раздел «${current.title}»`}
-                context={() => pageContext(current.title)}
-                label="Спросить бота об этом"
-                className="ghost"
+
+            {error && <p className="error">{error}</p>}
+
+            {page === 'today' && (
+              <TodayPage key={guideTick} onUnauthorized={logout} />
+            )}
+            {page === 'overview' && usage && <UsagePanel usage={usage} />}
+            {page === 'team' && <TeamPage onUnauthorized={logout} />}
+            {page === 'release' && <ReleasePage onUnauthorized={logout} />}
+            {page === 'flow' && <FlowPage onUnauthorized={logout} />}
+            {page === 'hanging' && <HangingPage onUnauthorized={logout} />}
+            {page === 'quality' && <QualityPage onUnauthorized={logout} />}
+            {page === 'data' && <DataPage onUnauthorized={logout} />}
+            {page === 'chats' && <ChatsPanel onUnauthorized={logout} />}
+            {page === 'settings' && settings && (
+              <SettingsForm
+                view={settings}
+                onSaved={(view) => {
+                  setSettings(view);
+                  setError(null);
+                  api
+                    .usage()
+                    .then(setUsage)
+                    .catch(() => undefined);
+                }}
+                onUnauthorized={logout}
               />
             )}
-          </div>
-
-          {error && <p className="error">{error}</p>}
-
-          {page === 'today' && (
-            <TodayPage key={guideTick} onUnauthorized={logout} />
-          )}
-          {page === 'overview' && usage && <UsagePanel usage={usage} />}
-          {page === 'team' && <TeamPage onUnauthorized={logout} />}
-          {page === 'release' && <ReleasePage onUnauthorized={logout} />}
-          {page === 'flow' && <FlowPage onUnauthorized={logout} />}
-          {page === 'hanging' && <HangingPage onUnauthorized={logout} />}
-          {page === 'quality' && <QualityPage onUnauthorized={logout} />}
-          {page === 'data' && <DataPage onUnauthorized={logout} />}
-          {page === 'chats' && <ChatsPanel onUnauthorized={logout} />}
-          {page === 'settings' && settings && (
-            <SettingsForm
-              view={settings}
-              onSaved={(view) => {
-                setSettings(view);
-                setError(null);
-                api
-                  .usage()
-                  .then(setUsage)
-                  .catch(() => undefined);
-              }}
-              onUnauthorized={logout}
-            />
-          )}
-          {page === 'settings' && <AdminsPanel onUnauthorized={logout} />}
-          {page === 'ask' && (
-            <AskPage
-              topicId={topicId}
-              onOpen={openTopic}
-              onUnauthorized={logout}
-            />
-          )}
-        </main>
+            {page === 'settings' && <AdminsPanel onUnauthorized={logout} />}
+            {page === 'ask' && (
+              <AskPage
+                topicId={topicId}
+                onOpen={openTopic}
+                onUnauthorized={logout}
+              />
+            )}
+          </main>
+        </div>
+        {page !== 'ask' && (
+          <ChatDock
+            state={dock}
+            onChange={changeDock}
+            onUnauthorized={logout}
+          />
+        )}
       </div>
-    </div>
     </AskContext.Provider>
   );
 }
