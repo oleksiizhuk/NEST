@@ -1,0 +1,81 @@
+{
+  "issues": [
+    {
+      "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+      "id": "10001",
+      "self": "https://example.atlassian.net/rest/api/3/issue/10001",
+      "key": "ORV-1",
+      "fields": {
+        "summary": "Mobile feed: distance sorting",
+        "status": {
+          "self": "https://example.atlassian.net/rest/api/3/status/10002",
+          "name": "Ready For Qa",
+          "id": "10002",
+          "statusCategory": { "id": 4, "key": "indeterminate", "colorName": "yellow", "name": "In Progress" }
+        },
+        "issuetype": { "id": "10004", "name": "Story", "subtask": false },
+        "priority": { "id": "2", "name": "High" },
+        "assignee": { "accountId": "a1", "displayName": "Vlad Koropets", "active": true },
+        "reporter": { "accountId": "a9", "displayName": "Client PM", "active": true },
+        "created": "2026-08-01T10:15:30.123+0300",
+        "updated": "2026-09-20T12:00:00.000+0300",
+        "resolutiondate": null,
+        "statuscategorychangedate": "2026-08-05T09:00:00.000+0300",
+        "duedate": "2026-10-01",
+        "fixVersions": [{ "id": "10010", "name": "MVP 2", "released": false, "archived": false }],
+        "components": [{ "id": "10100", "name": "Feed" }],
+        "labels": [],
+        "parent": { "id": "10100", "key": "ORV-100", "fields": { "summary": "Feed epic" } },
+        "issuelinks": [],
+        "customfield_10020": [
+          { "id": 7, "name": "Sprint 7", "state": "active", "boardId": 3, "startDate": "2026-09-15T07:00:00.000Z", "endDate": "2026-09-29T07:00:00.000Z" }
+        ]
+      }
+    },
+    {
+      "id": "10002",
+      "key": "ORV-2",
+      "fields": {
+        "summary": "Payments API",
+        "status": { "name": "In Progress", "statusCategory": { "key": "indeterminate" } },
+        "issuetype": { "name": "Bug", "subtask": false },
+        "priority": { "name": "Highest" },
+        "assignee": { "displayName": "Vlad Koropets" },
+        "reporter": { "displayName": "Ira Zanizdra" },
+        "created": "2026-09-10T08:00:00.000+0300",
+        "updated": "2026-09-23T08:00:00.000+0300",
+        "resolutiondate": null,
+        "statuscategorychangedate": "2026-09-11T08:00:00.000+0300",
+        "duedate": null,
+        "fixVersions": [{ "name": "MVP 2" }],
+        "components": [],
+        "issuelinks": [
+          {
+            "id": "1",
+            "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+            "inwardIssue": { "id": "10001", "key": "ORV-1", "fields": { "status": { "name": "Ready For Qa", "statusCategory": { "key": "indeterminate" } } } }
+          }
+        ],
+        "customfield_10020": null
+      }
+    },
+    {
+      "id": "10003",
+      "key": "ORV-3",
+      "fields": {
+        "summary": "Subtask: write tests",
+        "status": { "name": "To Do", "statusCategory": { "key": "new" } },
+        "issuetype": { "name": "Sub-task", "subtask": true },
+        "priority": { "name": "Medium" },
+        "assignee": null,
+        "created": "2026-06-01T08:00:00.000+0000",
+        "updated": "2026-06-02T08:00:00.000+0000",
+        "resolutiondate": null,
+        "statuscategorychangedate": "2026-06-01T08:00:00.000+0000",
+        "fixVersions": [],
+        "components": []
+      }
+    }
+  ],
+  "isLast": true
+}

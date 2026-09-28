@@ -115,6 +115,16 @@ const describe = (p: PersonView): string =>
         )
         .join('; ') || 'nothing'
     }`,
+    `In review or QA (usually done by them and waiting on others; if they are the reviewer or tester, it is their work): ${
+      p.waiting
+        .map(
+          (i) =>
+            `${i.key} [${i.status}, ${i.days ?? '?'} working days${
+              i.inScope ? ', in release' : ''
+            }${i.blocked ? ', blocked' : ''}]`,
+        )
+        .join('; ') || 'nothing'
+    }`,
     `Queue (top 5): ${
       p.queue
         .slice(0, 5)

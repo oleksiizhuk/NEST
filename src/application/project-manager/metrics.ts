@@ -29,6 +29,9 @@ export interface IssueFact {
   components?: string[];
   // Last change of any kind (Jira "updated")
   updated?: string | null;
+  // statusSince is the real last status change (changelog), not the
+  // status-category date
+  statusExact?: boolean;
 }
 
 export interface IssueMetricsOptions {

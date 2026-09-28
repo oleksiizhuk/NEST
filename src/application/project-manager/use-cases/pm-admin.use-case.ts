@@ -191,7 +191,7 @@ export class PmAdminUseCase {
       asOf: team.asOf,
       links: team.links,
       releaseVersion: team.releaseVersion,
-      ...todayItems(team.people, hidden),
+      ...todayItems(team.people, hidden, 5, team.teamSignals),
     };
   }
 

@@ -1,0 +1,56 @@
+{
+  "data": {
+    "repository": {
+      "pullRequests": {
+        "pageInfo": { "hasNextPage": false, "endCursor": "Y3Vyc29yOjE=" },
+        "nodes": [
+          {
+            "number": 12,
+            "isDraft": false,
+            "createdAt": "2026-09-18T09:00:00Z",
+            "updatedAt": "2026-09-23T09:00:00Z",
+            "mergedAt": null,
+            "headRefName": "feature/ORV-1-feed",
+            "additions": 320,
+            "deletions": 40,
+            "changedFiles": 9,
+            "author": { "login": "vlad-k" },
+            "reviewRequests": { "nodes": [ { "requestedReviewer": { "login": "eugene-t" } }, { "requestedReviewer": { "slug": "backend" } } ] },
+            "reviews": { "nodes": [ { "author": { "__typename": "Bot", "login": "coderabbitai[bot]" }, "state": "COMMENTED", "submittedAt": "2026-09-18T09:05:00Z" } ] },
+            "timelineItems": { "nodes": [] }
+          },
+          {
+            "number": 13,
+            "isDraft": false,
+            "createdAt": "2026-09-22T09:00:00Z",
+            "updatedAt": "2026-09-22T09:00:00Z",
+            "mergedAt": null,
+            "headRefName": "dev",
+            "additions": 9000,
+            "deletions": 1000,
+            "changedFiles": 200,
+            "author": { "login": "vlad-k" },
+            "reviewRequests": { "nodes": [] },
+            "reviews": { "nodes": [] },
+            "timelineItems": { "nodes": [] }
+          },
+          {
+            "number": 10,
+            "isDraft": false,
+            "createdAt": "2026-09-15T09:00:00Z",
+            "updatedAt": "2026-09-18T15:00:00Z",
+            "mergedAt": "2026-09-18T15:00:00Z",
+            "headRefName": "feature/ORV-10",
+            "additions": 120,
+            "deletions": 10,
+            "changedFiles": 4,
+            "author": { "login": "eugene-t" },
+            "reviewRequests": { "nodes": [] },
+            "reviews": { "nodes": [ { "author": { "__typename": "User", "login": "vlad-k" }, "state": "APPROVED", "submittedAt": "2026-09-16T11:00:00Z" } ] },
+            "timelineItems": { "nodes": [ { "createdAt": "2026-09-15T10:00:00Z" } ] }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -105,6 +105,7 @@ export interface Chat {
 
 export interface TeamIssue {
   key: string;
+  stage?: string | null;
   summary: string;
   status: string;
   priority: string | null;
@@ -132,6 +133,7 @@ export type SignalRule =
   | 'runway'
   | 'switching'
   | 'unplanned'
+  | 'qa-queue'
   | 'ok';
 
 export interface Signal {
@@ -148,6 +150,7 @@ export interface Thresholds {
   staleDays: number;
   reviewWaitDays: number;
   runwayDays: number;
+  qaWaitDays: number;
   off: SignalRule[];
 }
 
@@ -174,6 +177,7 @@ export interface Person {
   name: string;
   github: string | null;
   inProgress: TeamIssue[];
+  waiting: TeamIssue[];
   queue: TeamIssue[];
   done14: Array<{ key: string; summary: string; doneAt: string | null }>;
   pulls: Array<{

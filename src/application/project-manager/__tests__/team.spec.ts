@@ -251,6 +251,7 @@ describe('buildTeam', () => {
         staleDays: 7,
         reviewWaitDays: 2,
         runwayDays: 2,
+        qaWaitDays: 5,
         off: ['idle'],
       },
     });

@@ -1,0 +1,9 @@
+{
+  "maxResults": 50,
+  "startAt": 0,
+  "isLast": true,
+  "values": [
+    { "id": 6, "self": "https://example.atlassian.net/rest/agile/1.0/sprint/6", "state": "closed", "name": "Sprint 6, Release", "startDate": "2026-09-01T07:00:00.000Z", "endDate": "2026-09-15T07:00:00.000Z", "completeDate": "2026-09-15T08:12:00.000Z", "originBoardId": 3, "goal": "" },
+    { "id": 7, "self": "https://example.atlassian.net/rest/agile/1.0/sprint/7", "state": "active", "name": "Sprint 7", "startDate": "2026-09-15T07:00:00.000Z", "endDate": "2026-09-29T07:00:00.000Z", "originBoardId": 3, "goal": "Feed" }
+  ]
+}

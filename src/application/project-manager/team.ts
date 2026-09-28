@@ -22,6 +22,8 @@ export interface PersonIssue {
   statusSince: string | null;
   // dev / review / qa / blocked… when the status history was read
   stage?: string | null;
+  // statusSince came from the changelog (false = the category date)
+  statusExact?: boolean;
   components?: string[];
   due: string | null;
   blocked: boolean;
@@ -75,6 +77,9 @@ const RANK: Record<string, number> = {
   lowest: 0,
 };
 const rank = (p: string | null) => RANK[(p ?? '').toLowerCase()] ?? 2;
+// Handed on and waiting for review or QA: the stage comes from the status
+// mapping at refresh (older snapshots have none and count as work)
+const isWaiting = (i: PersonIssue) => i.stage === 'review' || i.stage === 'qa';
 const isWork = (i: IssueFact) => !/^epic$/i.test(i.type);
 
 export const teamIssues = (
@@ -101,6 +106,7 @@ export const teamIssues = (
       inScope: releaseVersion ? i.fixVersions.includes(releaseVersion) : true,
       statusSince: i.statusSince,
       stage: history.stage?.(i.status, i.category) ?? null,
+      statusExact: i.statusExact,
       components: i.components ?? [],
       due: i.due,
       blocked:
@@ -153,6 +159,7 @@ export type SignalRule =
   | 'runway'
   | 'switching'
   | 'unplanned'
+  | 'qa-queue'
   | 'ok';
 
 // Rules the owner may switch off on the admin page
@@ -172,6 +179,7 @@ export const TOGGLEABLE_RULES: SignalRule[] = [
   'runway',
   'switching',
   'unplanned',
+  'qa-queue',
 ];
 
 export interface Signal {
@@ -193,7 +201,11 @@ export interface PersonView {
   name: string;
   github: string | null;
   away: { until: string; note: string | null } | null;
+  // Being worked on by the person: the development stage
   inProgress: Array<PersonIssue & { days: number | null }>;
+  // Done by the person, waiting for someone else: code review or QA. Not
+  // their load, but shown so nothing is lost
+  waiting: Array<PersonIssue & { days: number | null }>;
   queue: PersonIssue[];
   done14: Array<{ key: string; summary: string; doneAt: string | null }>;
   pulls: AuthorPull[];
@@ -228,6 +240,8 @@ export interface TeamThresholds {
   reviewWaitDays: number;
   // Working days of queue left before "runs out of work" shows
   runwayDays: number;
+  // Working days a ticket may wait for QA before the team is told
+  qaWaitDays: number;
   off: SignalRule[];
 }
 
@@ -236,6 +250,7 @@ export const DEFAULT_THRESHOLDS: TeamThresholds = {
   staleDays: 5,
   reviewWaitDays: 2,
   runwayDays: 2,
+  qaWaitDays: 5,
   off: [],
 };
 
@@ -286,7 +301,7 @@ export const personSignals = (
       } — сигналы по задачам не считаются.`,
       keys: [],
     });
-    const release = p.inProgress.filter((i) => i.inScope);
+    const release = [...p.inProgress, ...p.waiting].filter((i) => i.inScope);
     if (releaseVersion && release.length)
       out.push({
         level: 'warn',
@@ -366,7 +381,7 @@ export const personSignals = (
       say: `${keys(higherWaiting)} приоритетнее текущих задач — переключаемся?`,
     });
   }
-  const overdue = [...p.inProgress, ...p.queue].filter(
+  const overdue = [...p.inProgress, ...p.waiting, ...p.queue].filter(
     (i) => i.due && i.due < today,
   );
   if (on('overdue') && overdue.length)
@@ -381,7 +396,9 @@ export const personSignals = (
       keys: list(overdue),
       say: `По ${keys(overdue)} срок прошёл — какая новая реальная дата?`,
     });
-  const blocked = [...p.inProgress, ...p.queue].filter((i) => i.blocked);
+  const blocked = [...p.inProgress, ...p.waiting, ...p.queue].filter(
+    (i) => i.blocked,
+  );
   if (on('blocked') && blocked.length)
     out.push({
       level: 'warn',
@@ -452,7 +469,10 @@ export const personSignals = (
   const offer = free.slice(0, 3);
   const offerKeys = offer.map((i) => i.key);
   const total = p.inProgress.length + p.queue.length;
-  if (on('runway') && !total) {
+  // Work in review or QA may be this person's own (a tester, a reviewer):
+  // with any of it, "nothing to do" is not a fact
+  const handedOn = p.waiting.length > 0;
+  if (on('runway') && !total && !handedOn) {
     // Info, not a warning: leads, QA or people who left show up here too
     out.push({
       level: 'info',
@@ -467,6 +487,7 @@ export const personSignals = (
     });
   } else if (
     on('runway') &&
+    !handedOn &&
     load?.runwayDays != null &&
     load.runwayDays < limits.runwayDays
   ) {
@@ -507,7 +528,7 @@ export const personSignals = (
       }.`,
     });
   }
-  if (on('underload') && total && load?.badge === 'under') {
+  if (on('underload') && total && !handedOn && load?.badge === 'under') {
     out.push({
       level: 'info',
       rule: 'underload',
@@ -581,7 +602,74 @@ const WEIGHT: Partial<Record<SignalRule, number>> = {
   runway: 50,
   overload: 45,
   underload: 35,
+  'qa-queue': 75,
 };
+
+export const TEAM = 'Команда';
+
+// 1 задача ждёт, 3 задачи ждут
+const waitVerb = (n: number) =>
+  n % 10 === 1 && n % 100 !== 11 ? 'ждёт' : 'ждут';
+
+// 2 дня, 5 дней
+const daysWord = (n: number) => {
+  const d = n % 10;
+  const h = n % 100;
+  return d === 1 && h !== 11
+    ? 'день'
+    : d >= 2 && d <= 4 && (h < 12 || h > 14)
+    ? 'дня'
+    : 'дней';
+};
+
+// Work waiting for review or QA longer than the threshold, across the
+// team: a queue no single person owns, so it is a team signal
+const queueSignal = (
+  people: PersonView[],
+  stage: 'qa' | 'review',
+  limit: number,
+): Signal | null => {
+  const waiting = people.flatMap((p) =>
+    p.waiting
+      .filter((i) => i.stage === stage)
+      .map((i) => ({ ...i, person: p.name })),
+  );
+  // Without the real status date (no changelog) the wait is unknown
+  const old = waiting
+    .filter((i) => i.days !== null && i.days > limit)
+    .sort((a, b) => (b.days ?? 0) - (a.days ?? 0));
+  if (!old.length) return null;
+  const top = old.slice(0, 4);
+  const what = stage === 'qa' ? 'тестирования' : 'ревью кода';
+  const oldest = top[0].days ?? 0;
+  return {
+    level: 'warn',
+    rule: 'qa-queue',
+    // A new oldest ticket shows again even after "hide for a week"
+    subject: `${stage}:${top[0].key}`,
+    text: `${tasks(old.length)} ${waitVerb(
+      old.length,
+    )} ${what} дольше ${limit} раб. дн. (всего в очереди: ${waiting.length}).`,
+    why: top.map((i) => `${i.key} — ${i.days} дн. (${i.person})`).join(', '),
+    keys: top.map((i) => i.key),
+    say: `В очереди на ${stage === 'qa' ? 'тестирование' : 'ревью'} ${tasks(
+      old.length,
+    )}, самая старая ждёт ${oldest} ${daysWord(
+      oldest,
+    )}. Что мешает их проверить и чем помочь?`,
+  };
+};
+
+export const queueSignals = (
+  people: PersonView[],
+  limits: TeamThresholds,
+): Signal[] =>
+  limits.off.includes('qa-queue')
+    ? []
+    : [
+        queueSignal(people, 'qa', limits.qaWaitDays),
+        queueSignal(people, 'review', limits.reviewWaitDays),
+      ].filter((s): s is Signal => s !== null);
 
 export interface TodayItem extends Signal {
   id: string;
@@ -594,11 +682,31 @@ export const todayItems = (
   people: PersonView[],
   hidden: Set<string>,
   limit = 5,
+  team: Signal[] = [],
 ): { items: TodayItem[]; more: number } => {
   const all: Array<{ score: number; item: TodayItem }> = [];
+  const releaseKeys = new Set(
+    people.flatMap((p) =>
+      [...p.inProgress, ...(p.waiting ?? []), ...p.queue]
+        .filter((i) => i.inScope)
+        .map((i) => i.key),
+    ),
+  );
+  for (const s of team) {
+    const weight = WEIGHT[s.rule];
+    const id = `${s.rule}|${TEAM}|${s.subject ?? s.keys.join(',')}`;
+    if (!weight || hidden.has(id)) continue;
+    const inRelease = s.keys.some((k) => releaseKeys.has(k));
+    all.push({
+      score: weight + (inRelease ? 10 : 0),
+      item: { ...s, id, person: TEAM, inRelease },
+    });
+  }
   for (const p of people) {
     const release = new Set(
-      [...p.inProgress, ...p.queue].filter((i) => i.inScope).map((i) => i.key),
+      [...p.inProgress, ...(p.waiting ?? []), ...p.queue]
+        .filter((i) => i.inScope)
+        .map((i) => i.key),
     );
     for (const s of p.signals) {
       const weight = WEIGHT[s.rule];
@@ -638,6 +746,8 @@ export const buildTeam = (
   flow: WeeklyFlow | null;
   scopeGrowing: boolean;
   unassigned: FreeIssue[];
+  // Signals about the whole team (the QA queue)
+  teamSignals: Signal[];
   // False for a snapshot built before per-person data existed
   hasDetails: boolean;
 } => {
@@ -659,18 +769,23 @@ export const buildTeam = (
     if (github) used.add(github);
     const off = options.away?.[name];
     const away = off ? { until: off.until, note: off.note ?? null } : null;
+    const started = work.open
+      .filter((i) => i.inProgress)
+      .map((i) => ({
+        ...i,
+        // In review / QA the category date is the start of development;
+        // only the changelog's date says how long it has waited
+        days:
+          i.statusSince && (!isWaiting(i) || i.statusExact !== false)
+            ? workingDaysBetween(new Date(i.statusSince), now)
+            : null,
+      }));
     return {
       name,
       github,
       away,
-      inProgress: work.open
-        .filter((i) => i.inProgress)
-        .map((i) => ({
-          ...i,
-          days: i.statusSince
-            ? workingDaysBetween(new Date(i.statusSince), now)
-            : null,
-        })),
+      inProgress: started.filter((i) => !isWaiting(i)),
+      waiting: started.filter(isWaiting),
       queue: work.open
         .filter((i) => !i.inProgress)
         .sort((a, b) => rank(b.priority) - rank(a.priority)),
@@ -751,6 +866,7 @@ export const buildTeam = (
     flow,
     scopeGrowing: flow ? scopeGrowing(flow) : false,
     unassigned,
+    teamSignals: queueSignals(people, thresholds),
     hasDetails: Boolean(issues),
   };
 };

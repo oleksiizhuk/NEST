@@ -1,0 +1,23 @@
+{
+  "issues": [
+    {
+      "id": "10010",
+      "key": "ORV-10",
+      "fields": {
+        "summary": "Login",
+        "status": { "name": "Done", "statusCategory": { "key": "done" } },
+        "issuetype": { "name": "Story", "subtask": false },
+        "priority": { "name": "Medium" },
+        "assignee": { "displayName": "Eugene Tretyak" },
+        "reporter": { "displayName": "Client PM" },
+        "created": "2026-09-01T09:00:00.000+0300",
+        "updated": "2026-09-19T09:00:00.000+0300",
+        "resolutiondate": "2026-09-18T17:30:00.000+0300",
+        "statuscategorychangedate": "2026-09-18T17:30:00.000+0300",
+        "fixVersions": [{ "name": "MVP 2" }],
+        "components": [{ "name": "Auth" }]
+      }
+    }
+  ],
+  "isLast": true
+}
