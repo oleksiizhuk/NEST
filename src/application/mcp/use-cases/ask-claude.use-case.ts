@@ -153,7 +153,7 @@ export class AskClaudeUseCase {
 
     const waiting = implicit ? await this.othersWaiting(owner, task.id) : [];
     const footer = result.needInfo
-      ? needInfoFooter(task)
+      ? needInfoFooter(task, waiting)
       : answerFooter(task, unreported, waiting);
     return `${result.text}\n\n${footer}`;
   }

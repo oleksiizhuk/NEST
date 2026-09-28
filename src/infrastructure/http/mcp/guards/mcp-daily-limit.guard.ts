@@ -12,13 +12,20 @@ import { Model } from 'mongoose';
 import { Request } from 'express';
 import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
 import { FREE_TOOLS } from '@infrastructure/mcp/mcp-server.factory';
+import { AssistantModel } from '@application/mcp/code-assistant.service.interface';
 
 // The daily cap is in cost units, not calls, so it bounds spend: a call
 // weighs what its model costs. start_task plans on sonnet. An unknown tool
 // or model weighs the most — better one unit too many than a way around.
 export const DEFAULT_DAILY_LIMIT = 200;
-const MODEL_UNITS: Record<string, number> = { sonnet: 1, opus: 2, fable: 4 };
-const DEFAULT_MODEL_UNITS = MODEL_UNITS.opus;
+// Keyed by the models the tools accept: a new model needs a price here
+const MODEL_UNITS: Record<AssistantModel, number> = {
+  sonnet: 1,
+  opus: 2,
+  fable: 4,
+};
+const unitsOf = (model: string): number | undefined =>
+  MODEL_UNITS[model as AssistantModel];
 const MAX_UNITS = MODEL_UNITS.fable;
 // report_outcome / list_open_tasks per unit before they are refused
 const FREE_CALLS_PER_PAID = 10;
@@ -51,7 +58,10 @@ export class McpDailyLimitGuard implements CanActivate {
     // effective cap a fraction of MCP_DAILY_LIMIT. A JSON-RPC batch counts
     // every call in it. Free tools (report_outcome, list_open_tasks) only
     // touch Mongo and get their own, looser cap.
-    const { paid, free } = McpDailyLimitGuard.toolCalls(context);
+    const { paid, free } = McpDailyLimitGuard.toolCalls(
+      context,
+      this.defaultModelUnits(),
+    );
     // Counted before the call, on purpose: each attempt reaches the paid API,
     // so a hard DoS cap must count attempts (including failures and client
     // retries), not only completions. A retried model call can bill twice.
@@ -93,14 +103,29 @@ export class McpDailyLimitGuard implements CanActivate {
     return n < 0 ? DEFAULT_DAILY_LIMIT : Math.max(1, Math.floor(n));
   }
 
-  private static units(tool: string, model: unknown): number {
-    if (tool === 'start_task') return MODEL_UNITS.sonnet;
-    if (tool !== 'ask_advice') return MAX_UNITS;
-    if (model === undefined) return DEFAULT_MODEL_UNITS;
-    return MODEL_UNITS[String(model)] ?? MAX_UNITS;
+  // A call without `model` runs on MCP_AI_MODEL (opus when unset); a raw
+  // model id there is priced as the dearest, since its cost is unknown
+  private defaultModelUnits(): number {
+    const configured = this.configService.get<string>('MCP_AI_MODEL')?.trim();
+    if (!configured) return MODEL_UNITS.opus;
+    return unitsOf(configured) ?? MAX_UNITS;
   }
 
-  private static toolCalls(context: ExecutionContext): {
+  private static units(
+    tool: string,
+    model: unknown,
+    defaultUnits: number,
+  ): number {
+    if (tool === 'start_task') return MODEL_UNITS.sonnet;
+    if (tool !== 'ask_advice') return MAX_UNITS;
+    if (model === undefined) return defaultUnits;
+    return unitsOf(String(model)) ?? MAX_UNITS;
+  }
+
+  private static toolCalls(
+    context: ExecutionContext,
+    defaultUnits: number,
+  ): {
     paid: number;
     free: number;
   } {
@@ -118,7 +143,12 @@ export class McpDailyLimitGuard implements CanActivate {
       if (method !== 'tools/call') continue;
       const name = String(params?.name ?? '');
       if (FREE_TOOLS.includes(name)) free += 1;
-      else paid += McpDailyLimitGuard.units(name, params?.arguments?.model);
+      else
+        paid += McpDailyLimitGuard.units(
+          name,
+          params?.arguments?.model,
+          defaultUnits,
+        );
     }
     return { paid, free };
   }

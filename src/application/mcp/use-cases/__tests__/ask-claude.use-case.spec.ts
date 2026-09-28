@@ -107,6 +107,9 @@ describe('AskClaudeUseCase', () => {
     const reply = await useCase.execute({ prompt: 'new bug', context: CODE });
 
     expect(reply).toContain(`- ${ID}: "fix login"`);
+    assistant.ask.mockResolvedValueOnce({ text: '1. more', needInfo: true });
+    const asking = await useCase.execute({ prompt: 'other', context: CODE });
+    expect(asking).toContain(`- ${ID}: "fix login"`);
     const followUp = await useCase.execute({ prompt: 'b', taskId: ID });
     expect(followUp).not.toContain('Your other open tasks');
   });

@@ -68,7 +68,10 @@ export const startedText = (
   return lines.join('\n');
 };
 
-export const needInfoFooter = (task: McpTask): string =>
+export const needInfoFooter = (
+  task: McpTask,
+  waiting: McpTask[] = [],
+): string =>
   [
     '---',
     round(task),
@@ -78,6 +81,7 @@ export const needInfoFooter = (task: McpTask): string =>
         'still missing, and tell the user a person needs to take over.'
       : 'NEXT STEP: collect exactly the items above, then call ask_advice ' +
         `again with task_id "${task.id}" and them in context.`,
+    ...(waiting.length ? ['', waitingText(waiting)] : []),
   ].join('\n');
 
 export const answerFooter = (
@@ -110,6 +114,12 @@ export const currentStateText = (task: McpTask, now: Date): string => {
   if (!task.isOpen) return closedText(task);
   if (task.roundInFlight(now)) return inFlightText(task);
   if (task.awaitingReport) return reportFirstText(task);
+  if (task.status === 'gathering') {
+    return (
+      `Task ${task.id} is waiting for material: collect what was asked ` +
+      `for, then call ask_advice with task_id "${task.id}".`
+    );
+  }
   return reportedText(task);
 };
 
@@ -171,7 +181,9 @@ export const reportFirstText = (task: McpTask): string =>
   `Task ${task.id} ` +
   (task.onLastRound
     ? `has used all ${MAX_TASK_ROUNDS} rounds`
-    : `has had ${MAX_FAILED_ATTEMPTS} failed attempts`) +
+    : task.outOfAttempts
+    ? `has had ${MAX_FAILED_ATTEMPTS} failed attempts`
+    : 'is waiting for your report on its last answer') +
   `. First apply the last answer and call ${reportCall(task.id)}.`;
 
 export const closedText = (task: McpTask): string =>

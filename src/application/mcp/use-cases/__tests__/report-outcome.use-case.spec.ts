@@ -126,7 +126,8 @@ describe('ReportOutcomeUseCase', () => {
   });
 
   it('accepts a late "solved" on an escalated task', async () => {
-    await tasks.escalate(ID);
+    tasks.put(tasks.rows.get(ID), { status: 'escalated' });
+    const resolve = jest.spyOn(tasks, 'resolveEscalated');
 
     const reply = await useCase.execute({
       taskId: ID,
@@ -134,8 +135,26 @@ describe('ReportOutcomeUseCase', () => {
       details: 'fixed it by hand',
     });
 
+    expect(resolve).toHaveBeenCalled();
     expect(tasks.rows.get(ID).status).toBe('solved');
     expect(reply).toContain('closed as solved');
+  });
+
+  it('answers from the real state when a parallel call beat the escalation', async () => {
+    for (let i = 1; i < MAX_TASK_ROUNDS; i++) await round();
+    jest.spyOn(tasks, 'escalate').mockImplementation(async () => {
+      tasks.put(tasks.rows.get(ID), { status: 'solved' });
+      return false;
+    });
+
+    const reply = await useCase.execute({
+      taskId: ID,
+      status: 'not_solved',
+      details: 'last try failed',
+    });
+
+    expect(reply).toContain('already closed (solved)');
+    expect(reply).not.toContain('STOP');
   });
 
   it('answers a report on a closed or unknown task without changing it', async () => {

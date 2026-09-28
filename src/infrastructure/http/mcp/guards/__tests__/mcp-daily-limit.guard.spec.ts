@@ -104,6 +104,26 @@ describe('McpDailyLimitGuard', () => {
     );
   });
 
+  it('prices a call without a model at MCP_AI_MODEL, a raw id as the dearest', async () => {
+    for (const [configured, units] of [
+      ['fable', 4],
+      ['sonnet', 1],
+      ['claude-some-future-model', 4],
+    ] as const) {
+      const model = modelReturning(1);
+      const config = {
+        get: (key: string) =>
+          ({ MCP_DAILY_LIMIT: '50', MCP_AI_MODEL: configured }[key]),
+      } as unknown as ConfigService;
+      await new McpDailyLimitGuard(config, model).canActivate(toolCall);
+      expect(model.findOneAndUpdate).toHaveBeenCalledWith(
+        { day: expect.any(String) },
+        { $inc: { count: units } },
+        { upsert: true, new: true },
+      );
+    }
+  });
+
   it('reads a fractional or negative limit as a typo, never as off', async () => {
     for (const value of ['0.5', '-3']) {
       const guard = new McpDailyLimitGuard(
