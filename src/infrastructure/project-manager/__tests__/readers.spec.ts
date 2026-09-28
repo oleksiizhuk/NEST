@@ -1,5 +1,6 @@
 import {
   assigneeAt,
+  isoTime,
   formatIssue,
   JiraIssueReader,
   toFact,
@@ -195,7 +196,8 @@ describe('Jira reader status history', () => {
                   ],
                 },
                 {
-                  created: '2026-09-21T09:00:00.000+0000',
+                  // The real bulk API sends epoch milliseconds
+                  created: Date.parse('2026-09-21T09:00:00.000Z'),
                   items: [
                     {
                       fieldId: 'status',
@@ -233,7 +235,7 @@ describe('Jira reader status history', () => {
     });
     const d = details as any;
     expect(d.people.Ann.open[0]).toMatchObject({
-      statusSince: '2026-09-21T09:00:00.000+0000',
+      statusSince: '2026-09-21T09:00:00.000Z',
       stage: 'review',
     });
     expect(JSON.stringify(d.stages.handoffs)).not.toContain('function');
@@ -304,7 +306,7 @@ describe('Jira reader release', () => {
       key: 'ABC-7',
       reporter: 'Client',
       doneAt: '2026-09-20T09:00:00.000+0000',
-      addedAt: '2026-09-10T09:00:00.000+0000',
+      addedAt: '2026-09-10T09:00:00.000Z',
     });
   });
 });
@@ -530,6 +532,19 @@ describe('Jira reader sprints', () => {
         doneAdded: 1,
       }),
     ]);
+  });
+});
+
+describe('isoTime', () => {
+  it('reads epoch ms, digit strings and Jira dates', () => {
+    expect(isoTime(Date.parse('2026-09-21T09:00:00Z'))).toBe(
+      '2026-09-21T09:00:00.000Z',
+    );
+    expect(isoTime('1790326800000')).toBe('2026-09-25T09:00:00.000Z');
+    expect(isoTime('2026-09-21T12:00:00.000+0300')).toBe(
+      '2026-09-21T09:00:00.000Z',
+    );
+    expect(isoTime(undefined)).toBe('1970-01-01T00:00:00.000Z');
   });
 });
 
