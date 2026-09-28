@@ -16,6 +16,8 @@ interface TopicNews {
   id: string;
   topic?: Topic;
   removed?: boolean;
+  // A question that failed: the view showing its topic puts it back
+  failed?: { question: string; error: string };
 }
 const shared = {
   waiting: null as { id: string; text: string } | null,
@@ -93,6 +95,10 @@ export function AskPage({
       if (news.id !== shown.current) return;
       if (news.removed) onOpenRef.current(null);
       else if (news.topic) setTopic(news.topic);
+      else if (news.failed) {
+        setDraft(news.failed.question);
+        setError(news.failed.error);
+      }
     };
     shared.listeners.add(listener);
     return () => {
@@ -167,11 +173,10 @@ export function AskPage({
       // Both views: whichever shows this topic gets the answer
       publish({ id, topic: answered });
     } catch (e) {
-      // Keep the question so it can be sent again, in its own topic only
-      if (shown.current === id) {
-        setDraft(question);
-        handle(e);
-      } else if (e instanceof Unauthorized) onUnauthorized();
+      // Keep the question so it can be sent again, in its own topic and in
+      // whichever view shows it now (the one that sent may be gone)
+      if (e instanceof Unauthorized) onUnauthorized();
+      else publish({ id, failed: { question, error: (e as Error).message } });
     } finally {
       setSharedWaiting(null);
     }
