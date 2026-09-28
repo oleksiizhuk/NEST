@@ -32,4 +32,8 @@ export class MongoTeamReviews implements ITeamReviews {
   ): Promise<void> {
     await this.model.create({ text, at, kind });
   }
+
+  async countSince(since: Date): Promise<number> {
+    return this.model.countDocuments({ at: { $gte: since } });
+  }
 }
