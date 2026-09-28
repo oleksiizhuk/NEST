@@ -164,7 +164,10 @@ export class PmAdminAuth {
     const userId = Number(payload.sub);
     if (payload.typ !== TYP || !Number.isSafeInteger(userId) || !userId)
       return null;
-    if (userId !== this.ownerId && !(await this.access.isAdmin(userId)))
+    if (
+      userId !== this.ownerId &&
+      !(await this.access.isAdmin(userId).catch(() => false))
+    )
       return null;
     // "Log out everywhere" raises the epoch; older sessions stop working
     const epoch = await this.settings.sessionEpoch().catch(() => null);

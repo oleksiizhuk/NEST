@@ -25,8 +25,12 @@ describe('PmAdminController owner-only actions', () => {
       controller.update({ settings: { actionUserIds: [77] } }, other),
     ).rejects.toThrow(ForbiddenException);
     await expect(
-      controller.update({ settings: { dailyQuestionLimit: 5 } }, other),
+      controller.update({ settings: { dailyQuestionLimit: 0 } }, other),
+    ).rejects.toThrow(ForbiddenException);
+    await expect(
+      controller.update({ settings: { aiEffort: 'low' } }, other),
     ).resolves.toEqual({});
+    expect(() => controller.admins(other)).toThrow(ForbiddenException);
     await expect(
       controller.setChat({ chatId: -5, on: true }, other),
     ).rejects.toThrow(ForbiddenException);

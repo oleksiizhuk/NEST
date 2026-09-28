@@ -134,7 +134,7 @@ export class PmAdminUseCase {
 
   // "Написать в чат": the owner's message to a PM group the bot works in,
   // with the person mentioned when their username is linked
-  async nudge(name: string, text: string, chatId: number) {
+  async nudge(name: string, text: string, chatId: number, by?: number) {
     const message = String(text ?? '').trim();
     if (!message || message.length > 800)
       throw new SettingsError('text: 1-800 characters');
@@ -143,7 +143,16 @@ export class PmAdminUseCase {
     // From the store: a link saved a moment ago may not be in the cache
     const username = (await this.store.get()).values.telegramUsernames?.[name];
     const to = username ? `@${username}` : name;
-    await this.telegram.sendMessage(chatId, `${to}, ${message}`);
+    // Someone other than the owner signs the message, so the group knows
+    // who is speaking through the bot
+    const sender =
+      by && by !== this.telegramConfig.ownerId
+        ? (await this.access.list()).find((u) => u.userId === by)?.username
+        : null;
+    await this.telegram.sendMessage(
+      chatId,
+      `${to}, ${message}${sender ? `\n\n— от @${sender}` : ''}`,
+    );
     return { sent: true, chatId, mention: Boolean(username) };
   }
 

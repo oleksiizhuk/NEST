@@ -317,6 +317,15 @@ describe('PmAdminUseCase — Сегодня and absences', () => {
     );
     await admin.nudge('Bob', 'привет', -5);
     expect(telegram.sendMessage).toHaveBeenLastCalledWith(-5, 'Bob, привет');
+    // Another admin's message is signed
+    (admin as any).access = {
+      list: jest.fn().mockResolvedValue([{ username: 'ira_k', userId: 77 }]),
+    };
+    await admin.nudge('Bob', 'привет', -5, 77);
+    expect(telegram.sendMessage).toHaveBeenLastCalledWith(
+      -5,
+      'Bob, привет\n\n— от @ira_k',
+    );
     await expect(admin.nudge('Ann', 'x', -6)).rejects.toThrow('PM group');
     await expect(admin.nudge('Ann', ' ', -5)).rejects.toThrow('text');
     await admin.setTelegramUsername('Bob', '@Bob_Dev', 42);

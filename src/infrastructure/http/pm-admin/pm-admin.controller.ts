@@ -142,6 +142,8 @@ export class AdminNudgeBody {
 
 // Settings that give someone access; only the owner changes them
 const ACCESS_KEYS = [
+  // 0 = no limit: model spend is the owner's call too
+  'dailyQuestionLimit',
   'unlimitedUsernames',
   'dmUsernames',
   'actionUserIds',
@@ -271,7 +273,8 @@ export class PmAdminController {
   // nobody can lock the owner out
   @Get('admins')
   @UseGuards(PmAdminGuard)
-  admins() {
+  admins(@Req() req: { pmAdmin: number }) {
+    this.ownerOnly(req);
     return this.admin.admins();
   }
 
@@ -463,9 +466,17 @@ export class PmAdminController {
   @Post('team/nudge')
   @HttpCode(200)
   @UseGuards(PmAdminGuard)
-  async teamNudge(@Body() body: AdminNudgeBody) {
+  async teamNudge(
+    @Body() body: AdminNudgeBody,
+    @Req() req: { pmAdmin: number },
+  ) {
     try {
-      return await this.admin.nudge(body.name, body.text, body.chatId);
+      return await this.admin.nudge(
+        body.name,
+        body.text,
+        body.chatId,
+        req.pmAdmin,
+      );
     } catch (error) {
       if (error instanceof SettingsError)
         throw new BadRequestException(error.message);
