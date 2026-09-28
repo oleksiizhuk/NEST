@@ -11,6 +11,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Request } from 'express';
 import { McpUsageDocument } from '@infrastructure/database/schemas/mcp-usage.schema';
+import { FREE_TOOLS } from '@infrastructure/mcp/mcp-server.factory';
 
 // A leaked MCP_TOKEN would otherwise buy unlimited paid model calls (a
 // financial DoS). This caps calls per UTC day with a shared Mongo counter,
@@ -32,10 +33,10 @@ export class McpDailyLimitGuard implements CanActivate {
       return true; // cap disabled
     }
 
-    // Only paid tool calls count. In stateless Streamable HTTP the handshake
-    // (initialize, tools/list) and notifications are each their own POST;
-    // charging them would make the effective cap a fraction of
-    // MCP_DAILY_LIMIT and vary with how each client opens a session.
+    // Only tool calls that reach the model count. In stateless Streamable
+    // HTTP the handshake (initialize, tools/list) and notifications are each
+    // their own POST, and report_outcome / list_open_tasks are free; charging
+    // them would make the effective cap a fraction of MCP_DAILY_LIMIT.
     if (!McpDailyLimitGuard.isPaidToolCall(context)) {
       return true;
     }
@@ -59,12 +60,19 @@ export class McpDailyLimitGuard implements CanActivate {
     const body = context.switchToHttp().getRequest<Request>().body as unknown;
     // A JSON-RPC request may arrive alone or batched in an array.
     const messages = Array.isArray(body) ? body : [body];
-    return messages.some(
-      (m) =>
-        !!m &&
-        typeof m === 'object' &&
-        (m as { method?: unknown }).method === 'tools/call',
-    );
+    return messages.some((m) => {
+      if (!m || typeof m !== 'object') return false;
+      const { method, params } = m as {
+        method?: unknown;
+        params?: { name?: unknown };
+      };
+      return (
+        method === 'tools/call' &&
+        // An unknown or missing name still counts: better one call too many
+        // than a way around the cap
+        !FREE_TOOLS.includes(String(params?.name ?? ''))
+      );
+    });
   }
 
   // An upsert against the unique `day` index can race two first-of-day inserts

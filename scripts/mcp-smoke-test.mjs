@@ -3,7 +3,8 @@
 //   MCP_TOKEN='<your token>' node scripts/mcp-smoke-test.mjs [url]
 //
 // Default url is production. It lists the tools and makes one real ask_advice
-// call (model: sonnet, so it is fast and cheap), then prints the answer.
+// call (model: sonnet, so it is fast and cheap), prints the answer and closes
+// the task it opened with report_outcome.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -38,6 +39,16 @@ try {
   const text = (res.content || []).map((c) => c.text).join('\n');
   console.log(`answer (${secs}s, isError=${Boolean(res.isError)}):`);
   console.log(text);
+
+  // Close the task the call opened, so the smoke test leaves nothing open
+  const taskId = /task_id: (t-[0-9a-f]{10})/.exec(text)?.[1];
+  if (taskId) {
+    const report = await client.callTool({
+      name: 'report_outcome',
+      arguments: { task_id: taskId, status: 'solved', details: 'smoke test' },
+    });
+    console.log((report.content || []).map((c) => c.text).join('\n'));
+  }
 } catch (e) {
   console.error('FAILED:', e.message);
   process.exitCode = 1;

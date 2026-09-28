@@ -49,6 +49,24 @@ describe('McpDailyLimitGuard', () => {
     expect(model.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
+  it('does not count tools that never call the model', async () => {
+    const model = modelReturning(1);
+    const guard = new McpDailyLimitGuard(configWith('5'), model);
+    for (const name of ['report_outcome', 'list_open_tasks']) {
+      await expect(
+        guard.canActivate(ctxWith({ method: 'tools/call', params: { name } })),
+      ).resolves.toBe(true);
+    }
+    expect(model.findOneAndUpdate).not.toHaveBeenCalled();
+
+    // start_task plans with the model, and an unnamed call counts too
+    await guard.canActivate(
+      ctxWith({ method: 'tools/call', params: { name: 'start_task' } }),
+    );
+    await guard.canActivate(ctxWith({ method: 'tools/call' }));
+    expect(model.findOneAndUpdate).toHaveBeenCalledTimes(2);
+  });
+
   it('allows a tools/call at or below the limit and counts it', async () => {
     const model = modelReturning(5);
     const guard = new McpDailyLimitGuard(configWith('5'), model);

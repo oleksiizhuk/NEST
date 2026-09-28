@@ -45,7 +45,7 @@ src/
 │   ├── auth/                        # IPasswordHasher, ITokenService + use-cases: Login, Register, RefreshToken, GetProfile
 │   ├── product/use-cases/           # GetProducts, GetProductById, AddProduct
 │   ├── shopping-cart/use-cases/    # CreateCart, AddItem, GetCart, CompleteOrder
-│   └── mcp/                         # ICodeAssistantService + AskClaudeUseCase
+│   └── mcp/                         # ICodeAssistantService + StartTask / AskClaude / ReportOutcome / ListOpenTasks
 │
 ├── infrastructure/
 │   ├── database/
@@ -53,7 +53,7 @@ src/
 │   │   ├── mappers/                 # DB doc → Domain entity (UserMapper, ProductMapper, ShoppingCartMapper)
 │   │   └── repositories/           # MongoUserRepository, MongoProductRepository, MongoShoppingCartRepository
 │   ├── anthropic/                   # AnthropicCodeAssistantService (Claude behind /mcp)
-│   ├── mcp/                         # createMcpServer() — registers the ask_advice tool
+│   ├── mcp/                         # createMcpServer() — task tools + protocol instructions
 │   └── http/
 │       ├── user/                    # Controller + DTO + Module
 │       ├── auth/                    # Controller + DTOs + Guards + Strategies + Module
@@ -217,7 +217,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS`, chats switched on with `/pm_on`, and 
 | POST | `/shoppingCart/completeOrder` | JWT | Complete order, delete the cart |
 | POST | `/email/send`, `/email/sendEmailTemple` | JWT | Email the caller's own address only |
 | POST | `/email/convert` | JWT | OCR an uploaded image (`file`, ≤ 5 MB) |
-| POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint, tool `ask_advice { prompt, context?, model? }` |
+| POST | `/mcp` | Bearer `MCP_TOKEN` | MCP Streamable HTTP endpoint: `start_task`, `ask_advice`, `report_outcome`, `list_open_tasks` |
 | GET | `/cron/pm/actions`, `/cron/pm/ask?q=`, `/cron/pm/targets`, `/cron/pm/feedback` | Bearer `CRON_SECRET` | Diagnostics: recent actions with outcome, one question through the PM pipeline, dev/staging sign-in check, 👍/👎 and time/tokens of recent answers |
 | GET | `/cron/pm/watch?dry=1`, `/cron/pm/eval`, `/cron/pm/memory`, `/cron/pm/golden` · PUT `/cron/pm/golden` | Bearer `CRON_SECRET` | Alerts (Vercel Cron 08/11/14 UTC weekdays; `dry=1` lists without sending), weekly golden eval (Mon 02:00, 03:00, 04:00 UTC), memory records, golden questions |
 | GET | `/cron/pm/refresh`, `/cron/pm/daily` | Bearer `CRON_SECRET` | Rebuild the project snapshot; daily also posts the digest (Vercel Cron, weekdays 05:00 UTC) |
@@ -225,7 +225,14 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS`, chats switched on with `/pm_on`, and 
 
 ### MCP endpoint (`/mcp`)
 
-Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405. `model` picks the answering model per call: `opus` (default), `sonnet`, `fable`; the short name → model id map lives in `AnthropicCodeAssistantService`. Heavy calls run 1–2 min, so the client timeout must be raised (Vercel allows 300s). Client config:
+Lets an IDE agent (Kiro, Claude Code, Cursor) call Claude through this API instead of a local install. Stateless Streamable HTTP: one `McpServer` + transport per request, JSON responses, no sessions (Vercel is serverless). GET/DELETE answer 405.
+
+The caller is often a weak model that gets lost in a lot of code, so the bridge runs a task protocol (sent as server `instructions` and repeated as a NEXT STEP line at the end of every reply):
+- `start_task { goal, context? }` opens a task (`t-` + 10 hex) and returns a checklist of what to collect (code, errors, docs, versions, constraints, how to verify), planned by sonnet at low effort (a generic list if that fails), plus earlier tasks still waiting for a report.
+- `ask_advice { task_id?, prompt, context?, model? }` is one round (no `task_id` opens a task from the first line of the prompt). The model sees `<task>` (goal, checklist, earlier rounds and reports) and either starts with `NEED_INFO` and a list of what to send, or answers with a "How to verify" section and a last `HYPOTHESIS:` line; both are stripped and kept on the task. 5 rounds per task (`MAX_TASK_ROUNDS`, claimed atomically); after that the task is `escalated` and the reply tells the caller to stop and hand a summary to the user.
+- `report_outcome { task_id, status: solved|not_solved|partial, details }` closes a solved task or points at the next round; no model call. `list_open_tasks` flags tasks waiting for a report and ones idle over a day.
+- Tasks live in Mongo `mcptasks` (30 days after the last call) and keep only the goal, checklist, short notes per round and reports — never the prompt, context or answer. The daily limit counts `start_task` and `ask_advice`, not the free tools.
+- A 429/5xx/overload within 30 s is retried once with only the time left; an abort signal holds the whole stream to 250 s. `model` picks the answering model per call: `opus` (default), `sonnet`, `fable`; the short name → model id map lives in `AnthropicCodeAssistantService`. Heavy calls run 1–2 min, so the client timeout must be raised (Vercel allows 300s). Client config:
 
 ```json
 { "mcpServers": { "nest-claude": {
