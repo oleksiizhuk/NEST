@@ -77,12 +77,12 @@ describe('honest load', () => {
       keys: ['A-3', 'A-4', 'A-5'],
     });
     expect(t.teamSignals[0].text).toContain('3 задачи ждут тестирования');
-    expect(t.teamSignals[0].text).toContain('всего в очереди на QA: 4');
+    expect(t.teamSignals[0].text).toContain('всего в очереди: 4');
     const today = todayItems(t.people, new Set(), 5, t.teamSignals);
     expect(today.items[0]).toMatchObject({
       rule: 'qa-queue',
       person: 'Команда',
-      id: 'qa-queue|Команда|qa',
+      id: 'qa-queue|Команда|qa:A-3',
     });
   });
 
@@ -110,5 +110,43 @@ describe('honest load', () => {
       { thresholds: { off: ['qa-queue'] } },
     );
     expect(quiet.teamSignals).toEqual([]);
+  });
+
+  it('keeps blocked and overdue work in review or QA, and flags a stuck review', () => {
+    const t2 = team([
+      f('B-1', {
+        status: 'In Review',
+        priority: 'Highest',
+        blockedBy: ['X-1'],
+        statusSince: '2026-09-01T00:00:00Z',
+        statusExact: true,
+      }),
+      f('B-2', {
+        status: 'Ready For Qa',
+        due: '2026-09-01',
+        statusExact: true,
+      }),
+    ]);
+    const rules = t2.people[0].signals.map((s) => s.rule);
+    expect(rules).toContain('blocked');
+    expect(rules).toContain('overdue');
+    expect(t2.teamSignals.map((s) => s.text)).toEqual([
+      expect.stringContaining('ждут ревью кода'),
+    ]);
+  });
+
+  it('does not call a tester idle or count a QA wait it cannot date', () => {
+    const t3 = team([
+      f('C-1', {
+        assignee: 'Ira',
+        status: 'Ready For Qa',
+        statusSince: '2026-08-01T00:00:00Z',
+        statusExact: false,
+      }),
+    ]);
+    const ira = t3.people[0];
+    expect(ira.signals.map((s) => s.rule)).not.toContain('runway');
+    expect(ira.waiting[0].days).toBeNull();
+    expect(t3.teamSignals).toEqual([]);
   });
 });

@@ -365,7 +365,9 @@ export class JiraIssueReader implements IProjectSource {
     const openFacts = open.map((i) => {
       const f = toFact(i);
       const changed = stages?.lastChange[i.key];
-      return changed ? { ...f, statusSince: changed } : f;
+      return changed
+        ? { ...f, statusSince: changed, statusExact: true }
+        : { ...f, statusExact: false };
     });
     const numbers: Record<string, number> = {};
     const metrics = issueMetrics(

@@ -34,7 +34,10 @@ export const dayLoad = (snapshot: ProjectSnapshot): DayLoad | null => {
   const people: DayLoad['people'] = {};
   for (const [name, work] of Object.entries(issues.people))
     people[name] = {
-      inProgress: work.open.filter((i) => i.inProgress).length,
+      // Like the cards: work waiting for review or QA is not in progress
+      inProgress: work.open.filter(
+        (i) => i.inProgress && i.stage !== 'review' && i.stage !== 'qa',
+      ).length,
       queue: work.open.filter((i) => !i.inProgress).length,
       closed14: work.done14.length,
     };

@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { GitHubActivityReader } from '@infrastructure/project-manager/github-activity.reader';
-import { assertSaneDates } from './contract.jira.spec';
+import { assertSaneDates, json, unexpected } from './contract-helpers';
 
 // Contract test: the whole GitHub read on payloads shaped like the real API
 // (REST pulls and runs, GraphQL with bots, team review requests, promotion
@@ -10,15 +10,6 @@ import { assertSaneDates } from './contract.jira.spec';
 const fixture = (name: string): any =>
   JSON.parse(readFileSync(join(__dirname, 'fixtures', name), 'utf8'));
 const NOW = new Date('2026-09-24T10:00:00Z');
-const json = (data: unknown) =>
-  Promise.resolve({
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve(data),
-    text: () => Promise.resolve(JSON.stringify(data)),
-    headers: new Headers(),
-  });
-
 describe('GitHub reader contract', () => {
   const realFetch = global.fetch;
   afterEach(() => (global.fetch = realFetch));
@@ -33,9 +24,22 @@ describe('GitHub reader contract', () => {
         const load = fixture('github-graphql-load.json');
         const merged = body.variables.states.includes('MERGED');
         load.data.repository.pullRequests.nodes =
-          load.data.repository.pullRequests.nodes.filter(
-            (n: any) => Boolean(n.mergedAt) === merged,
-          );
+          load.data.repository.pullRequests.nodes
+            .filter((n: any) => Boolean(n.mergedAt) === merged)
+            // #10 was still open when the OPEN query ran, merged by the
+            // MERGED query: the merged copy must win
+            .concat(
+              merged
+                ? []
+                : [
+                    {
+                      ...load.data.repository.pullRequests.nodes.find(
+                        (n: any) => n.number === 10,
+                      ),
+                      mergedAt: null,
+                    },
+                  ],
+            );
         return json(load);
       }
       if (url.includes('/pulls?state=open'))
@@ -44,7 +48,7 @@ describe('GitHub reader contract', () => {
         return json(fixture('github-pulls-closed.json'));
       if (url.includes('/actions/runs'))
         return json(fixture('github-runs.json'));
-      return json([]);
+      return unexpected(url);
     }) as any;
     const result = await new GitHubActivityReader({
       get: (k: string) =>
@@ -76,5 +80,7 @@ describe('GitHub reader contract', () => {
       12, 13,
     ]);
     expect(d.authors['eugene-t'].merged14).toEqual(['api#10 ORV-10 login']);
+    // #10 seen open and merged counts once, as merged
+    expect(d.reviews.merged).toBe(1);
   });
 });

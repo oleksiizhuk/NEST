@@ -374,9 +374,13 @@ export class GitHubActivityReader implements IProjectSource {
     }
     // Promotions (dev → staging → main) are not reviewable work; a PR merged
     // between the two queries would otherwise count twice
-    const seen = new Set<number>();
-    return nodes
-      .filter((n) => !seen.has(n.number) && seen.add(n.number))
+    const byNumber = new Map<number, LoadNode>();
+    for (const n of nodes) {
+      const prev = byNumber.get(n.number);
+      // The merged copy is the newer state
+      if (!prev || (n.mergedAt && !prev.mergedAt)) byNumber.set(n.number, n);
+    }
+    return [...byNumber.values()]
       .filter((n) => !PROMOTION_HEADS.has(n.headRefName ?? ''))
       .map((n) => toPrFact(repo, n));
   }

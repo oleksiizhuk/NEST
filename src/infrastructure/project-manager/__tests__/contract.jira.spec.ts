@@ -1,4 +1,5 @@
 import { JiraIssueReader } from '@infrastructure/project-manager/jira-issue.reader';
+import { assertSaneDates, json, unexpected } from './contract-helpers';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -16,38 +17,8 @@ const sprints = fixture('jira-board-sprints.json');
 
 const NOW = new Date('2026-09-24T10:00:00Z');
 
-const json = (data: unknown) =>
-  Promise.resolve({
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve(data),
-    text: () => Promise.resolve(JSON.stringify(data)),
-    headers: new Headers(),
-  });
-
 const env = (values: Record<string, string>) =>
   ({ get: (k: string) => values[k] } as any);
-
-// Every value that looks like a date must parse, and nothing may be NaN
-export const assertSaneDates = (value: unknown, path = 'details'): void => {
-  if (typeof value === 'number') {
-    if (Number.isNaN(value)) throw new Error(`${path} is NaN`);
-    return;
-  }
-  if (typeof value === 'string') {
-    if (/^\d{4}-\d{2}-\d{2}/.test(value) && Number.isNaN(Date.parse(value)))
-      throw new Error(`${path} is not a date: ${value}`);
-    if (/Invalid Date|NaN/.test(value))
-      throw new Error(`${path} holds ${value}`);
-    return;
-  }
-  if (Array.isArray(value))
-    value.forEach((v, i) => assertSaneDates(v, `${path}[${i}]`));
-  else if (value && typeof value === 'object')
-    Object.entries(value).forEach(([k, v]) =>
-      assertSaneDates(v, `${path}.${k}`),
-    );
-};
 
 describe('Jira reader contract', () => {
   const realFetch = global.fetch;
@@ -57,13 +28,16 @@ describe('Jira reader contract', () => {
     const agileIssue = (i: any) => ({ id: i.id, key: i.key, fields: i.fields });
     global.fetch = jest.fn((url: string, init?: any) => {
       if (url.includes('/rest/agile/1.0/board/3/sprint')) return json(sprints);
-      if (url.includes('/rest/agile/1.0/sprint/7/issue'))
+      if (url.includes('/rest/agile/1.0/sprint/7/issue')) {
+        // The server caps the page size: one issue per page here
+        const start = Number(new URL(url).searchParams.get('startAt'));
         return json({
-          startAt: 0,
-          maxResults: 50,
+          startAt: start,
+          maxResults: 1,
           total: 2,
-          issues: search.issues.slice(0, 2).map(agileIssue),
+          issues: search.issues.slice(start, start + 1).map(agileIssue),
         });
+      }
       if (url.includes('/rest/agile/1.0/sprint/6/issue'))
         return json({
           startAt: 0,
@@ -72,6 +46,7 @@ describe('Jira reader contract', () => {
           issues: done.issues.map(agileIssue),
         });
       if (url.endsWith('/changelog/bulkfetch')) return json(changelog);
+      if (!url.endsWith('/rest/api/3/search/jql')) return unexpected(url);
       const jql = String(JSON.parse(init.body).jql);
       if (jql.includes('statusCategory = Done')) return json(done);
       if (jql.includes('fixVersion ='))
@@ -128,5 +103,9 @@ describe('Jira reader contract', () => {
       d.release.issues.find((i: any) => i.key === 'ORV-2').blockedBy,
     ).toEqual(['ORV-1']);
     expect(result.text).toContain('## Computed metrics');
+    // Both pages of the capped sprint were read
+    expect(
+      d.sprints.rows.find((r: any) => r.name === 'Sprint 7'),
+    ).toMatchObject({ committed: 2 });
   });
 });

@@ -66,6 +66,7 @@ const RULES: Array<[string, string]> = [
   ['commitment-overdue', 'Просроченные обещания'],
   ['review-wait', 'PR ждут ревью'],
   ['release-forecast', 'Прогноз релиза'],
+  ['wait-queue', 'Очереди на проверку'],
   ['person-overload', 'Перегружены'],
   ['person-stuck', 'Застрявшие задачи'],
   ['person-handover', 'Передать на время отсутствия'],
@@ -211,6 +212,13 @@ export class WatchProjectUseCase {
         away: live.teamAway,
       });
       const out: Signal[] = [];
+      // Review and QA queues: about the team, no names in the text
+      for (const s of team.teamSignals)
+        out.push({
+          rule: 'wait-queue',
+          subject: s.subject ?? s.keys.join(','),
+          text: s.text,
+        });
       for (const p of team.people) {
         for (const s of p.signals) {
           if (s.rule === 'overload')
