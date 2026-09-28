@@ -13,6 +13,8 @@ jest.mock('@anthropic-ai/sdk', () => ({
   })),
 }));
 
+import { MAX_REPLY_NOTE_CHARS } from '@domain/mcp-task/mcp-task.entity';
+
 // Imported after the mock so the service picks up the stubbed SDK
 import { AnthropicCodeAssistantService } from '@infrastructure/anthropic/anthropic-code-assistant.service';
 
@@ -217,14 +219,27 @@ describe('AnthropicCodeAssistantService', () => {
       ]);
       expect(request.system).toContain('NEED_INFO');
       expect(request.system).toContain('HYPOTHESIS:');
-      // The bridge serves React Native work: what to ask for and how to check
-      // are mobile-specific
-      expect(request.system).toContain('senior React Native engineer');
-      expect(request.system).toMatch(/adb logcat/);
-      expect(request.system).toMatch(/Metro restart with the cache cleared/);
-      // Generated native folders are never edited by hand
-      expect(request.system).toMatch(/never edit them/);
-      expect(request.system).toMatch(/never show in Expo Go/);
+      // The bridge serves React Native work: the facts that decide a fix
+      // (stable tokens, not wording)
+      for (const token of [
+        'React Native',
+        'adb logcat',
+        'expo start -c',
+        '--reset-cache',
+        'prebuild --clean',
+        'Expo Go',
+        'development build',
+        'react-native-config',
+        'expo-doctor',
+        '--variant release',
+        'expo-updates',
+      ]) {
+        expect(request.system).toContain(token);
+      }
+      // HYPOTHESIS comes last, after How to verify
+      expect(request.system).toMatch(
+        /How to verify included, the very last line/,
+      );
     });
 
     it('reads NEED_INFO and HYPOTHESIS lines in the formats models use', () => {
@@ -251,6 +266,16 @@ describe('AnthropicCodeAssistantService', () => {
         needInfo: false,
         hypothesis: 'stale token; refresh first',
       });
+      // Found among the last 6 non-blank lines, not further up
+      expect(
+        parse('Fix.\nHYPOTHESIS: far\n1\n2\n3\n4\n5\n6').hypothesis,
+      ).toBeUndefined();
+      // Found even when a few verify lines follow it
+      expect(
+        parse(
+          'Fix.\nHYPOTHESIS: stale cache\nnpx expo start -c\nReload\nOpen the screen\nSee the list',
+        ),
+      ).toMatchObject({ hypothesis: 'stale cache' });
       expect(parse('Fix.\n- _HYPOTHESIS:_ x\nGood luck!')).toEqual({
         text: 'Fix.\nGood luck!',
         needInfo: false,
@@ -325,20 +350,37 @@ describe('AnthropicCodeAssistantService', () => {
         { type: 'text', text: '<context>\nc\n</context>' },
       ]);
 
+      // The planning prompt of that first call is about the RN app
+      for (const token of [
+        'React Native',
+        'package.json',
+        'Expo Go',
+        '.gitignore',
+      ]) {
+        expect(request.system).toContain(token);
+      }
+
       mockFinalMessage.mockRejectedValueOnce(
         Object.assign(new Error('bad'), { status: 400 }),
       );
-      const plan = (mockStream.mock.calls[0][0] as any).system as string;
-      expect(plan).toMatch(/React Native app/);
-      expect(plan).toMatch(/or bare/);
-      expect(plan).toMatch(
-        /Never invent an error for a goal that is not a bug/,
-      );
-
       const fallback = await service.plan({ goal: 'fix login' });
       expect(fallback.length).toBeGreaterThanOrEqual(3);
-      expect(fallback.join('\n')).toMatch(/package\.json: Expo/);
-      expect(fallback.join('\n')).toMatch(/iOS, Android, both/);
+      expect(fallback.join('\n')).toContain('package.json');
+      expect(fallback.join('\n')).toContain('adb logcat');
+      // Every fallback line survives the checklist clip
+      expect(
+        fallback.every((line) => line.length <= MAX_REPLY_NOTE_CHARS),
+      ).toBe(true);
+
+      // Under 3 items is not a checklist: the fixed list instead; 3 is kept
+      mockFinalMessage.mockResolvedValueOnce(textMessage('- a\n- b'));
+      expect(await service.plan({ goal: 'fix login' })).toEqual(fallback);
+      mockFinalMessage.mockResolvedValueOnce(textMessage('- a\n- b\n- c'));
+      expect(await service.plan({ goal: 'fix login' })).toEqual([
+        'a',
+        'b',
+        'c',
+      ]);
     });
   });
 

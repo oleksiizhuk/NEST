@@ -19,6 +19,7 @@ import { MCP_TASK_REPOSITORY } from '@domain/mcp-task/mcp-task.repository.interf
 import { MCP_USAGE_REPOSITORY } from '@domain/mcp-task/mcp-usage.repository.interface';
 import { GetMcpStatsUseCase } from '@application/mcp/use-cases/get-mcp-stats.use-case';
 import { MCP_DAILY_BUDGET } from '@application/mcp/mcp-budget';
+import { RN_LOGS_SHORT, RN_VERSIONS } from '@application/mcp/react-native';
 import { McpStatsController } from '@infrastructure/http/mcp/mcp-stats.controller';
 import { InMemoryTaskRepository } from '@application/mcp/__tests__/in-memory-task.repository';
 
@@ -123,6 +124,15 @@ describe('McpController (streamable HTTP)', () => {
       },
     });
     expect(instructions).toContain('Always call report_outcome');
+    // The bridge serves React Native: said to the caller as well, with the
+    // shared lists of what to bring
+    expect(instructions).toContain(RN_VERSIONS);
+    expect(instructions).toContain(RN_LOGS_SHORT);
+    expect(instructions).toContain('nothing you sent earlier is kept');
+    const described = (name: string) =>
+      tools.find((t) => t.name === name)?.description ?? '';
+    expect(described('start_task')).toContain('React Native');
+    expect(described('ask_advice')).toContain('React Native');
   });
 
   it('runs a task from start to a report', async () => {

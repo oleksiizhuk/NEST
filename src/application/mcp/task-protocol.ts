@@ -80,7 +80,8 @@ export const needInfoFooter = (
         `"partial" or "not_solved" for task_id "${task.id}", listing what is ` +
         'still missing, and tell the user a person needs to take over.'
       : 'NEXT STEP: collect exactly the items above, then call ask_advice ' +
-        `again with task_id "${task.id}" and them in context.`,
+        `again with task_id "${task.id}". In context send the code you sent ` +
+        'before plus the new items: nothing from earlier rounds is kept.',
     ...(waiting.length ? ['', waitingText(waiting)] : []),
   ].join('\n');
 
@@ -153,8 +154,9 @@ export const reportedText = (task: McpTask): string => {
   return [
     `Recorded: ${task.status} (round ${task.rounds} of ${MAX_TASK_ROUNDS}).`,
     `NEXT STEP: call ask_advice with task_id "${task.id}". In context put ` +
-      'the new error output or behaviour, the diff you applied and anything ' +
-      'else that changed. The next answer will not repeat what did not work.',
+      'the code involved again (nothing from earlier rounds is kept), the ' +
+      'diff you applied and the new error output or behaviour. The next ' +
+      'answer will not repeat what did not work.',
   ].join('\n');
 };
 
