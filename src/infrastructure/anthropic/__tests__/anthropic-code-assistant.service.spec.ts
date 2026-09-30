@@ -78,7 +78,7 @@ describe('AnthropicCodeAssistantService', () => {
     ).ask({ prompt: 'b' });
 
     const [first, second] = mockStream.mock.calls.map((c) => c[0] as any);
-    expect(first.model).toBe('claude-sonnet-5');
+    expect(first.model).toBe('claude-sonnet-5-5');
     expect(first.output_config).toEqual({ effort: 'low' });
     expect(second.model).toBe('claude-haiku-4-5-20251001');
     expect(second.output_config).toEqual({ effort: 'high' });
@@ -97,7 +97,7 @@ describe('AnthropicCodeAssistantService', () => {
     expect(mockStream.mock.calls.map((c) => (c[0] as any).model)).toEqual([
       'claude-fable-5-1',
       'claude-opus-5-5',
-      'claude-sonnet-5',
+      'claude-sonnet-5-5',
     ]);
   });
 
@@ -370,7 +370,7 @@ describe('AnthropicCodeAssistantService', () => {
 
       expect(items).toEqual(['src/login.ts', 'the 401 body', 'versions']);
       const request = mockStream.mock.calls[0][0] as any;
-      expect(request.model).toBe('claude-sonnet-5');
+      expect(request.model).toBe('claude-sonnet-5-5');
       expect(request.output_config).toEqual({ effort: 'low' });
       expect(request.messages[0].content).toEqual([
         { type: 'text', text: '<goal>\nfix login\n</goal>' },

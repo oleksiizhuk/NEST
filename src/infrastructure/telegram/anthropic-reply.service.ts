@@ -15,7 +15,22 @@ import {
 } from '@application/telegram/task-tracker.service.interface';
 import { TELEGRAM_SYSTEM_PROMPT } from '@infrastructure/telegram/telegram.system-prompt';
 
-const DEFAULT_MODEL = 'claude-sonnet-5';
+const DEFAULT_MODEL = 'claude-sonnet-5-5';
+
+// No reasoning for a chat bot: it would eat into the 10024-token budget.
+// Sonnet 5.5 rejects `disabled` (400) and turns thinking off only with
+// `between_tools`; a TELEGRAM_AI_MODEL override to an older model keeps
+// `disabled`.
+export const chatThinking = (
+  model: string,
+): Anthropic.MessageCreateParams['thinking'] =>
+  model.startsWith('claude-sonnet-5-5')
+    ? // The installed SDK does not type `between_tools` yet; it sends the
+      // object as is
+      ({
+        type: 'between_tools',
+      } as unknown as Anthropic.MessageCreateParams['thinking'])
+    : { type: 'disabled' };
 // tool_use -> tool_result -> final text; guards against runaway loops
 const MAX_TOOL_ITERATIONS = 3;
 
@@ -239,8 +254,7 @@ export class AnthropicReplyService implements IAiReplyService {
       const response = await this.client.messages.create({
         model: this.model,
         max_tokens: 10024,
-        // thinking would eat into the 10024-token budget for a chat bot
-        thinking: { type: 'disabled' },
+        thinking: chatThinking(this.model),
         system: [
           {
             type: 'text',

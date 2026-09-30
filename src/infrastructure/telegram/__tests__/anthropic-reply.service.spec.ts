@@ -13,7 +13,10 @@ jest.mock('@anthropic-ai/sdk', () => ({
 }));
 
 // Imported after the mock so the service picks up the stubbed SDK
-import { AnthropicReplyService } from '@infrastructure/telegram/anthropic-reply.service';
+import {
+  AnthropicReplyService,
+  chatThinking,
+} from '@infrastructure/telegram/anthropic-reply.service';
 
 const TASK = {
   key: 'KAN-1',
@@ -92,6 +95,27 @@ describe('AnthropicReplyService', () => {
       'Позич 300 грн',
     );
     expect(mockTaskTracker.createTask).not.toHaveBeenCalled();
+  });
+
+  it('runs on Sonnet 5.5 by default with thinking off the way it accepts', async () => {
+    mockCreate.mockResolvedValueOnce(textResponse('ок'));
+
+    await service.generateReply('привіт');
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'claude-sonnet-5-5',
+        // `disabled` is a 400 on Sonnet 5.5
+        thinking: { type: 'between_tools' },
+      }),
+    );
+  });
+
+  it('keeps disabled thinking for an older model set in TELEGRAM_AI_MODEL', () => {
+    expect(chatThinking('claude-sonnet-5')).toEqual({ type: 'disabled' });
+    expect(chatThinking('claude-sonnet-5-5')).toEqual({
+      type: 'between_tools',
+    });
   });
 
   it('forbids parallel tool calls on every request', async () => {
