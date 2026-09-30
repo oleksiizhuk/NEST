@@ -111,11 +111,21 @@ describe('AnthropicReplyService', () => {
     );
   });
 
-  it('keeps disabled thinking for an older model set in TELEGRAM_AI_MODEL', () => {
-    expect(chatThinking('claude-sonnet-5')).toEqual({ type: 'disabled' });
+  it('picks a thinking setting each model accepts for TELEGRAM_AI_MODEL', () => {
     expect(chatThinking('claude-sonnet-5-5')).toEqual({
       type: 'between_tools',
     });
+    for (const old of [
+      'claude-sonnet-5',
+      'claude-sonnet-4-6',
+      'claude-opus-5',
+      'claude-opus-4-8',
+      'claude-haiku-4-5',
+    ])
+      expect(chatThinking(old)).toEqual({ type: 'disabled' });
+    // Newer or unknown models reject disabled: no parameter at all
+    for (const newer of ['claude-opus-5-5', 'claude-fable-5-1', 'claude-x-9'])
+      expect(chatThinking(newer)).toBeUndefined();
   });
 
   it('forbids parallel tool calls on every request', async () => {

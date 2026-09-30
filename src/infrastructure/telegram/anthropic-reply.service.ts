@@ -19,18 +19,23 @@ const DEFAULT_MODEL = 'claude-sonnet-5-5';
 
 // No reasoning for a chat bot: it would eat into the 10024-token budget.
 // Sonnet 5.5 rejects `disabled` (400) and turns thinking off only with
-// `between_tools`; a TELEGRAM_AI_MODEL override to an older model keeps
-// `disabled`.
+// `between_tools`; older models that accept `disabled` keep it; any other
+// model (a newer one set in TELEGRAM_AI_MODEL) gets no thinking parameter,
+// which every model accepts, rather than one it may reject.
+const ACCEPTS_DISABLED =
+  /^claude-(sonnet-5(?!-5)|sonnet-4|opus-5(?!-5)|opus-4|haiku-)/;
+
 export const chatThinking = (
   model: string,
-): Anthropic.MessageCreateParams['thinking'] =>
-  model.startsWith('claude-sonnet-5-5')
-    ? // The installed SDK does not type `between_tools` yet; it sends the
-      // object as is
-      ({
-        type: 'between_tools',
-      } as unknown as Anthropic.MessageCreateParams['thinking'])
-    : { type: 'disabled' };
+): Anthropic.MessageCreateParams['thinking'] | undefined => {
+  if (model.startsWith('claude-sonnet-5-5'))
+    // The installed SDK does not type `between_tools` yet; it sends the
+    // object as is
+    return {
+      type: 'between_tools',
+    } as unknown as Anthropic.MessageCreateParams['thinking'];
+  return ACCEPTS_DISABLED.test(model) ? { type: 'disabled' } : undefined;
+};
 // tool_use -> tool_result -> final text; guards against runaway loops
 const MAX_TOOL_ITERATIONS = 3;
 
@@ -254,7 +259,9 @@ export class AnthropicReplyService implements IAiReplyService {
       const response = await this.client.messages.create({
         model: this.model,
         max_tokens: 10024,
-        thinking: chatThinking(this.model),
+        ...(chatThinking(this.model)
+          ? { thinking: chatThinking(this.model) }
+          : {}),
         system: [
           {
             type: 'text',

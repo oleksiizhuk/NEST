@@ -60,7 +60,8 @@ const DEFAULT_EFFORT: Effort = 'high';
 // (How to verify may end with a command or a note after it)
 const HYPOTHESIS_TAIL_LINES = 6;
 const PLAN_MODEL: AssistantModel = 'sonnet';
-const PLAN_MAX_TOKENS = 2048;
+// Room for adaptive thinking plus a short list
+const PLAN_MAX_TOKENS = 4096;
 
 @Injectable()
 export class AnthropicCodeAssistantService implements ICodeAssistantService {
