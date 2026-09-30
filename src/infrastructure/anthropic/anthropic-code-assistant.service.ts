@@ -23,7 +23,7 @@ import {
 // Bump the ids here when a new generation ships.
 const MODEL_IDS: Record<AssistantModel, string> = {
   opus: 'claude-opus-5-5',
-  sonnet: 'claude-sonnet-5',
+  sonnet: 'claude-sonnet-5-5',
   fable: 'claude-fable-5-1',
 };
 
@@ -60,7 +60,8 @@ const DEFAULT_EFFORT: Effort = 'high';
 // (How to verify may end with a command or a note after it)
 const HYPOTHESIS_TAIL_LINES = 6;
 const PLAN_MODEL: AssistantModel = 'sonnet';
-const PLAN_MAX_TOKENS = 2048;
+// Room for adaptive thinking plus a short list
+const PLAN_MAX_TOKENS = 4096;
 
 @Injectable()
 export class AnthropicCodeAssistantService implements ICodeAssistantService {
