@@ -1,5 +1,6 @@
 import type { CallbackQuery, Message } from 'grammy/types';
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
+import { parseCheckData } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 
 export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
   // A migration service message may come without a sender; it still matters
@@ -25,7 +26,8 @@ export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
 };
 
 // Callback data written by the bot: "c:<id>" confirm, "x:<id>" cancel,
-// "o:<n>" the n-th option, "f:+:<token>" / "f:-:<token>" feedback. An option's meaning is its button label, read
+// "o:<n>" the n-th option, "f:+:<token>" / "f:-:<token>" feedback,
+// "ck:<run>:<t|d><n>" an audit checklist item. An option's meaning is its button label, read
 // back from the message itself, so nothing has to be stored for it.
 const ACTION_ID = /^[A-Z0-9]{1,16}$/i;
 const FEEDBACK = /^f:([+-]):([a-z0-9]{6,16})$/i;
@@ -40,12 +42,16 @@ export const mapCallbackToIncoming = (
   const [prefix, value = ''] = data.split(':', 2);
 
   let text: string;
-  let kind: 'confirm' | 'cancel' | 'option' | 'feedback' | 'approve';
+  let kind: NonNullable<IncomingTelegramMessage['callback']>['kind'];
   let approval: { approve: boolean; token: string } | null = null;
   const approveMatch = data.match(APPROVE);
   let feedback: { vote: 1 | -1; token: string } | null = null;
   const vote = data.match(FEEDBACK);
-  if (approveMatch) {
+  const check = prefix === 'ck' ? parseCheckData(data) : null;
+  if (check) {
+    kind = 'check';
+    text = '☑️';
+  } else if (approveMatch) {
     kind = 'approve';
     approval = { approve: approveMatch[1] === '+', token: approveMatch[2] };
     text = approveMatch[1] === '+' ? '✅' : '❌';
@@ -89,6 +95,7 @@ export const mapCallbackToIncoming = (
       kind,
       ...(feedback ?? {}),
       ...(approval ?? {}),
+      ...(check ? { check } : {}),
     },
   };
 };

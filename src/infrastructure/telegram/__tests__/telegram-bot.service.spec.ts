@@ -56,6 +56,7 @@ const mockApi = {
   getMe: jest.fn(),
   sendMessage: jest.fn().mockResolvedValue(undefined),
   sendChatAction: jest.fn().mockResolvedValue(undefined),
+  editMessageReplyMarkup: jest.fn().mockResolvedValue(undefined),
 };
 const mockBotCtor = jest.fn();
 jest.mock('grammy', () => ({
@@ -108,5 +109,32 @@ describe('TelegramBotService', () => {
     });
     await service.getBotInfo();
     expect(mockApi.getMe).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends a checklist as one message and returns its id', async () => {
+    const service = serviceWith('1:abc');
+    mockApi.sendMessage.mockResolvedValueOnce({ message_id: 555 });
+    const buttons = [[{ text: '⬜ Кнопка', data: 'ck:0a1b2c3d:t0' }]];
+    await expect(service.sendWithButtons(42, 'Список', buttons)).resolves.toBe(
+      555,
+    );
+    expect(mockApi.sendMessage).toHaveBeenCalledWith(42, 'Список', {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '⬜ Кнопка', callback_data: 'ck:0a1b2c3d:t0' }],
+        ],
+      },
+    });
+    await expect(
+      service.sendWithButtons(42, 'а'.repeat(4097), buttons),
+    ).rejects.toThrow();
+    expect(mockApi.sendMessage).toHaveBeenCalledTimes(1);
+
+    await service.setButtons(42, 555, [[{ text: '✅ x', data: 'd' }]]);
+    expect(mockApi.editMessageReplyMarkup).toHaveBeenCalledWith(42, 555, {
+      reply_markup: {
+        inline_keyboard: [[{ text: '✅ x', callback_data: 'd' }]],
+      },
+    });
   });
 });

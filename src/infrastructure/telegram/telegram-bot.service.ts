@@ -10,6 +10,13 @@ import {
 
 // Telegram's hard limit is 4096; leave room so a split never lands on the edge
 const CHUNK_LIMIT = 4000;
+const MESSAGE_LIMIT = 4096;
+
+const keyboard = (buttons: InlineButton[][]) => ({
+  inline_keyboard: buttons.map((row) =>
+    row.map((b) => ({ text: b.text, callback_data: b.data })),
+  ),
+});
 
 // Prefer paragraph, then line, then word boundaries — a chunk cut mid-word
 // reads as a broken message
@@ -81,13 +88,7 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
         chatId,
         chunk,
         last && buttons?.length
-          ? {
-              reply_markup: {
-                inline_keyboard: buttons.map((row) =>
-                  row.map((b) => ({ text: b.text, callback_data: b.data })),
-                ),
-              },
-            }
+          ? { reply_markup: keyboard(buttons) }
           : undefined,
       );
     }
@@ -113,6 +114,33 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
   async clearButtons(chatId: number, messageId: number): Promise<void> {
     await this.bot.api.editMessageReplyMarkup(chatId, messageId, {
       reply_markup: { inline_keyboard: [] },
+    });
+  }
+
+  // A checklist must stay one message: its buttons are edited later by
+  // message id, so a split would leave items without their text
+  async sendWithButtons(
+    chatId: number,
+    text: string,
+    buttons: InlineButton[][],
+  ): Promise<number> {
+    if (text.length > MESSAGE_LIMIT)
+      throw new Error(
+        `Message of ${text.length} chars is over Telegram's ${MESSAGE_LIMIT}`,
+      );
+    const sent = await this.bot.api.sendMessage(chatId, text, {
+      reply_markup: keyboard(buttons),
+    });
+    return sent.message_id;
+  }
+
+  async setButtons(
+    chatId: number,
+    messageId: number,
+    buttons: InlineButton[][],
+  ): Promise<void> {
+    await this.bot.api.editMessageReplyMarkup(chatId, messageId, {
+      reply_markup: keyboard(buttons),
     });
   }
 

@@ -20,6 +20,7 @@ import { HangingPage } from './HangingPage';
 import { AdminsPanel } from './AdminsPanel';
 import { showGuide } from './guide';
 import { DataPage } from './DataPage';
+import { AuditPage } from './AuditPage';
 import { AskPage } from './AskPage';
 import { AskButton, AskContext, pageContext } from './ask';
 import { ChatDock, DockState, loadDock, saveDock } from './dock';
@@ -39,6 +40,7 @@ import {
   IconRelease,
   IconQuality,
   IconHanging,
+  IconAudit,
 } from './icons';
 
 type State = 'loading' | 'login' | 'ready';
@@ -48,6 +50,7 @@ type PageId =
   | 'flow'
   | 'quality'
   | 'hanging'
+  | 'audit'
   | 'overview'
   | 'ask'
   | 'team'
@@ -104,6 +107,13 @@ const PAGES: Array<{
     title: 'Качество',
     icon: <IconQuality />,
     lead: 'Где появляются баги и какие части продукта знает только один человек.',
+    group: 'Релиз и процесс',
+  },
+  {
+    id: 'audit',
+    title: 'Аудит',
+    icon: <IconAudit />,
+    lead: 'Где дизайн, веб, мобильное приложение и бэкенд разошлись друг с другом.',
     group: 'Релиз и процесс',
   },
   {
@@ -433,6 +443,7 @@ export function App() {
             {page === 'flow' && <FlowPage onUnauthorized={logout} />}
             {page === 'hanging' && <HangingPage onUnauthorized={logout} />}
             {page === 'quality' && <QualityPage onUnauthorized={logout} />}
+            {page === 'audit' && <AuditPage onUnauthorized={logout} />}
             {page === 'data' && <DataPage onUnauthorized={logout} />}
             {page === 'chats' && <ChatsPanel onUnauthorized={logout} />}
             {page === 'settings' && settings && (

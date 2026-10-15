@@ -21,6 +21,7 @@ import {
 } from '@application/project-manager/memory.interface';
 import { parseGolden } from '@infrastructure/http/project-manager/golden.parser';
 import { BuildIndexUseCase } from '@application/project-manager/use-cases/build-index.use-case';
+import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 
 export class GoldenBody {
   @IsArray()
@@ -62,6 +63,7 @@ export class PmCronController {
     @Inject(PM_GOLDEN) private readonly golden: IGoldenStore,
     @Inject(PM_MEMORY) private readonly memory: IPmMemory,
     private readonly indexer: BuildIndexUseCase,
+    private readonly audit: RunConsistencyAuditUseCase,
   ) {}
 
   // Vercel Cron, a few times on weekdays: refresh, check the alert rules,
@@ -89,6 +91,20 @@ export class PmCronController {
         Date.now() - (job.finishedAt?.getTime() ?? 0) > 20 * 3_600_000);
     if (stale) await this.indexer.start();
     return this.indexer.step(250_000);
+  }
+
+  // Vercel Cron, six slots every morning (?slot= only tells them apart in
+  // the logs): each call runs one phase; the use case decides whether a new
+  // run is due (every ~3 days)
+  @Get('audit')
+  async auditCron() {
+    const { run, did } = await this.audit.cron(new Date());
+    return {
+      did,
+      runId: run?.runId ?? null,
+      status: run?.status ?? null,
+      phase: run?.phase ?? null,
+    };
   }
 
   // Vercel Cron, weekly: runs due golden questions, reports when all are done

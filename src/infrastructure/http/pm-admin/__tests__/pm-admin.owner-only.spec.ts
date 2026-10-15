@@ -15,6 +15,11 @@ describe('PmAdminController owner-only actions', () => {
   };
   const auth = { ownerId: 42, revokeAll: jest.fn() };
   const topics = { ask: jest.fn().mockResolvedValue({}) };
+  const audit = {
+    start: jest.fn().mockResolvedValue({ runId: 'abcd1234' }),
+    step: jest.fn().mockResolvedValue({ runId: 'abcd1234' }),
+    notConfigured: jest.fn().mockReturnValue('Некуда отправлять'),
+  };
   const controller = new PmAdminController(
     auth as any,
     admin as any,
@@ -22,6 +27,7 @@ describe('PmAdminController owner-only actions', () => {
     {} as any,
     {} as any,
     topics as any,
+    audit as any,
   );
   const other = { pmAdmin: 77 };
   const owner = { pmAdmin: 42 };
@@ -76,5 +82,26 @@ describe('PmAdminController owner-only actions', () => {
     await expect(
       controller.ask('t1', { text: 'x' }, owner),
     ).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('lets only the owner start or step the audit (it spends tokens)', async () => {
+    await expect(controller.auditStart(other)).rejects.toThrow(
+      ForbiddenException,
+    );
+    await expect(controller.auditStep(other)).rejects.toThrow(
+      ForbiddenException,
+    );
+    expect(audit.start).not.toHaveBeenCalled();
+    expect(audit.step).not.toHaveBeenCalled();
+    await expect(controller.auditStart(owner)).resolves.toEqual({
+      run: { runId: 'abcd1234' },
+    });
+    expect(audit.start).toHaveBeenCalledWith(expect.any(Date), 42, true);
+    await controller.auditStep(owner);
+    expect(audit.step).toHaveBeenCalledWith(expect.any(Date), 250_000);
+    audit.start.mockResolvedValueOnce(null);
+    await expect(controller.auditStart(owner)).rejects.toThrow(
+      'Некуда отправлять',
+    );
   });
 });

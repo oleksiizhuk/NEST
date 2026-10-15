@@ -25,6 +25,19 @@ export interface ITelegramGateway {
   answerCallback(callbackId: string, text?: string): Promise<void>;
   // Removes the buttons so a choice cannot be pressed twice
   clearButtons(chatId: number, messageId: number): Promise<void>;
+  // One message (text ≤ 4000 chars, never split) with buttons; returns its
+  // id so the buttons can be changed later
+  sendWithButtons(
+    chatId: number,
+    text: string,
+    buttons: InlineButton[][],
+  ): Promise<number>;
+  // Replaces the buttons under a message (e.g. a checklist item ticked)
+  setButtons(
+    chatId: number,
+    messageId: number,
+    buttons: InlineButton[][],
+  ): Promise<void>;
   // Whether that user is currently in the group
   isMember(chatId: number, userId: number): Promise<boolean>;
 }

@@ -337,6 +337,8 @@ describe('PostDailyDigestUseCase', () => {
     getBotInfo: jest.fn(),
     answerCallback: jest.fn().mockResolvedValue(undefined),
     clearButtons: jest.fn().mockResolvedValue(undefined),
+    sendWithButtons: jest.fn().mockResolvedValue(1),
+    setButtons: jest.fn().mockResolvedValue(undefined),
     isMember: jest.fn().mockResolvedValue(false),
   };
   const refresh = {

@@ -1,3 +1,5 @@
+import { AuditKind } from '@application/project-manager/audit.interface';
+
 export interface IncomingTelegramMessage {
   chatId: number;
   chatType: string;
@@ -18,11 +20,13 @@ export interface IncomingTelegramMessage {
   callback?: {
     id: string;
     messageId: number;
-    kind: 'confirm' | 'cancel' | 'option' | 'feedback' | 'approve';
+    kind: 'confirm' | 'cancel' | 'option' | 'feedback' | 'approve' | 'check';
     // For feedback: 👍 = 1, 👎 = -1, and the answer's token
     vote?: 1 | -1;
     token?: string;
     // For approve: the owner's answer to an admin login
     approve?: boolean;
+    // For check: an item of a consistency-audit checklist
+    check?: { runId: string; kind: AuditKind; index: number };
   };
 }

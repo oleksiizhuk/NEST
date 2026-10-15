@@ -22,6 +22,8 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     getBotInfo: jest.fn().mockResolvedValue(BOT),
     answerCallback: jest.fn().mockResolvedValue(undefined),
     clearButtons: jest.fn().mockResolvedValue(undefined),
+    sendWithButtons: jest.fn().mockResolvedValue(1),
+    setButtons: jest.fn().mockResolvedValue(undefined),
     isMember: jest.fn().mockResolvedValue(false),
   };
   const persona = {
@@ -708,5 +710,32 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     });
     expect(confirm.confirm).not.toHaveBeenCalled();
     expect(pmAnswer.execute).toHaveBeenCalled();
+  });
+
+  it("ticks an audit item in a chat outside PM mode, with the tapper's name", async () => {
+    const audit = {
+      toggle: jest.fn().mockResolvedValue({ ok: true, text: 'Отмечено' }),
+    };
+    (useCase as any).audit = audit;
+    await useCase.execute({
+      ...group(OTHER_GROUP, '☑️'),
+      from: { id: 7, username: 'dev', firstName: 'Dev', lastName: 'Ops' },
+      callback: {
+        id: 'cb9',
+        messageId: 31,
+        kind: 'check',
+        check: { runId: '0a1b2c3d', kind: 'design', index: 2 },
+      },
+    });
+    expect(audit.toggle).toHaveBeenCalledWith(
+      '0a1b2c3d',
+      'design',
+      2,
+      { chatId: OTHER_GROUP, messageId: 31 },
+      { userId: 7, name: 'Dev Ops' },
+    );
+    expect(telegram.answerCallback).toHaveBeenCalledWith('cb9', 'Отмечено');
+    expect(pmAnswer.execute).not.toHaveBeenCalled();
+    expect(telegram.isMember).not.toHaveBeenCalled();
   });
 });

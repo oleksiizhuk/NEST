@@ -1,5 +1,8 @@
 import { ConfigService } from '@nestjs/config';
-import { IPmConfig } from '@application/project-manager/pm.config.interface';
+import {
+  AuditRole,
+  IPmConfig,
+} from '@application/project-manager/pm.config.interface';
 
 // "owner" stands for TELEGRAM_OWNER_ID, i.e. the owner's private chat
 const ids = (value: string | undefined, ownerId: number): number[] =>
@@ -19,16 +22,33 @@ const origin = (value: string | undefined): string | null => {
   }
 };
 
+// "web=repo-a,mobile=repo-b,backend=repo-c"; unknown roles and malformed
+// pairs are ignored (the use case also checks the repo allowlist)
+const auditRepos = (
+  value: string | undefined,
+): Partial<Record<AuditRole, string>> => {
+  const out: Partial<Record<AuditRole, string>> = {};
+  for (const pair of (value ?? '').split(',')) {
+    const [role, repo] = pair.split('=').map((v) => v?.trim() ?? '');
+    if ((role === 'web' || role === 'mobile' || role === 'backend') && repo)
+      out[role] = repo;
+  }
+  return out;
+};
+
 export const pmConfig = (config: ConfigService): IPmConfig => {
   const digest = Number(config.get<string>('PM_DIGEST_CHAT_ID'));
   const release = config.get<string>('PM_RELEASE_DATE') ?? '';
   const maxAge = Number(config.get<string>('PM_SNAPSHOT_MAX_AGE_HOURS'));
+  const ownerId = Number(config.get<string>('TELEGRAM_OWNER_ID'));
+  const digestChatId = Number.isInteger(digest) && digest !== 0 ? digest : null;
+  const auditChats = ids(config.get<string>('PM_AUDIT_CHAT_IDS'), ownerId);
   return {
     chatIds: ids(
       config.get<string>('TELEGRAM_PM_CHAT_IDS'),
       Number(config.get<string>('TELEGRAM_OWNER_ID')),
     ),
-    digestChatId: Number.isInteger(digest) && digest !== 0 ? digest : null,
+    digestChatId,
     releaseDate: /^\d{4}-\d{2}-\d{2}$/.test(release) ? release : null,
     // Vercel env values are single-line; "\n" in the value means a newline
     projectBrief: (config.get<string>('PM_PROJECT_BRIEF') ?? '').replace(
@@ -78,5 +98,11 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       config.get<string>('PM_ACTION_USER_IDS'),
       Number(config.get<string>('TELEGRAM_OWNER_ID')),
     ),
+    auditChatIds: auditChats.length
+      ? auditChats
+      : digestChatId
+      ? [digestChatId]
+      : ids('owner', ownerId),
+    auditRepos: auditRepos(config.get<string>('PM_AUDIT_REPOS')),
   };
 };

@@ -14,6 +14,7 @@ import {
 import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.use-case';
 import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
 import { AdminTopicsUseCase } from '@application/project-manager/use-cases/admin-topics.use-case';
+import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { AdminTopicsUseCase } from '@application/project-manager/use-cases/admin
     PasswordThrottle,
     TeamReviewUseCase,
     AdminTopicsUseCase,
+    RunConsistencyAuditUseCase,
   ],
 })
 export class PmAdminHttpModule {}

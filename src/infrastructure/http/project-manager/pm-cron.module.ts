@@ -8,6 +8,7 @@ import { CronSecretGuard } from '@infrastructure/http/project-manager/cron-secre
 import { PostDailyDigestUseCase } from '@application/project-manager/use-cases/post-daily-digest.use-case';
 import { WatchProjectUseCase } from '@application/project-manager/use-cases/watch-project.use-case';
 import { RunGoldenEvalUseCase } from '@application/project-manager/use-cases/run-golden-eval.use-case';
+import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 
 @Module({
   imports: [ConfigModule, ProjectManagerModule, TelegramInfraModule],
@@ -17,6 +18,7 @@ import { RunGoldenEvalUseCase } from '@application/project-manager/use-cases/run
     PostDailyDigestUseCase,
     WatchProjectUseCase,
     RunGoldenEvalUseCase,
+    RunConsistencyAuditUseCase,
   ],
 })
 export class PmCronHttpModule {}

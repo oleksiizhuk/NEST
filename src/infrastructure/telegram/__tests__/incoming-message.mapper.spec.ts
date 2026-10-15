@@ -62,6 +62,41 @@ describe('mapCallbackToIncoming', () => {
     expect(mapCallbackToIncoming(query('a:+:short'))).toBeNull();
   });
 
+  it('reads an audit checklist item from its button data', () => {
+    expect(mapCallbackToIncoming(query('ck:0a1b2c3d:t3'))).toMatchObject({
+      chatId: -100,
+      text: expect.any(String),
+      callback: {
+        id: 'cb1',
+        messageId: 99,
+        kind: 'check',
+        check: { runId: '0a1b2c3d', kind: 'tech', index: 3 },
+      },
+    });
+    expect(
+      mapCallbackToIncoming(query('ck:0a1b2c3d:d12'))?.callback?.check,
+    ).toEqual({ runId: '0a1b2c3d', kind: 'design', index: 12 });
+    expect(mapCallbackToIncoming(query('ck:0a1b2c3d:t3'))?.text).toBeTruthy();
+  });
+
+  it('drops malformed audit data', () => {
+    for (const bad of [
+      'ck:',
+      'ck:0a1b2c3d',
+      'ck:0a1b2c3d:',
+      'ck:0a1b2c3d:x1',
+      'ck:0a1b2c3d:t',
+      'ck:0a1b2c3d:t100',
+      'ck:0A1B2C3D:t1',
+      'ck:0a1b2c3:t1',
+      'ck:0a1b2c3d9:t1',
+      'ck:0a1b2c3g:t1',
+      'ck:0a1b2c3d:t1:extra',
+      'ck:0a1b2c3d:t-1',
+    ])
+      expect(mapCallbackToIncoming(query(bad))).toBeNull();
+  });
+
   it('drops unknown data, bad ids and options it cannot read', () => {
     expect(mapCallbackToIncoming(query('z:1'))).toBeNull();
     expect(mapCallbackToIncoming(query('c:K7 Q2A; rm'))).toBeNull();
