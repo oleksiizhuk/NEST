@@ -507,6 +507,9 @@ export const api = {
   indexStatus: () => call<IndexStatus>('GET', 'index'),
   indexStart: () => call<IndexJob>('POST', 'index/start'),
   indexStep: () => call<IndexJob>('POST', 'index/step'),
+  audit: () => call<{ run: AuditRun | null }>('GET', 'audit'),
+  auditStart: () => call<{ run: AuditRun | null }>('POST', 'audit/start'),
+  auditStep: () => call<{ run: AuditRun | null }>('POST', 'audit/step'),
   refreshData: () =>
     call<{
       at: string;
@@ -586,4 +589,38 @@ export interface TopicList {
   }>;
   used: number;
   limit: number;
+}
+
+// Аудит: design vs web vs mobile vs backend, every 3 days, posted to Telegram
+export type AuditKind = 'tech' | 'design';
+export type AuditPhase =
+  | 'design-web'
+  | 'design-mobile'
+  | 'web-mobile'
+  | 'clients-backend'
+  | 'compose'
+  | 'post';
+
+export interface AuditItem {
+  kind: AuditKind;
+  index: number;
+  title: string;
+  detail: string;
+  areas: string[];
+  repeat: boolean;
+  checkedBy: { userId: number; name: string; at: string } | null;
+}
+
+export interface AuditRun {
+  runId: string;
+  status: 'running' | 'posted' | 'failed';
+  phase: AuditPhase;
+  findings: Partial<Record<AuditPhase, string>>;
+  items: AuditItem[];
+  posts: Array<{ kind: AuditKind; chatId: number; messageId: number }>;
+  attempts: number;
+  error: string | null;
+  startedBy: 'cron' | number;
+  startedAt: string;
+  finishedAt: string | null;
 }

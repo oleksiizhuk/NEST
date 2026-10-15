@@ -40,6 +40,7 @@ import {
 import { IQuota, PM_QUOTA } from '@application/project-manager/quota.interface';
 import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
 import { AdminAccess } from '@application/project-manager/admin-access';
+import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 import {
   IAdminLinks,
   PM_ADMIN_LINKS,
@@ -150,6 +151,7 @@ export class HandleTelegramMessageUseCase {
     @Inject(PM_ADMIN_APPROVALS)
     private readonly adminApprovals?: IAdminApprovals,
     @Optional() private readonly adminAccess?: AdminAccess,
+    @Optional() private readonly audit?: RunConsistencyAuditUseCase,
   ) {}
 
   // The config with the owner's admin-page overrides, loaded at the start
@@ -368,6 +370,12 @@ export class HandleTelegramMessageUseCase {
       await this.answerLoginApproval(msg);
       return;
     }
+    // Before the PM gate: the audit may post to a chat that is not in PM
+    // mode, and toggle() only accepts a press on the run's own message
+    if (callback.kind === 'check') {
+      await this.toggleAuditItem(msg);
+      return;
+    }
     if (!(await this.isPmChat(msg.chatId, msg))) {
       await this.telegram.answerCallback(callback.id).catch(() => undefined);
       return;
@@ -393,6 +401,37 @@ export class HandleTelegramMessageUseCase {
       .clearButtons(msg.chatId, callback.messageId)
       .catch(() => undefined);
     await this.handleAsProjectManager(msg, text);
+  }
+
+  // Anyone in the chat may tick an audit item: ✅ means "someone looked at
+  // it", and the name on the button says who
+  private async toggleAuditItem(msg: IncomingTelegramMessage): Promise<void> {
+    const { callback } = msg;
+    if (!callback?.check || !this.audit) {
+      if (callback)
+        await this.telegram.answerCallback(callback.id).catch(() => undefined);
+      return;
+    }
+    const name =
+      [msg.from.firstName, msg.from.lastName].filter(Boolean).join(' ') ||
+      (msg.from.username ? `@${msg.from.username}` : `id${msg.from.id}`);
+    const { runId, kind, index } = callback.check;
+    let text: string;
+    try {
+      ({ text } = await this.audit.toggle(
+        runId,
+        kind,
+        index,
+        { chatId: msg.chatId, messageId: callback.messageId },
+        { userId: msg.from.id, name },
+      ));
+    } catch (error) {
+      this.logger.error(error);
+      text = 'Не получилось отметить, попробуйте ещё раз';
+    }
+    await this.telegram
+      .answerCallback(callback.id, text || undefined)
+      .catch(() => undefined);
   }
 
   // Anyone who can talk to the bot here may rate an answer; the buttons go

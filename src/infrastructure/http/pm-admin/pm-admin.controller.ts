@@ -28,6 +28,7 @@ import { PmAdminUseCase } from '@application/project-manager/use-cases/pm-admin.
 import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { BuildIndexUseCase } from '@application/project-manager/use-cases/build-index.use-case';
+import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 import { SettingsError } from '@application/project-manager/settings.interface';
 import { ReviewKind } from '@application/project-manager/team-reviews.interface';
 import {
@@ -216,6 +217,7 @@ export class PmAdminController {
     private readonly refresher: RefreshProjectSnapshotUseCase,
     private readonly indexer: BuildIndexUseCase,
     private readonly topics: AdminTopicsUseCase,
+    private readonly audit: RunConsistencyAuditUseCase,
   ) {}
 
   // Спросить бота: each admin's own topics with the bot
@@ -653,6 +655,46 @@ export class PmAdminController {
   @UseGuards(PmAdminGuard)
   indexStep() {
     return this.indexer.step();
+  }
+
+  // Аудит: the latest consistency audit (design vs web vs mobile vs backend)
+  @Get('audit')
+  @UseGuards(PmAdminGuard)
+  async auditLatest(@Req() req: { pmAdmin: number }) {
+    const run = await this.audit.latest();
+    // The raw findings quote code the model read: owner only, like code tools
+    if (run && req.pmAdmin !== this.auth.ownerId)
+      return { run: { ...run, findings: {} } };
+    return { run };
+  }
+
+  // Starting and stepping spend model tokens (one call with tools per
+  // phase), so they stay with the owner; the page loops step until done
+  @Post('audit/start')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async auditStart(@Req() req: { pmAdmin: number }) {
+    this.ownerOnlyAudit(req);
+    const run = await this.audit.start(new Date(), req.pmAdmin, true);
+    // null: not configured, or a race with another start; say which
+    if (!run)
+      throw new BadRequestException(
+        this.audit.notConfigured() ?? 'Аудит не запустился, попробуйте ещё раз',
+      );
+    return { run };
+  }
+
+  @Post('audit/step')
+  @HttpCode(200)
+  @UseGuards(PmAdminGuard)
+  async auditStep(@Req() req: { pmAdmin: number }) {
+    this.ownerOnlyAudit(req);
+    return { run: await this.audit.step(new Date(), 250_000) };
+  }
+
+  private ownerOnlyAudit(req: { pmAdmin: number }) {
+    if (req.pmAdmin !== this.auth.ownerId)
+      throw new ForbiddenException('Аудит запускает только владелец');
   }
 
   @Get('chats')

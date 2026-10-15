@@ -9,6 +9,7 @@ import { JiraService } from '@infrastructure/jira/jira.service';
 import { DryRunTaskTracker } from '@infrastructure/jira/dry-run-task-tracker';
 import { TELEGRAM_MESSAGE_REPOSITORY } from '@domain/telegram/telegram-message.repository.interface';
 import { HandleTelegramMessageUseCase } from '@application/telegram/use-cases/handle-telegram-message.use-case';
+import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 import { TelegramMessageSchema } from '@infrastructure/database/schemas/telegram-message.schema';
 import { MongoTelegramMessageRepository } from '@infrastructure/database/repositories/mongo-telegram-message.repository';
 import { TelegramBotService } from '@infrastructure/telegram/telegram-bot.service';
@@ -51,6 +52,8 @@ import { ProjectManagerModule } from '@infrastructure/project-manager/project-ma
       useClass: MongoTelegramMessageRepository,
     },
     HandleTelegramMessageUseCase,
+    // Here because a tap on an audit checklist item arrives as a callback
+    RunConsistencyAuditUseCase,
     TelegramPollingBootstrap,
     TelegramWebhookBootstrap,
   ],

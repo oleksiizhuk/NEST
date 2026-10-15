@@ -38,6 +38,7 @@ const MODELS = [
   'PmIndexJob',
   'PmAdminTopic',
   'PmAdminTopicDay',
+  'PmAudit',
 ];
 
 describe('project-manager module wiring', () => {
@@ -96,6 +97,7 @@ describe('project-manager module wiring', () => {
       'pmRefresh',
       'pmChats',
       'pmConfirm',
+      'audit',
     ]) {
       expect(optional(handler, field)).toBeDefined();
     }

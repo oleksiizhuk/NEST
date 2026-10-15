@@ -48,4 +48,12 @@ export interface IPmConfig {
   // For links on the admin page: Jira site origin and the GitHub org
   jiraUrl?: string | null;
   githubOrg?: string | null;
+  // Where the consistency audit posts its checklists; resolved from env
+  // (PM_AUDIT_CHAT_IDS, else the digest chat, else the owner)
+  auditChatIds?: number[];
+  // Which allowlisted repo is the web client, the mobile app, the backend;
+  // absent roles are worked out by the model from the repo list and maps
+  auditRepos?: Partial<Record<AuditRole, string>>;
 }
+
+export type AuditRole = 'web' | 'mobile' | 'backend';

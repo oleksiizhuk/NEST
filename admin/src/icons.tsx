@@ -87,3 +87,8 @@ export const IconHanging = () => (
     <path d="M12 9v4l2.5 2.5M9 2h6" />
   </svg>
 );
+export const IconAudit = () => (
+  <svg {...base}>
+    <path d="M9 4h6v3H9zM7 5.5H5v15h14v-15h-2M8.5 12l1.5 1.5 3-3M8.5 17h7" />
+  </svg>
+);
