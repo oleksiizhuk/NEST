@@ -381,6 +381,32 @@ describe('RunConsistencyAuditUseCase.step', () => {
     expect(gateway.sendMessage).toHaveBeenCalledTimes(3);
     expect(mem.all()[0].status).toBe('posted');
   });
+
+  it('posts a list that only has deferred findings instead of "nothing found"', async () => {
+    const { useCase, gateway } = setup({
+      runs: [
+        run({
+          phase: 'post',
+          items: [item('tech', 0)],
+          deferred: [
+            {
+              kind: 'design',
+              bucket: 'in_progress',
+              title: 'Скелетон',
+              ref: 'PR #417',
+            },
+          ],
+        }),
+      ],
+      chats: [-1],
+    });
+    await useCase.step(now);
+    expect(gateway.sendWithButtons).toHaveBeenCalledTimes(1);
+    expect(gateway.sendMessage).toHaveBeenCalledTimes(1);
+    const text = gateway.sendMessage.mock.calls[0][1] as string;
+    expect(text).toContain('Скелетон (PR #417)');
+    expect(text).not.toContain('расхождений не найдено');
+  });
 });
 
 describe('parseComposed', () => {
@@ -602,19 +628,32 @@ describe('audit quality: verdict, release, deferred, whole words', () => {
         ],
         design: [],
         deferred: [
-          { kind: 'design', bucket: 'in_progress', title: 'Скелетон', ref: 'PR #417' },
+          {
+            kind: 'design',
+            bucket: 'in_progress',
+            title: 'Скелетон',
+            ref: 'PR #417',
+          },
           { kind: 'tech', bucket: 'later', title: 'События', ref: 'MVP 3' },
           { kind: 'tech', bucket: 'odd', title: '' },
         ],
       }),
     );
     // Release items move to the top
-    expect(parsed?.tech.map((d) => d.title)).toEqual(['К релизу', 'Не к релизу']);
+    expect(parsed?.tech.map((d) => d.title)).toEqual([
+      'К релизу',
+      'Не к релизу',
+    ]);
     expect(parsed?.tech[0].fix).toBeNull();
     expect(parsed?.tech[1].fix).toBe('web');
     expect(parsed?.deferred).toEqual([
       { kind: 'tech', bucket: 'later', title: 'События', ref: 'MVP 3' },
-      { kind: 'design', bucket: 'in_progress', title: 'Скелетон', ref: 'PR #417' },
+      {
+        kind: 'design',
+        bucket: 'in_progress',
+        title: 'Скелетон',
+        ref: 'PR #417',
+      },
     ]);
   });
 
@@ -626,7 +665,12 @@ describe('audit quality: verdict, release, deferred, whole words', () => {
         item('design', 1, { title: 'Вкладки', fix: 'design' }),
       ],
       deferred: [
-        { kind: 'design', bucket: 'in_progress', title: 'Скелетон', ref: 'PR #417' },
+        {
+          kind: 'design',
+          bucket: 'in_progress',
+          title: 'Скелетон',
+          ref: 'PR #417',
+        },
         { kind: 'design', bucket: 'later', title: 'Офферы', ref: 'MVP 3' },
         { kind: 'tech', bucket: 'later', title: 'Чужое', ref: '' },
       ],
@@ -657,5 +701,16 @@ describe('audit quality: verdict, release, deferred, whole words', () => {
     const text = renderAuditMessage(r, 'tech', now);
     expect(text.length).toBeLessThanOrEqual(MESSAGE_MAX);
     expect(text).toContain('20. Пункт 19');
+  });
+});
+
+describe('clipWords with long tokens', () => {
+  it('keeps most of the text when a long path follows the last space', () => {
+    const cut = clipWords(
+      'Web: src/features/offers/components/PriceLockNotice/PriceLockNotice.tsx показывает плашку',
+      50,
+    );
+    expect(Array.from(cut).length).toBeLessThanOrEqual(50);
+    expect(Array.from(cut).length).toBeGreaterThan(40);
   });
 });

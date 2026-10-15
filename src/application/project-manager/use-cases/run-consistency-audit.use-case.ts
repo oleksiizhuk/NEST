@@ -175,8 +175,10 @@ export const clipWords = (text: string, max: number): string => {
     head.lastIndexOf('? '),
   );
   if (sentence >= max * 0.6) return head.slice(0, sentence + 1);
+  // A space near the start (a long path or id follows) would drop most of
+  // the text: then cut by characters instead
   const space = head.lastIndexOf(' ');
-  return `${(space > 0 ? head.slice(0, space) : head).replace(
+  return `${(space >= max * 0.6 ? head.slice(0, space) : head).replace(
     /[\s,;:—-]+$/,
     '',
   )}…`;
@@ -257,8 +259,10 @@ export const renderAuditMessage = (
       lines.length ? lines.join('\n\n') : 'Расхождений не найдено.'
     }${withFooter && footer ? `\n\n${footer}` : ''}`;
   };
-  for (const withFooter of [true, false]) {
-    for (const max of [DETAIL_MAX, 200, 140, 90, 50, 0]) {
+  // The deferred block gives way before the details shrink much: what to do
+  // matters more than what was left out
+  for (const max of [DETAIL_MAX, 200, 140, 90, 50, 0]) {
+    for (const withFooter of max >= 140 ? [true, false] : [false]) {
       const text = build(max, withFooter);
       if (text.length <= MESSAGE_MAX) return text;
     }
@@ -803,8 +807,12 @@ export class RunConsistencyAuditUseCase {
     const chats = this.chats();
     if (!chats.length) throw new Error('no chat to post to');
     const posts = [...run.posts];
+    // A list with no items still goes out when something was deferred: the
+    // team should see "in progress / later", not "nothing found"
     const kinds = (['tech', 'design'] as AuditKind[]).filter(
-      (k) => itemsOf(run, k).length,
+      (k) =>
+        itemsOf(run, k).length ||
+        (run.deferred ?? []).some((d) => d.kind === k),
     );
     const failures: string[] = [];
     const sent = (chatId: number, kind: AuditKind) =>
@@ -831,6 +839,15 @@ export class RunConsistencyAuditUseCase {
         }
         for (const kind of kinds) {
           if (sent(chatId, kind)) continue;
+          if (!itemsOf(run, kind).length) {
+            // Only the deferred block: no buttons to tick, a plain message
+            await this.gateway.sendMessage(
+              chatId,
+              renderAuditMessage(run, kind, now),
+            );
+            await remember({ kind, chatId, messageId: 0 });
+            continue;
+          }
           const messageId = await this.gateway.sendWithButtons(
             chatId,
             renderAuditMessage(run, kind, now),
