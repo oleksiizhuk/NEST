@@ -98,11 +98,15 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       config.get<string>('PM_ACTION_USER_IDS'),
       Number(config.get<string>('TELEGRAM_OWNER_ID')),
     ),
-    auditChatIds: auditChats.length
-      ? auditChats
-      : digestChatId
-      ? [digestChatId]
-      : ids('owner', ownerId),
+    // "off" switches the audit off (no chat to post to, so it never starts)
+    auditChatIds:
+      config.get<string>('PM_AUDIT_CHAT_IDS')?.trim().toLowerCase() === 'off'
+        ? []
+        : auditChats.length
+        ? auditChats
+        : digestChatId
+        ? [digestChatId]
+        : ids('owner', ownerId),
     auditRepos: auditRepos(config.get<string>('PM_AUDIT_REPOS')),
   };
 };

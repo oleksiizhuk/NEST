@@ -5,6 +5,7 @@ import {
   AuditItem,
   AuditKind,
   AuditPhase,
+  AuditPost,
   AuditRun,
   IAuditStore,
   PM_AUDITS,
@@ -330,7 +331,8 @@ export class RunConsistencyAuditUseCase {
         return null;
       if (
         latest?.status === 'failed' &&
-        now.getTime() - latest.startedAt.getTime() < RETRY_AFTER_MS
+        now.getTime() - (latest.finishedAt ?? latest.startedAt).getTime() <
+          RETRY_AFTER_MS
       )
         return null;
     }
@@ -707,22 +709,36 @@ export class RunConsistencyAuditUseCase {
       (k) => itemsOf(run, k).length,
     );
     const failures: string[] = [];
+    const sent = (chatId: number, kind: AuditKind) =>
+      posts.some((p) => p.chatId === chatId && p.kind === kind);
+    // Saved after every message; a failed save must not count the chat as
+    // missed (the message is out), the final patch carries it anyway
+    const remember = (post: AuditPost) => {
+      posts.push(post);
+      return this.store
+        .update(run.runId, { posts: [...posts] })
+        .catch((error) =>
+          this.logger.error(`audit ${run.runId} posts not saved: ${error}`),
+        );
+    };
     for (const chatId of chats) {
       try {
         if (!kinds.length) {
+          if (sent(chatId, 'tech')) continue;
           await this.gateway.sendMessage(chatId, NOTHING_FOUND);
+          // messageId 0: a marker that this chat got the plain message;
+          // no button can ever point at it
+          await remember({ kind: 'tech', chatId, messageId: 0 });
           continue;
         }
         for (const kind of kinds) {
-          if (posts.some((p) => p.chatId === chatId && p.kind === kind))
-            continue;
+          if (sent(chatId, kind)) continue;
           const messageId = await this.gateway.sendWithButtons(
             chatId,
             renderAuditMessage(run, kind, now),
             auditButtons(run, kind),
           );
-          posts.push({ kind, chatId, messageId });
-          await this.store.update(run.runId, { posts: [...posts] });
+          await remember({ kind, chatId, messageId });
         }
       } catch (error) {
         failures.push(
@@ -731,7 +747,12 @@ export class RunConsistencyAuditUseCase {
         this.logger.error(`audit not posted to ${chatId}: ${error}`);
       }
     }
-    if (failures.length === chats.length)
+    // A missed chat or list gets one more step (what was sent is skipped);
+    // after that the run counts as posted with the misses in `error`
+    if (
+      failures.length === chats.length ||
+      (failures.length && run.attempts < MAX_ATTEMPTS)
+    )
       throw new Error(`not posted: ${failures.join('; ')}`.slice(0, 300));
     return {
       posts,

@@ -660,8 +660,12 @@ export class PmAdminController {
   // Аудит: the latest consistency audit (design vs web vs mobile vs backend)
   @Get('audit')
   @UseGuards(PmAdminGuard)
-  async auditLatest() {
-    return { run: await this.audit.latest() };
+  async auditLatest(@Req() req: { pmAdmin: number }) {
+    const run = await this.audit.latest();
+    // The raw findings quote code the model read: owner only, like code tools
+    if (run && req.pmAdmin !== this.auth.ownerId)
+      return { run: { ...run, findings: {} } };
+    return { run };
   }
 
   // Starting and stepping spend model tokens (one call with tools per

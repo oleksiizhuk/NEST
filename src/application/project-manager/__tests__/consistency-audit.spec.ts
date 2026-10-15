@@ -348,18 +348,37 @@ describe('RunConsistencyAuditUseCase.step', () => {
     expect((await useCase.step(now))?.status).toBe('failed');
   });
 
-  it('a chat that fails is skipped, the others still get the lists', async () => {
+  it('a missed chat gets one more step, then the run is posted anyway', async () => {
     const { useCase, gateway, mem } = setup({
       runs: [run({ phase: 'post', items: [item('tech', 0)] })],
       chats: [-1, -2],
     });
-    gateway.sendWithButtons.mockRejectedValueOnce(new Error('kicked'));
-    const r = await useCase.step(now);
-    expect(r?.status).toBe('posted');
+    gateway.sendWithButtons
+      .mockRejectedValueOnce(new Error('kicked'))
+      .mockResolvedValueOnce(100)
+      .mockRejectedValueOnce(new Error('kicked'));
+    const first = await useCase.step(now);
+    expect(first?.status).toBe('running');
     expect(mem.all()[0].posts).toEqual([
       { kind: 'tech', chatId: -2, messageId: 100 },
     ]);
+    const r = await useCase.step(now);
+    expect(r?.status).toBe('posted');
+    // The chat that already got its list is not posted to again
+    expect(gateway.sendWithButtons).toHaveBeenCalledTimes(3);
     expect(r?.error).toContain('kicked');
+  });
+
+  it('records the "nothing found" message so a retry does not repeat it', async () => {
+    const { useCase, gateway, mem } = setup({
+      runs: [run({ phase: 'post', items: [] })],
+      chats: [-1, -2],
+    });
+    gateway.sendMessage.mockRejectedValueOnce(new Error('kicked'));
+    await useCase.step(now);
+    await useCase.step(now);
+    expect(gateway.sendMessage).toHaveBeenCalledTimes(3);
+    expect(mem.all()[0].status).toBe('posted');
   });
 });
 
