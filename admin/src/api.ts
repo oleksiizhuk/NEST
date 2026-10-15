@@ -609,6 +609,15 @@ export interface AuditItem {
   areas: string[];
   repeat: boolean;
   checkedBy: { userId: number; name: string; at: string } | null;
+  fix?: 'design' | 'web' | 'mobile' | 'backend' | null;
+  release?: boolean;
+}
+
+export interface AuditDeferred {
+  kind: AuditKind;
+  bucket: 'in_progress' | 'later';
+  title: string;
+  ref: string;
 }
 
 export interface AuditRun {
@@ -617,6 +626,7 @@ export interface AuditRun {
   phase: AuditPhase;
   findings: Partial<Record<AuditPhase, string>>;
   items: AuditItem[];
+  deferred?: AuditDeferred[];
   posts: Array<{ kind: AuditKind; chatId: number; messageId: number }>;
   attempts: number;
   error: string | null;

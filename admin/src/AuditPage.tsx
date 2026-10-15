@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   api,
   AuditItem,
+  AuditDeferred,
   AuditKind,
   AuditPhase,
   AuditRun,
@@ -242,6 +243,9 @@ export function AuditPage({ onUnauthorized }: { onUnauthorized: () => void }) {
             title={list.title}
             lead={list.lead}
             items={run.items.filter((i) => i.kind === list.kind)}
+            deferred={(run.deferred ?? []).filter(
+              (d) => d.kind === list.kind,
+            )}
             sent={run.posts.some((p) => p.kind === list.kind)}
           />
         ))}
@@ -266,11 +270,14 @@ function AuditList({
   title,
   lead,
   items,
+  deferred = [],
   sent,
 }: {
   title: string;
   lead: string;
   items: AuditItem[];
+  // Found but not on the list: being fixed already, or a later release
+  deferred?: AuditDeferred[];
   sent: boolean;
 }) {
   const checked = items.filter((i) => i.checkedBy).length;
@@ -295,6 +302,10 @@ function AuditList({
               <div>
                 {i.checkedBy ? '✅' : '⬜'} <b>{i.title}</b>
                 <span className="tags">
+                  {i.release && <span className="tag warn">к релизу</span>}
+                  {i.fix && (
+                    <span className="tag">менять: {FIX_LABEL[i.fix]}</span>
+                  )}
                   {i.areas.map((a) => (
                     <span key={a} className="tag">
                       {a}
@@ -315,6 +326,32 @@ function AuditList({
           ))}
         </ul>
       )}
+      {deferred.length > 0 && (
+        <div className="muted small">
+          {(['in_progress', 'later'] as const).map((bucket) => {
+            const rows = deferred.filter((d) => d.bucket === bucket);
+            return rows.length ? (
+              <p key={bucket}>
+                <b>
+                  {bucket === 'in_progress'
+                    ? 'Уже в работе, не в списке:'
+                    : 'Позже, не в текущем релизе:'}
+                </b>{' '}
+                {rows
+                  .map((d) => (d.ref ? `${d.title} (${d.ref})` : d.title))
+                  .join('; ')}
+              </p>
+            ) : null;
+          })}
+        </div>
+      )}
     </section>
   );
 }
+
+const FIX_LABEL: Record<NonNullable<AuditItem['fix']>, string> = {
+  design: 'дизайн',
+  web: 'веб',
+  mobile: 'мобилка',
+  backend: 'бэкенд',
+};
