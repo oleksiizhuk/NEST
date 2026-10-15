@@ -37,9 +37,34 @@ export class PmAuditItem {
 
   @Prop({ type: PmAuditCheckSchema, default: null })
   checkedBy: PmAuditCheck | null;
+
+  // design / web / mobile / backend: which side should change
+  @Prop({ type: String, default: null })
+  fix: string | null;
+
+  @Prop({ default: false })
+  release: boolean;
 }
 
 const PmAuditItemSchema = SchemaFactory.createForClass(PmAuditItem);
+
+@Schema({ _id: false })
+export class PmAuditDeferred {
+  @Prop({ required: true })
+  kind: string;
+
+  // in_progress / later
+  @Prop({ required: true })
+  bucket: string;
+
+  @Prop({ required: true })
+  title: string;
+
+  @Prop({ default: '' })
+  ref: string;
+}
+
+const PmAuditDeferredSchema = SchemaFactory.createForClass(PmAuditDeferred);
 
 @Schema({ _id: false })
 export class PmAuditPost {
@@ -72,6 +97,9 @@ export class PmAuditDocument extends Document {
 
   @Prop({ type: [PmAuditItemSchema], default: [] })
   items: PmAuditItem[];
+
+  @Prop({ type: [PmAuditDeferredSchema], default: [] })
+  deferred: PmAuditDeferred[];
 
   @Prop({ type: [PmAuditPostSchema], default: [] })
   posts: PmAuditPost[];

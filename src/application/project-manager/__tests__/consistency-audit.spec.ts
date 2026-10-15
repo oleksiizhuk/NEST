@@ -9,6 +9,7 @@ import { PM_UNAVAILABLE_REPLY } from '@application/project-manager/project-manag
 import {
   AUDIT_EVERY_MS,
   auditButtons,
+  clipWords,
   MESSAGE_MAX,
   parseCheckData,
   parseComposed,
@@ -573,5 +574,88 @@ describe('RunConsistencyAuditUseCase.toggle', () => {
         { userId: 1, name: 'x' },
       ),
     ).resolves.toEqual({ ok: true, text: 'Отмечено' });
+  });
+});
+
+describe('audit quality: verdict, release, deferred, whole words', () => {
+  it('cuts a long detail at a word or sentence, never mid-word', () => {
+    const text =
+      'Поле в состоянии Error с плашкой. Web отключает поля и показывает PriceLockNotice, а в API нет поля с источником блокировки для оффера';
+    const cut = clipWords(text, 90);
+    expect(Array.from(cut).length).toBeLessThanOrEqual(90);
+    expect(text.startsWith(cut.replace(/…$/, ''))).toBe(true);
+    // Ends on a sentence or on a whole word plus an ellipsis
+    expect(/[.…]$/.test(cut)).toBe(true);
+    const lastWord = cut.replace(/…$/, '').split(' ').pop() ?? '';
+    expect(text.split(/\s+/).map((w) => w.replace(/[.,]$/, ''))).toContain(
+      lastWord.replace(/[.,]$/, ''),
+    );
+    expect(clipWords('коротко', 90)).toBe('коротко');
+  });
+
+  it('reads the verdict, the release flag and the deferred findings', () => {
+    const parsed = parseComposed(
+      JSON.stringify({
+        tech: [
+          { title: 'Не к релизу', detail: 'd', fix: 'web', release: false },
+          { title: 'К релизу', detail: 'd', fix: 'nonsense', release: true },
+        ],
+        design: [],
+        deferred: [
+          { kind: 'design', bucket: 'in_progress', title: 'Скелетон', ref: 'PR #417' },
+          { kind: 'tech', bucket: 'later', title: 'События', ref: 'MVP 3' },
+          { kind: 'tech', bucket: 'odd', title: '' },
+        ],
+      }),
+    );
+    // Release items move to the top
+    expect(parsed?.tech.map((d) => d.title)).toEqual(['К релизу', 'Не к релизу']);
+    expect(parsed?.tech[0].fix).toBeNull();
+    expect(parsed?.tech[1].fix).toBe('web');
+    expect(parsed?.deferred).toEqual([
+      { kind: 'tech', bucket: 'later', title: 'События', ref: 'MVP 3' },
+      { kind: 'design', bucket: 'in_progress', title: 'Скелетон', ref: 'PR #417' },
+    ]);
+  });
+
+  it('shows the release mark, the verdict and what was left off the list', () => {
+    const r = run({
+      status: 'posted',
+      items: [
+        item('design', 0, { title: 'Тексты', fix: 'mobile', release: true }),
+        item('design', 1, { title: 'Вкладки', fix: 'design' }),
+      ],
+      deferred: [
+        { kind: 'design', bucket: 'in_progress', title: 'Скелетон', ref: 'PR #417' },
+        { kind: 'design', bucket: 'later', title: 'Офферы', ref: 'MVP 3' },
+        { kind: 'tech', bucket: 'later', title: 'Чужое', ref: '' },
+      ],
+    });
+    const text = renderAuditMessage(r, 'design', now);
+    expect(text).toContain('1. 🔴 Тексты');
+    expect(text).toContain('→ мобилку');
+    expect(text).toContain('2. Вкладки');
+    expect(text).toContain('→ дизайн');
+    expect(text).toContain('Уже в работе, не в списке: Скелетон (PR #417).');
+    expect(text).toContain('Позже, не в текущем релизе: Офферы (MVP 3).');
+    expect(text).not.toContain('Чужое');
+  });
+
+  it('drops the deferred block before cutting the list itself', () => {
+    const long = 'слово '.repeat(60).trim();
+    const r = run({
+      items: Array.from({ length: 20 }, (_, i) =>
+        item('tech', i, { title: `Пункт ${i}`, detail: long }),
+      ),
+      deferred: Array.from({ length: 8 }, (_, i) => ({
+        kind: 'tech' as const,
+        bucket: 'later' as const,
+        title: `Позже ${i}`,
+        ref: 'MVP 3',
+      })),
+    });
+    const text = renderAuditMessage(r, 'tech', now);
+    expect(text.length).toBeLessThanOrEqual(MESSAGE_MAX);
+    expect(text).toContain('20. Пункт 19');
   });
 });

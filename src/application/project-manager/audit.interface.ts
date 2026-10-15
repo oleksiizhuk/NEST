@@ -45,6 +45,22 @@ export interface AuditItem {
   // Also in the previous run and still present
   repeat: boolean;
   checkedBy: AuditCheck | null;
+  // Which side should change (the verdict); null when the model gave none
+  fix?: AuditFix | null;
+  // Needed for the current release
+  release?: boolean;
+}
+
+export type AuditFix = 'design' | 'web' | 'mobile' | 'backend';
+
+// Found but left off the checklist: already being fixed (an open PR or a
+// ticket in progress) or planned for a later release
+export interface AuditDeferred {
+  kind: AuditKind;
+  bucket: 'in_progress' | 'later';
+  title: string;
+  // PR / ticket that covers it, or the release it belongs to
+  ref: string;
 }
 
 export interface AuditPost {
@@ -62,6 +78,8 @@ export interface AuditRun {
   // Raw model findings per finished comparison phase (skipped → note)
   findings: Partial<Record<AuditPhase, string>>;
   items: AuditItem[];
+  // Listed in one line under each checklist, without buttons
+  deferred?: AuditDeferred[];
   posts: AuditPost[];
   // Failed tries of the current phase; 2 failures fail the run
   attempts: number;
@@ -90,6 +108,7 @@ export interface IAuditStore {
         | 'phase'
         | 'findings'
         | 'items'
+        | 'deferred'
         | 'posts'
         | 'attempts'
         | 'error'

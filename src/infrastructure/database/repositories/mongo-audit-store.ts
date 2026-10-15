@@ -3,11 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
   AuditCheck,
+  AuditFix,
   AuditKind,
   AuditPhase,
   AuditRun,
   IAuditStore,
 } from '@application/project-manager/audit.interface';
+
+const FIXES: AuditFix[] = ['design', 'web', 'mobile', 'backend'];
 import { PmAuditDocument } from '@infrastructure/database/schemas/pm-audit.schema';
 
 type Lean = {
@@ -23,6 +26,14 @@ type Lean = {
     areas?: string[];
     repeat?: boolean;
     checkedBy?: { userId: number; name: string; at: Date } | null;
+    fix?: string | null;
+    release?: boolean;
+  }>;
+  deferred?: Array<{
+    kind: string;
+    bucket: string;
+    title: string;
+    ref?: string;
   }>;
   posts?: Array<{ kind: string; chatId: number; messageId: number }>;
   attempts?: number;
@@ -47,6 +58,8 @@ const toRun = (doc: Lean): AuditRun => ({
     detail: i.detail ?? '',
     areas: i.areas ?? [],
     repeat: Boolean(i.repeat),
+    fix: FIXES.includes(i.fix as AuditFix) ? (i.fix as AuditFix) : null,
+    release: Boolean(i.release),
     checkedBy: i.checkedBy
       ? {
           userId: i.checkedBy.userId,
@@ -54,6 +67,12 @@ const toRun = (doc: Lean): AuditRun => ({
           at: new Date(i.checkedBy.at),
         }
       : null,
+  })),
+  deferred: (doc.deferred ?? []).map((d) => ({
+    kind: kindOf(d.kind),
+    bucket: d.bucket === 'later' ? 'later' : 'in_progress',
+    title: d.title,
+    ref: d.ref ?? '',
   })),
   posts: (doc.posts ?? []).map((p) => ({
     kind: kindOf(p.kind),
