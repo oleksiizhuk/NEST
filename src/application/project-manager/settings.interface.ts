@@ -30,6 +30,9 @@ export interface PmSettings {
   teamAway?: TeamAway | null;
   // Jira display name → Telegram username, for "Написать в чат"
   telegramUsernames?: Record<string, string> | null;
+  // Jira display name → role in the team (QA, iOS, backend…), so the
+  // digest gives everyone their own line, people without code work too
+  teamRoles?: Record<string, string> | null;
   // Релиз: the day scope growth is counted from
   releaseBaseline?: string | null;
   // People besides the owner with admin access; managed by its own
@@ -57,6 +60,7 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
   'teamAway',
   'releaseBaseline',
   'telegramUsernames',
+  'teamRoles',
 ];
 
 export interface IPmSettingsStore {
@@ -254,6 +258,29 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       out.telegramUsernames = map;
     }
   }
+  if (has('teamRoles')) {
+    const value = input.teamRoles;
+    if (value === null) out.teamRoles = null;
+    else if (typeof value !== 'object' || Array.isArray(value))
+      throw new SettingsError('teamRoles: an object name → role');
+    else {
+      const map: Record<string, string> = {};
+      for (const [name, raw] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        if (!name.trim() || name.length > 100)
+          throw new SettingsError(`teamRoles: bad name "${name}"`);
+        // Goes into the digest prompt: one short line, no markup
+        const role = String(raw ?? '')
+          .replace(/[<>\r\n]+/g, ' ')
+          .trim();
+        if (!role || role.length > 40)
+          throw new SettingsError(`teamRoles: role 1-40 characters`);
+        map[name] = role;
+      }
+      out.teamRoles = map;
+    }
+  }
   if (has('releaseBaseline')) {
     const v = input.releaseBaseline;
     if (v === null) out.releaseBaseline = null;
@@ -291,4 +318,5 @@ export const resolveConfig = (base: IPmConfig, s: PmSettings): IPmConfig => ({
   ...(s.telegramUsernames != null
     ? { telegramUsernames: s.telegramUsernames }
     : {}),
+  ...(s.teamRoles != null ? { teamRoles: s.teamRoles } : {}),
 });

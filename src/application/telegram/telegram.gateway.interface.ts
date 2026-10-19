@@ -13,11 +13,14 @@ export interface InlineButton {
 }
 
 export interface ITelegramGateway {
-  // Buttons, when given, go under the last chunk of the message
+  // Buttons, when given, go under the last chunk of the message. Ticket
+  // keys become links to the tracker unless `links` is false (chats that
+  // must not learn where the tracker is)
   sendMessage(
     chatId: number,
     text: string,
     buttons?: InlineButton[][],
+    options?: { links?: boolean },
   ): Promise<void>;
   sendTyping(chatId: number): Promise<void>;
   getBotInfo(): Promise<IBotInfo>;

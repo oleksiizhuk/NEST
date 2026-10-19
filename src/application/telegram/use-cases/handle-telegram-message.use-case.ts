@@ -344,7 +344,10 @@ export class HandleTelegramMessageUseCase {
         `${authorLabel(msg.from)}: ${cleanText || text}`,
         history,
       );
-      await this.telegram.sendMessage(chatId, reply);
+      // The persona never shows where the team's tracker lives
+      await this.telegram.sendMessage(chatId, reply, undefined, {
+        links: false,
+      });
       await this.saveLog(msg, reply);
     } catch (error) {
       this.logger.error(error);

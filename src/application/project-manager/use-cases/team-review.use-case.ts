@@ -190,6 +190,7 @@ export class TeamReviewUseCase {
       }),
       links: { jira: live.jiraUrl ?? null, githubOrg: live.githubOrg ?? null },
       telegram: live.telegramUsernames ?? {},
+      roles: live.teamRoles ?? {},
       // Last three closed sprints: committed and done per person
       sprints:
         (

@@ -1,12 +1,16 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Bot } from 'grammy';
-import type { CallbackQuery, Message } from 'grammy/types';
+import type { CallbackQuery, Message, MessageEntity } from 'grammy/types';
 import {
   IBotInfo,
   InlineButton,
   ITelegramGateway,
 } from '@application/telegram/telegram.gateway.interface';
+import {
+  JiraLinkConfig,
+  linkEntities,
+} from '@infrastructure/telegram/telegram-links';
 
 // Telegram's hard limit is 4096; leave room so a split never lands on the edge
 const CHUNK_LIMIT = 4000;
@@ -41,15 +45,57 @@ export const splitForTelegram = (text: string): string[] => {
   return chunks;
 };
 
+const jiraOrigin = (value: string | undefined): string | null => {
+  try {
+    const url = new URL(String(value ?? '').trim());
+    return url.protocol === 'https:' ? url.origin : null;
+  } catch {
+    return null;
+  }
+};
+
 @Injectable()
 export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
   private readonly logger = new Logger(TelegramBotService.name);
   private readonly token: string;
   private client: Bot | null = null;
   private botInfo: Promise<IBotInfo> | null = null;
+  private readonly jira: JiraLinkConfig;
 
   constructor(configService: ConfigService) {
     this.token = configService.get<string>('TELEGRAM_TOKEN') ?? '';
+    // Ticket keys of these projects become links to the ticket
+    this.jira = {
+      baseUrl: jiraOrigin(
+        configService.get<string>('PM_ATLASSIAN_BASE_URL') ||
+          configService.get<string>('JIRA_BASE_URL'),
+      ),
+      projects: (configService.get<string>('PM_JIRA_PROJECTS') ?? '')
+        .split(',')
+        .map((p) => p.trim().toUpperCase())
+        .filter(Boolean),
+    };
+  }
+
+  // A message whose links Telegram refuses still goes out, as plain text
+  private async send(
+    chatId: number,
+    text: string,
+    extra: { reply_markup?: ReturnType<typeof keyboard> } = {},
+    links = true,
+  ): Promise<Message.TextMessage> {
+    const entities = links ? linkEntities(text, this.jira) : [];
+    if (!entities.length) return this.bot.api.sendMessage(chatId, text, extra);
+    try {
+      return await this.bot.api.sendMessage(chatId, text, {
+        ...extra,
+        entities: entities as MessageEntity[],
+      });
+    } catch (error) {
+      if (!/entit/i.test(String(error))) throw error;
+      this.logger.warn(`links dropped: ${error}`);
+      return this.bot.api.sendMessage(chatId, text, extra);
+    }
   }
 
   // Created on first use: grammY throws on an empty token, and the app must
@@ -80,16 +126,16 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
     chatId: number,
     text: string,
     buttons?: InlineButton[][],
+    options?: { links?: boolean },
   ): Promise<void> {
     const chunks = splitForTelegram(text);
     for (const [i, chunk] of chunks.entries()) {
       const last = i === chunks.length - 1;
-      await this.bot.api.sendMessage(
+      await this.send(
         chatId,
         chunk,
-        last && buttons?.length
-          ? { reply_markup: keyboard(buttons) }
-          : undefined,
+        last && buttons?.length ? { reply_markup: keyboard(buttons) } : {},
+        options?.links !== false,
       );
     }
   }
@@ -128,7 +174,7 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
       throw new Error(
         `Message of ${text.length} chars is over Telegram's ${MESSAGE_LIMIT}`,
       );
-    const sent = await this.bot.api.sendMessage(chatId, text, {
+    const sent = await this.send(chatId, text, {
       reply_markup: keyboard(buttons),
     });
     return sent.message_id;

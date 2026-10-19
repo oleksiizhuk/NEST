@@ -35,6 +35,14 @@ export class MongoPmSettings implements IPmSettingsStore {
         ).map((p) => [p.name, p.username]),
       );
     }
+    if (Array.isArray(values.teamRoles)) {
+      values.teamRoles = Object.fromEntries(
+        (values.teamRoles as Array<{ name: string; role: string }>).map((p) => [
+          p.name,
+          p.role,
+        ]),
+      );
+    }
     if (Array.isArray(values.teamAway)) {
       values.teamAway = Object.fromEntries(
         (
@@ -68,6 +76,11 @@ export class MongoPmSettings implements IPmSettingsStore {
           ? Object.entries(v as Record<string, string>).map(
               ([name, username]) => ({ name, username }),
             )
+          : k === 'teamRoles' && v
+          ? Object.entries(v as Record<string, string>).map(([name, role]) => ({
+              name,
+              role,
+            }))
           : k === 'teamAway' && v
           ? Object.entries(v as TeamAway).map(([name, a]) => ({
               name,

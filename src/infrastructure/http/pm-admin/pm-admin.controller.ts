@@ -157,6 +157,17 @@ export class AdminTelegramBody {
   username?: string | null;
 }
 
+export class AdminRoleBody {
+  @IsString()
+  @MaxLength(100)
+  name: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  role?: string | null;
+}
+
 export class AdminNudgeBody {
   @IsString()
   @MaxLength(100)
@@ -544,6 +555,24 @@ export class PmAdminController {
       await this.admin.setTelegramUsername(
         body.name,
         body.username || null,
+        req.pmAdmin,
+      );
+      return this.team();
+    } catch (error) {
+      if (error instanceof SettingsError)
+        throw new BadRequestException(error.message);
+      throw error;
+    }
+  }
+
+  // A person's role in the team (null removes it); the digest uses it
+  @Put('team/role')
+  @UseGuards(PmAdminGuard)
+  async teamRole(@Body() body: AdminRoleBody, @Req() req: { pmAdmin: number }) {
+    try {
+      await this.admin.setTeamRole(
+        body.name,
+        body.role?.trim() || null,
         req.pmAdmin,
       );
       return this.team();

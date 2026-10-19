@@ -43,6 +43,8 @@ export interface IPmConfig {
   teamAway?: TeamAway;
   // Jira display name → Telegram username (admin page)
   telegramUsernames?: Record<string, string>;
+  // Jira display name → role in the team (admin page)
+  teamRoles?: Record<string, string>;
   // Релиз: scope growth is counted from this day
   releaseBaseline?: string | null;
   // For links on the admin page: Jira site origin and the GitHub org
