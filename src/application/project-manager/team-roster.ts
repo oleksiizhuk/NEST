@@ -7,9 +7,10 @@ export interface RosterPerson {
 }
 
 const USERNAME = /^[a-z][a-z0-9_]{3,31}$/i;
-// An @username not glued to an email or a longer word
+// An @username on its own: not in an email or a URL (…/@author), not a
+// scoped package (@types/node, @react-navigation/native)
 const MENTION =
-  /(?<![\p{L}\p{N}_@.])@([A-Za-z][A-Za-z0-9_]{3,31})(?![\p{L}\p{N}_@])/gu;
+  /(?<![\p{L}\p{N}_@/:])@([A-Za-z][A-Za-z0-9_]{3,31})(?![\p{L}\p{N}_@/-])/gu;
 
 const clean = (s: string) => s.replace(/[<>\r\n]+/g, ' ').trim();
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -45,7 +46,7 @@ export const rosterBlock = (roster: RosterPerson[]): string => {
     'Give each of these people their own line in Focus today, never two people in one line; someone without tickets of their own gets one too (QA: what to test or check, on which build).',
     ...(tagged
       ? [
-          'At a person\'s first mention write the name with their Telegram username after it, like "Vlad (@vlad_k)". Never put @ before anyone else\'s name.',
+          'At a person\'s first mention write the name with their Telegram username after it, like "Max (@max_b)". Never put @ before anyone else\'s name.',
         ]
       : []),
   ].join('\n');
@@ -61,8 +62,8 @@ const wordAt = (text: string, word: string): number => {
 
 // Only roster usernames may notify anyone: any other @handle the model wrote
 // loses its @. A rostered person the model named without the tag gets it at
-// the first mention of their full name, or of their first name when no one
-// else on the roster shares it.
+// the first mention of their full name, or of their first name standing
+// alone when no one else on the roster shares it.
 export const tagPeople = (text: string, roster: RosterPerson[]): string => {
   const allowed = new Set(
     roster.map((p) => p.username).filter((u): u is string => Boolean(u)),
@@ -83,6 +84,9 @@ export const tagPeople = (text: string, roster: RosterPerson[]): string => {
     if (at < 0 && short !== p.name && short.length >= 3 && !shared) {
       word = short;
       at = wordAt(out, word);
+      // "Vlad Petrov" is someone else when the roster has Vlad Koropets: a
+      // first name followed by another capitalised word is never tagged
+      if (at >= 0 && /^ +\p{Lu}/u.test(out.slice(at + word.length))) at = -1;
     }
     if (at < 0) continue;
     const end = at + word.length;

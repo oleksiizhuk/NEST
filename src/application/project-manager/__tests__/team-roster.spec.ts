@@ -5,43 +5,43 @@ import {
 } from '@application/project-manager/team-roster';
 
 const roster = buildRoster(
-  { 'Vlad Koropets': 'vlad_k', Andrii: 'andrii_qa', Anna: 'Anna_PM' },
-  { Andrii: 'QA', 'Ira Zanizdra': 'QA' },
+  { 'Max Brenner': 'max_b', Tomas: 'tomas_qa', Anna: 'Anna_PM' },
+  { Tomas: 'QA', 'Lena Ward': 'QA' },
 );
 
 describe('team roster', () => {
   it('joins roles and usernames by name', () => {
     expect(roster).toEqual([
-      { name: 'Andrii', role: 'QA', username: 'andrii_qa' },
       { name: 'Anna', role: null, username: 'anna_pm' },
-      { name: 'Ira Zanizdra', role: 'QA', username: null },
-      { name: 'Vlad Koropets', role: null, username: 'vlad_k' },
+      { name: 'Lena Ward', role: 'QA', username: null },
+      { name: 'Max Brenner', role: null, username: 'max_b' },
+      { name: 'Tomas', role: 'QA', username: 'tomas_qa' },
     ]);
   });
 
   it('asks for a line per person and tags only when someone has Telegram', () => {
     const block = rosterBlock(roster);
-    expect(block).toContain('- Andrii — QA — @andrii_qa');
-    expect(block).toContain('- Ira Zanizdra — QA');
+    expect(block).toContain('- Tomas — QA — @tomas_qa');
+    expect(block).toContain('- Lena Ward — QA');
     expect(block).toContain('own line in Focus today');
-    expect(block).toContain('(@vlad_k)');
-    expect(rosterBlock(buildRoster({}, { Andrii: 'QA' }))).not.toContain('@');
+    expect(block).toContain('(@max_b)');
+    expect(rosterBlock(buildRoster({}, { Tomas: 'QA' }))).not.toContain('@');
     expect(rosterBlock([])).toBe('');
   });
 
   it('keeps roster tags and drops the @ of anyone else', () => {
-    expect(
-      tagPeople('Vlad (@vlad_k) and @faisal_x; mail a@b.com', roster),
-    ).toBe('Vlad (@vlad_k) and faisal_x; mail a@b.com');
+    expect(tagPeople('Max (@max_b) and @client_x; mail a@b.com', roster)).toBe(
+      'Max (@max_b) and client_x; mail a@b.com',
+    );
   });
 
   it('tags a rostered person the model named without a tag, once', () => {
     const out = tagPeople(
-      '- Vlad: smoke-test prod. Ask Vlad again.\n- Andrii: test the 10-18 build',
+      '- Max: smoke-test prod. Ask Max again.\n- Tomas: test the 10-18 build',
       roster,
     );
     expect(out).toBe(
-      '- Vlad (@vlad_k): smoke-test prod. Ask Vlad again.\n- Andrii (@andrii_qa): test the 10-18 build',
+      '- Max (@max_b): smoke-test prod. Ask Max again.\n- Tomas (@tomas_qa): test the 10-18 build',
     );
   });
 
@@ -52,8 +52,21 @@ describe('team roster', () => {
   });
 
   it('matches whole words only', () => {
-    expect(tagPeople('Annatoly and Andriiko', roster)).toBe(
-      'Annatoly and Andriiko',
+    expect(tagPeople('Annatoly and Tomasko', roster)).toBe(
+      'Annatoly and Tomasko',
     );
+  });
+
+  it('never tags a namesake who is not on the roster', () => {
+    expect(tagPeople('- Max Petrov: fix login', roster)).toBe(
+      '- Max Petrov: fix login',
+    );
+  });
+
+  it('keeps the @ of scoped packages, URLs and emails', () => {
+    const text =
+      'bump @react-navigation/native and @types/node, see https://medium.com/@author/post, mail a@b.com';
+    expect(tagPeople(text, roster)).toBe(text);
+    expect(tagPeople('done.@client_x', roster)).toBe('done.client_x');
   });
 });

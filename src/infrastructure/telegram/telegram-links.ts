@@ -8,9 +8,21 @@ export interface LinkEntity {
   url?: string;
 }
 
-const URL = /https?:\/\/[^\s<>()]+[^\s<>().,;:!?'"»]/g;
-// A Telegram username: 5–32 chars, not part of an email or a longer word
-const MENTION = /(?<![\w@.])@[A-Za-z][A-Za-z0-9_]{3,31}(?![\w@])/g;
+const URL = /https?:\/\/[^\s<>]+[^\s<>().,;:!?'"»]/g;
+// A Telegram username: 5–32 chars, not part of an email, a URL or a longer word
+const MENTION = /(?<![\w@/:])@[A-Za-z][A-Za-z0-9_]{3,31}(?![\w@/-])/g;
+// Telegram caps entities per message; past this the rest stays plain text
+const MAX_ENTITIES = 100;
+
+// A URL that opened "(" keeps its ")" (wiki/Foo_(bar)); one inside "(…)"
+// text does not
+const urlLength = (text: string, at: number, raw: string): number => {
+  const open = (raw.match(/\(/g) ?? []).length;
+  const close = (raw.match(/\)/g) ?? []).length;
+  return open > close && text[at + raw.length] === ')'
+    ? raw.length + 1
+    : raw.length;
+};
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -35,7 +47,11 @@ export const linkEntities = (
   };
   // JS string indices are UTF-16 code units, which is what Telegram counts
   for (const m of text.matchAll(URL))
-    add({ type: 'url', offset: m.index ?? 0, length: m[0].length });
+    add({
+      type: 'url',
+      offset: m.index ?? 0,
+      length: urlLength(text, m.index ?? 0, m[0]),
+    });
   for (const m of text.matchAll(MENTION)) {
     const at = m.index ?? 0;
     if (free(at, at + m[0].length))
@@ -58,5 +74,5 @@ export const linkEntities = (
         });
     }
   }
-  return out.sort((a, b) => a.offset - b.offset);
+  return out.sort((a, b) => a.offset - b.offset).slice(0, MAX_ENTITIES);
 };

@@ -362,13 +362,13 @@ describe('PostDailyDigestUseCase', () => {
 
   it('gives the model the team from the admin page and tags only them', async () => {
     ai.digest.mockResolvedValueOnce(
-      '- Andrii: test the build\n- @faisal: approve',
+      '- Tomas: test the build\n- @client: approve',
     );
     const runtime = {
       current: jest.fn().mockResolvedValue({
         ...config,
-        telegramUsernames: { Andrii: 'andrii_qa' },
-        teamRoles: { Andrii: 'QA' },
+        telegramUsernames: { Tomas: 'tomas_qa' },
+        teamRoles: { Tomas: 'QA' },
       }),
     };
     const useCase = new PostDailyDigestUseCase(
@@ -383,11 +383,11 @@ describe('PostDailyDigestUseCase', () => {
     );
     await useCase.execute(now);
     expect(ai.digest.mock.calls[0][0].question).toContain(
-      '- Andrii — QA — @andrii_qa',
+      '- Tomas — QA — @tomas_qa',
     );
     expect(telegram.sendMessage).toHaveBeenCalledWith(
       -100,
-      '- Andrii (@andrii_qa): test the build\n- faisal: approve',
+      '- Tomas (@tomas_qa): test the build\n- client: approve',
     );
   });
 

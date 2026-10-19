@@ -101,6 +101,8 @@ describe('HandleTelegramMessageUseCase', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       OWNER_ID,
       'Sarcastic reply',
+      undefined,
+      { links: false },
     );
     expect(mockRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -127,6 +129,8 @@ describe('HandleTelegramMessageUseCase', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       GROUP_CHAT_ID,
       'Sarcastic reply',
+      undefined,
+      { links: false },
     );
   });
 
@@ -139,6 +143,8 @@ describe('HandleTelegramMessageUseCase', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       GROUP_CHAT_ID,
       'Sarcastic reply',
+      undefined,
+      { links: false },
     );
   });
 
@@ -242,6 +248,8 @@ describe('HandleTelegramMessageUseCase', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       OWNER_ID,
       'Sarcastic reply',
+      undefined,
+      { links: false },
     );
   });
 

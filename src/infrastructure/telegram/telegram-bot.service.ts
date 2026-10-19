@@ -82,8 +82,9 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
     chatId: number,
     text: string,
     extra: { reply_markup?: ReturnType<typeof keyboard> } = {},
+    links = true,
   ): Promise<Message.TextMessage> {
-    const entities = linkEntities(text, this.jira);
+    const entities = links ? linkEntities(text, this.jira) : [];
     if (!entities.length) return this.bot.api.sendMessage(chatId, text, extra);
     try {
       return await this.bot.api.sendMessage(chatId, text, {
@@ -125,6 +126,7 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
     chatId: number,
     text: string,
     buttons?: InlineButton[][],
+    options?: { links?: boolean },
   ): Promise<void> {
     const chunks = splitForTelegram(text);
     for (const [i, chunk] of chunks.entries()) {
@@ -133,6 +135,7 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
         chatId,
         chunk,
         last && buttons?.length ? { reply_markup: keyboard(buttons) } : {},
+        options?.links !== false,
       );
     }
   }

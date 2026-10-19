@@ -95,30 +95,46 @@ describe('TelegramBotService', () => {
     const env: Record<string, string> = {
       TELEGRAM_TOKEN: '1:abc',
       JIRA_BASE_URL: 'https://example.atlassian.net/jira',
-      PM_JIRA_PROJECTS: 'orv',
+      PM_JIRA_PROJECTS: 'abc',
     };
     const service = new TelegramBotService({
       get: (k: string) => env[k],
     } as any);
-    await service.sendMessage(42, 'Done ORV-7');
-    expect(mockApi.sendMessage).toHaveBeenCalledWith(42, 'Done ORV-7', {
+    await service.sendMessage(42, 'Done ABC-7');
+    expect(mockApi.sendMessage).toHaveBeenCalledWith(42, 'Done ABC-7', {
       entities: [
         {
           type: 'text_link',
           offset: 5,
           length: 5,
-          url: 'https://example.atlassian.net/browse/ORV-7',
+          url: 'https://example.atlassian.net/browse/ABC-7',
         },
       ],
     });
     mockApi.sendMessage.mockRejectedValueOnce(
-      new Error("Bad Request: can't parse entities"),
+      new Error('Bad Request: ENTITY_BOUNDS_INVALID'),
     );
-    await service.sendMessage(42, 'Done ORV-8');
-    expect(mockApi.sendMessage).toHaveBeenLastCalledWith(42, 'Done ORV-8', {});
+    await service.sendMessage(42, 'Done ABC-8');
+    expect(mockApi.sendMessage).toHaveBeenLastCalledWith(42, 'Done ABC-8', {});
+    // A checklist keeps its buttons on the plain resend
+    mockApi.sendMessage
+      .mockRejectedValueOnce(new Error('Bad Request: ENTITY_BOUNDS_INVALID'))
+      .mockResolvedValueOnce({ message_id: 7 });
+    const buttons = [[{ text: '⬜ 1', data: 'ck:1' }]];
+    await expect(
+      service.sendWithButtons(42, 'ABC-1 broken', buttons),
+    ).resolves.toBe(7);
+    expect(mockApi.sendMessage).toHaveBeenLastCalledWith(42, 'ABC-1 broken', {
+      reply_markup: {
+        inline_keyboard: [[{ text: '⬜ 1', callback_data: 'ck:1' }]],
+      },
+    });
+    // The persona's replies carry no tracker links
+    await service.sendMessage(42, 'ABC-3', undefined, { links: false });
+    expect(mockApi.sendMessage).toHaveBeenLastCalledWith(42, 'ABC-3', {});
     // Any other failure is not hidden behind a resend
     mockApi.sendMessage.mockRejectedValueOnce(new Error('Forbidden: blocked'));
-    await expect(service.sendMessage(42, 'ORV-9')).rejects.toThrow('blocked');
+    await expect(service.sendMessage(42, 'ABC-9')).rejects.toThrow('blocked');
   });
 
   it('shows the typing indicator', async () => {
