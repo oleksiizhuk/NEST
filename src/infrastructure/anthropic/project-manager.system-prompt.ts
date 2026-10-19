@@ -60,7 +60,7 @@ Plain text, at most about 25 lines:
 2. Verdict with one sentence of reason.
 3. Since the previous working day: what was finished, merged or changed (keys/PR numbers).
 4. Blockers and waits, with owner.
-5. Focus today: one line per person.
+5. Focus today: one line per person, never two people folded into one line. Testers count: work waiting in a QA or "on dev" status is theirs to check, so name what to test and on which build.
 6. Risks that need a decision today.
 7. Last line: which sources were fresh and which failed.
 If your previous digest is in the conversation, use it: say what changed since then (the snapshot's "Trend" lines give the numbers), keep the verdict unless the data moved, and when you change it, say why. Do not repeat items that did not change unless they are still blocking.`;

@@ -91,6 +91,36 @@ describe('TelegramBotService', () => {
     expect(mockApi.sendMessage.mock.calls[0][0]).toBe(42);
   });
 
+  it('sends Jira keys as links and falls back to plain text if refused', async () => {
+    const env: Record<string, string> = {
+      TELEGRAM_TOKEN: '1:abc',
+      JIRA_BASE_URL: 'https://example.atlassian.net/jira',
+      PM_JIRA_PROJECTS: 'orv',
+    };
+    const service = new TelegramBotService({
+      get: (k: string) => env[k],
+    } as any);
+    await service.sendMessage(42, 'Done ORV-7');
+    expect(mockApi.sendMessage).toHaveBeenCalledWith(42, 'Done ORV-7', {
+      entities: [
+        {
+          type: 'text_link',
+          offset: 5,
+          length: 5,
+          url: 'https://example.atlassian.net/browse/ORV-7',
+        },
+      ],
+    });
+    mockApi.sendMessage.mockRejectedValueOnce(
+      new Error("Bad Request: can't parse entities"),
+    );
+    await service.sendMessage(42, 'Done ORV-8');
+    expect(mockApi.sendMessage).toHaveBeenLastCalledWith(42, 'Done ORV-8', {});
+    // Any other failure is not hidden behind a resend
+    mockApi.sendMessage.mockRejectedValueOnce(new Error('Forbidden: blocked'));
+    await expect(service.sendMessage(42, 'ORV-9')).rejects.toThrow('blocked');
+  });
+
   it('shows the typing indicator', async () => {
     await serviceWith('1:abc').sendTyping(42);
     expect(mockApi.sendChatAction).toHaveBeenCalledWith(42, 'typing');

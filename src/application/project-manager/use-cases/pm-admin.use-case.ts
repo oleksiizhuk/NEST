@@ -132,6 +132,15 @@ export class PmAdminUseCase {
     this.runtime.invalidate();
   }
 
+  // A person's role on the Сотрудники page (QA, iOS…); null removes it
+  async setTeamRole(name: string, role: string | null, by: number) {
+    const current = { ...((await this.store.get()).values.teamRoles ?? {}) };
+    if (role) current[name] = role;
+    else delete current[name];
+    await this.store.save(cleanSettings({ teamRoles: current }), by);
+    this.runtime.invalidate();
+  }
+
   // "Написать в чат": the owner's message to a PM group the bot works in,
   // with the person mentioned when their username is linked
   async nudge(name: string, text: string, chatId: number, by?: number) {
@@ -269,6 +278,7 @@ export class PmAdminUseCase {
       teamAway: {},
       releaseBaseline: null,
       telegramUsernames: {},
+      teamRoles: {},
       todayHidden: [],
       adminUsers: [],
     };

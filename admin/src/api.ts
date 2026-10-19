@@ -237,6 +237,8 @@ export interface TeamView {
     thresholds: Thresholds;
     links: Links;
     telegram: Record<string, string>;
+    // Jira name → role in the team; the morning digest uses it
+    roles?: Record<string, string>;
     reviewers: Record<string, { reviewed: number; pending: number }>;
     sprints: Record<string, { committed: number; done: number }>;
     flow: WeeklyFlow | null;
@@ -529,6 +531,8 @@ export const api = {
     ).then((r) => r.notes ?? null),
   setTelegram: (name: string, username: string | null) =>
     call<TeamView>('PUT', 'team/telegram', { name, username }),
+  setRole: (name: string, role: string | null) =>
+    call<TeamView>('PUT', 'team/role', { name, role }),
   nudge: (name: string, text: string, chatId: number) =>
     call<{ sent: boolean; mention: boolean }>('POST', 'team/nudge', {
       name,

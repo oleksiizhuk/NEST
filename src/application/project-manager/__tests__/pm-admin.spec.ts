@@ -333,5 +333,13 @@ describe('PmAdminUseCase — Сегодня and absences', () => {
       { telegramUsernames: { Ann: 'ann_k', Bob: 'bob_dev' } },
       42,
     );
+    await admin.setTeamRole('Bob', 'QA', 42);
+    expect(store.save).toHaveBeenLastCalledWith(
+      { teamRoles: { Bob: 'QA' } },
+      42,
+    );
+    await expect(admin.setTeamRole('Bob', 'x'.repeat(41), 42)).rejects.toThrow(
+      'role',
+    );
   });
 });

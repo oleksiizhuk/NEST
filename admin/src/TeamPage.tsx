@@ -649,6 +649,48 @@ function TelegramEditor({
   );
 }
 
+function RoleEditor({
+  role,
+  onSave,
+}: {
+  role: string | null;
+  onSave: (r: string | null) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(role ?? '');
+  if (!editing)
+    return (
+      <button
+        className="link small"
+        onClick={() => setEditing(true)}
+        title="Роль попадает в утреннюю сводку: у каждого своя строка, QA тоже"
+      >
+        {role ? `Роль: ${role}` : 'Указать роль'}
+      </button>
+    );
+  return (
+    <form
+      className="inline-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        await onSave(value.trim() || null);
+        setEditing(false);
+      }}
+    >
+      <input
+        value={value}
+        maxLength={40}
+        placeholder="QA, iOS, бэкенд…"
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <button type="submit">Сохранить</button>
+      <button type="button" className="ghost" onClick={() => setEditing(false)}>
+        Отмена
+      </button>
+    </form>
+  );
+}
+
 function PersonCard({
   p,
   links,
@@ -657,11 +699,13 @@ function PersonCard({
   reviewWait,
   weeks,
   telegram,
+  role,
   review,
   sprint,
   onGithub,
   onAway,
   onTelegram,
+  onRole,
 }: {
   review: { reviewed: number; pending: number } | null;
   sprint: { committed: number; done: number } | null;
@@ -672,8 +716,10 @@ function PersonCard({
   reviewWait: number;
   weeks: string[];
   telegram: string | null;
+  role: string | null;
   onGithub: (login: string | null) => Promise<void>;
   onTelegram: (username: string | null) => Promise<void>;
+  onRole: (role: string | null) => Promise<void>;
   onAway: (until: string | null, note: string | null) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -718,6 +764,9 @@ function PersonCard({
           )}
           <div>
             <TelegramEditor username={telegram} onSave={onTelegram} />
+          </div>
+          <div>
+            <RoleEditor role={role} onSave={onRole} />
           </div>
           <div>
             <AwayEditor p={p} onAway={onAway} />
@@ -1026,11 +1075,19 @@ export function TeamPage({ onUnauthorized }: { onUnauthorized: () => void }) {
                 reviewWait={team.thresholds.reviewWaitDays}
                 weeks={team.flow?.weeks ?? []}
                 telegram={team.telegram?.[p.name] ?? null}
+                role={team.roles?.[p.name] ?? null}
                 review={p.github ? team.reviewers?.[p.github] ?? null : null}
                 sprint={team.sprints?.[p.name] ?? null}
                 onTelegram={async (username) => {
                   try {
                     setView(await api.setTelegram(p.name, username));
+                  } catch (e) {
+                    handle(e);
+                  }
+                }}
+                onRole={async (role) => {
+                  try {
+                    setView(await api.setRole(p.name, role));
                   } catch (e) {
                     handle(e);
                   }

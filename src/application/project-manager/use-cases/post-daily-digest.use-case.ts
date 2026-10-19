@@ -27,6 +27,12 @@ import {
 import { loadKnowledge } from '@application/project-manager/knowledge-loader';
 import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-cases/refresh-project-snapshot.use-case';
 import { todayLine } from '@application/project-manager/release-clock';
+import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
+import {
+  buildRoster,
+  rosterBlock,
+  tagPeople,
+} from '@application/project-manager/team-roster';
 
 export const DIGEST_REQUEST =
   'Write the daily status digest for the team chat, following the digest ' +
@@ -47,6 +53,8 @@ export class PostDailyDigestUseCase {
     @Optional()
     @Inject(PROJECT_SNAPSHOT_REPOSITORY)
     private readonly snapshots?: IProjectSnapshotRepository,
+    // Roles and Telegram usernames from the Сотрудники page
+    @Optional() private readonly runtime?: PmRuntimeConfig,
   ) {}
 
   // Always rebuilds the snapshot first: the digest is the morning's source
@@ -69,7 +77,13 @@ export class PostDailyDigestUseCase {
       this.knowledge,
       this.config.knowledgeInlineChars,
     );
-    const text = await this.ai.digest({
+    const live = await this.runtime?.current().catch(() => null);
+    const roster = buildRoster(
+      live?.telegramUsernames ?? this.config.telegramUsernames,
+      live?.teamRoles ?? this.config.teamRoles,
+    );
+    const team = rosterBlock(roster);
+    const written = await this.ai.digest({
       history: previous
         ? [
             {
@@ -86,9 +100,12 @@ export class PostDailyDigestUseCase {
       question: `${todayLine(
         now,
         this.config.releaseDate,
-      )}\n\n${DIGEST_REQUEST}`,
+      )}\n\n${DIGEST_REQUEST}${team ? `\n\n${team}` : ''}`,
       deadline,
     });
+    // Only the people on the roster are @-mentioned, never a guessed handle
+    const text =
+      written === PM_UNAVAILABLE_REPLY ? written : tagPeople(written, roster);
     let delivered = 0;
     for (const chatId of targets) {
       // One unreachable chat (bot removed) must not stop the others
