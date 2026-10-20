@@ -69,6 +69,19 @@ describe('team roster', () => {
     ]);
   });
 
+  it('leaves an own line the model already tagged as it is', () => {
+    expect(tagPeople('- Max (@max_b): smoke-test', roster)).toBe(
+      '- Max (@max_b): smoke-test',
+    );
+  });
+
+  it('does not take a full name for a rostered first name', () => {
+    const two = buildRoster({ Max: 'max_solo', 'Max Brenner': 'max_b' });
+    expect(tagPeople('- Max Brenner: x\n- Max: y', two)).toBe(
+      '- Max Brenner (@max_b): x\n- Max (@max_solo): y',
+    );
+  });
+
   it('does not tag by a first name two people share', () => {
     const two = buildRoster({ 'Anna A': 'anna_a', 'Anna B': 'anna_b' });
     expect(tagPeople('Anna: approve', two)).toBe('Anna: approve');
