@@ -46,7 +46,7 @@ export const rosterBlock = (roster: RosterPerson[]): string => {
     'Give each of these people their own line in Focus today, never two people in one line; someone without tickets of their own gets one too (QA: what to test or check, on which build).',
     ...(tagged
       ? [
-          'At a person\'s first mention write the name with their Telegram username after it, like "Max (@max_b)". Never put @ before anyone else\'s name.',
+          'Start each person\'s Focus line with their name and Telegram username, like "- Max (@max_b): …", and write the username the same way at their first mention elsewhere. Never put @ before anyone else\'s name.',
         ]
       : []),
   ].join('\n');
@@ -60,28 +60,67 @@ const wordAt = (text: string, word: string): number => {
   return m ? m.index : -1;
 };
 
+const first = (name: string) => name.split(/\s+/)[0];
+
+// The names a person may be written by: the full name, and the first name
+// alone when it is long enough and no one else on the roster shares it
+const namesOf = (p: RosterPerson, roster: RosterPerson[]): string[] => {
+  const short = first(p.name);
+  const shared = roster.some(
+    (o) => o !== p && first(o.name).toLowerCase() === short.toLowerCase(),
+  );
+  return short !== p.name && short.length >= 3 && !shared
+    ? [p.name, short]
+    : [p.name];
+};
+
+const tagged = (text: string, username: string) =>
+  new RegExp(`@${username}(?![A-Za-z0-9_])`, 'i').test(text);
+
+// A line that starts with the person ("- Max: smoke-test prod") is their own
+// task, so it carries their tag even when an earlier mention already does:
+// that is the line they read. Another word right after the name ("Max
+// Petrov:") is someone else.
+const tagOwnLines = (text: string, roster: RosterPerson[]): string =>
+  text
+    .split('\n')
+    .map((line) => {
+      for (const p of roster) {
+        if (!p.username || tagged(line, p.username)) continue;
+        for (const name of namesOf(p, roster)) {
+          const m = new RegExp(
+            `^\\s*(?:[-•*]\\s*)?${escape(name)}(?=\\s*[:—–(,])`,
+            'u',
+          ).exec(line);
+          if (!m) continue;
+          const end = m[0].length;
+          return `${line.slice(0, end)} (@${p.username})${line.slice(end)}`;
+        }
+      }
+      return line;
+    })
+    .join('\n');
+
 // Only roster usernames may notify anyone: any other @handle the model wrote
-// loses its @. A rostered person the model named without the tag gets it at
-// the first mention of their full name, or of their first name standing
-// alone when no one else on the roster shares it.
+// loses its @. Each person's own line starts with their tag; someone named
+// only elsewhere gets it at the first mention of their full name, or of their
+// first name standing alone when no one else on the roster shares it.
 export const tagPeople = (text: string, roster: RosterPerson[]): string => {
   const allowed = new Set(
     roster.map((p) => p.username).filter((u): u is string => Boolean(u)),
   );
-  let out = text.replace(MENTION, (all, handle: string) =>
-    allowed.has(handle.toLowerCase()) ? all : handle,
+  let out = tagOwnLines(
+    text.replace(MENTION, (all, handle: string) =>
+      allowed.has(handle.toLowerCase()) ? all : handle,
+    ),
+    roster,
   );
-  const first = (name: string) => name.split(/\s+/)[0];
   for (const p of roster) {
-    if (!p.username) continue;
-    if (new RegExp(`@${p.username}(?![A-Za-z0-9_])`, 'i').test(out)) continue;
-    const short = first(p.name);
-    const shared = roster.some(
-      (o) => o !== p && first(o.name).toLowerCase() === short.toLowerCase(),
-    );
-    let word = p.name;
+    if (!p.username || tagged(out, p.username)) continue;
+    const [full, short] = namesOf(p, roster);
+    let word = full;
     let at = wordAt(out, word);
-    if (at < 0 && short !== p.name && short.length >= 3 && !shared) {
+    if (at < 0 && short) {
       word = short;
       at = wordAt(out, word);
       // "Vlad Petrov" is someone else when the roster has Vlad Koropets: a

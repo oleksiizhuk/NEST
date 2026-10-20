@@ -45,6 +45,43 @@ describe('team roster', () => {
     );
   });
 
+  it("tags each person's own line even after an earlier mention", () => {
+    const out = tagPeople(
+      [
+        'Since yesterday: ABC-1 is on dev for Tomas (@tomas_qa), Max fixed it.',
+        'Focus today:',
+        '- Max Brenner: smoke-test prod',
+        '- Tomas: verify ABC-1',
+        '• Anna (QA lead) — approve flags',
+        '- Max Petrov: not ours',
+        '- Lena Ward: no Telegram',
+      ].join('\n'),
+      roster,
+    );
+    expect(out.split('\n')).toEqual([
+      'Since yesterday: ABC-1 is on dev for Tomas (@tomas_qa), Max fixed it.',
+      'Focus today:',
+      '- Max Brenner (@max_b): smoke-test prod',
+      '- Tomas (@tomas_qa): verify ABC-1',
+      '• Anna (@anna_pm) (QA lead) — approve flags',
+      '- Max Petrov: not ours',
+      '- Lena Ward: no Telegram',
+    ]);
+  });
+
+  it('leaves an own line the model already tagged as it is', () => {
+    expect(tagPeople('- Max (@max_b): smoke-test', roster)).toBe(
+      '- Max (@max_b): smoke-test',
+    );
+  });
+
+  it('does not take a full name for a rostered first name', () => {
+    const two = buildRoster({ Max: 'max_solo', 'Max Brenner': 'max_b' });
+    expect(tagPeople('- Max Brenner: x\n- Max: y', two)).toBe(
+      '- Max Brenner (@max_b): x\n- Max (@max_solo): y',
+    );
+  });
+
   it('does not tag by a first name two people share', () => {
     const two = buildRoster({ 'Anna A': 'anna_a', 'Anna B': 'anna_b' });
     expect(tagPeople('Anna: approve', two)).toBe('Anna: approve');
