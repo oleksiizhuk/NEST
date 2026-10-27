@@ -1,3 +1,4 @@
+import { personMatcher } from '@application/project-manager/person-scope';
 import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
@@ -152,7 +153,21 @@ export class WatchProjectUseCase {
     const codeFresh = Boolean(snapshot.section('code')?.ok);
     const live =
       (await this.runtime?.current().catch(() => undefined)) ?? this.config;
-    for (const chatId of live.alertChatIds ?? []) {
+    // Personal mode: only the owner's private chat, only alerts about the
+    // person's own tickets
+    const focus = live.focusPerson?.trim();
+    const about = focus
+      ? personMatcher(snapshot, {
+          name: focus,
+          githubLogin: live.githubLogins?.[focus] ?? null,
+        })
+      : null;
+    const chats = focus
+      ? this.telegramConfig?.ownerId
+        ? [this.telegramConfig.ownerId]
+        : []
+      : live.alertChatIds ?? [];
+    for (const chatId of chats) {
       // A pipeline that is green again may alert again when it next breaks
       if (codeFresh) {
         await this.alerts
@@ -167,6 +182,7 @@ export class WatchProjectUseCase {
       let waiting = 0;
       const perRule = new Map<string, number>();
       for (const signal of signals) {
+        if (about && !about(`${signal.subject} ${signal.text}`)) continue;
         // About people: the owner's own chat only, never a group or a
         // teammate on the alert list
         if (

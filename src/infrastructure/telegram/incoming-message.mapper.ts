@@ -27,11 +27,13 @@ export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
 
 // Callback data written by the bot: "c:<id>" confirm, "x:<id>" cancel,
 // "o:<n>" the n-th option, "f:+:<token>" / "f:-:<token>" feedback,
-// "ck:<run>:<t|d><n>" an audit checklist item. An option's meaning is its button label, read
+// "ck:<run>:<t|d><n>" an audit checklist item, "pp:<id>:<a|s|r|x>" a rating
+// of an unblock proposal. An option's meaning is its button label, read
 // back from the message itself, so nothing has to be stored for it.
 const ACTION_ID = /^[A-Z0-9]{1,16}$/i;
 const FEEDBACK = /^f:([+-]):([a-z0-9]{6,16})$/i;
 const APPROVE = /^a:([+-]):([a-f0-9]{32})$/;
+const PROPOSAL = /^pp:([a-f0-9]{8}):([asrx])$/;
 
 export const mapCallbackToIncoming = (
   query: CallbackQuery,
@@ -48,7 +50,13 @@ export const mapCallbackToIncoming = (
   let feedback: { vote: 1 | -1; token: string } | null = null;
   const vote = data.match(FEEDBACK);
   const check = prefix === 'ck' ? parseCheckData(data) : null;
-  if (check) {
+  const rated = data.match(PROPOSAL);
+  let proposal: { id: string; action: 'a' | 's' | 'r' | 'x' } | null = null;
+  if (rated) {
+    kind = 'proposal';
+    proposal = { id: rated[1], action: rated[2] as 'a' | 's' | 'r' | 'x' };
+    text = '💡';
+  } else if (check) {
     kind = 'check';
     text = '☑️';
   } else if (approveMatch) {
@@ -96,6 +104,7 @@ export const mapCallbackToIncoming = (
       ...(feedback ?? {}),
       ...(approval ?? {}),
       ...(check ? { check } : {}),
+      ...(proposal ? { proposal } : {}),
     },
   };
 };

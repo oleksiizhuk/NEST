@@ -35,6 +35,10 @@ export interface PmSettings {
   teamRoles?: Record<string, string> | null;
   // Релиз: the day scope growth is counted from
   releaseBaseline?: string | null;
+  // Personal mode: the Jira display name of the one person the bot works
+  // for. Set, the bot talks only to the owner in private, sees only that
+  // person's work and proposes how to unblock it; null = the team bot.
+  focusPerson?: string | null;
   // People besides the owner with admin access; managed by its own
   // owner-only endpoints, never through the settings form
   adminUsers?: Array<{
@@ -61,6 +65,7 @@ export const SETTING_KEYS: Array<keyof PmSettings> = [
   'releaseBaseline',
   'telegramUsernames',
   'teamRoles',
+  'focusPerson',
 ];
 
 export interface IPmSettingsStore {
@@ -288,6 +293,20 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
       throw new SettingsError('releaseBaseline: date YYYY-MM-DD');
     else out.releaseBaseline = v;
   }
+  if (has('focusPerson')) {
+    const v = input.focusPerson;
+    // Goes into every prompt: one short line, no markup
+    const name =
+      v === null
+        ? ''
+        : String(v ?? '')
+            .replace(/[<>\r\n]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    if (name.length > 100)
+      throw new SettingsError('focusPerson: up to 100 characters');
+    out.focusPerson = name || null;
+  }
   if (has('pmInOwnerGroups')) {
     if (nil('pmInOwnerGroups')) out.pmInOwnerGroups = null;
     else if (typeof input.pmInOwnerGroups !== 'boolean')
@@ -319,4 +338,5 @@ export const resolveConfig = (base: IPmConfig, s: PmSettings): IPmConfig => ({
     ? { telegramUsernames: s.telegramUsernames }
     : {}),
   ...(s.teamRoles != null ? { teamRoles: s.teamRoles } : {}),
+  ...(s.focusPerson != null ? { focusPerson: s.focusPerson } : {}),
 });

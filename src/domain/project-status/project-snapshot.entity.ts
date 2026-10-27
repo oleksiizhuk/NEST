@@ -39,8 +39,9 @@ export class ProjectSnapshot {
   }
 
   // Byte-stable for the same snapshot, which keeps the prompt cache warm
-  // across every question asked about it.
-  render(): string {
+  // across every question asked about it. `view` narrows each section's
+  // text (personal mode); it must be deterministic for the same reason.
+  render(view?: (section: SnapshotSection) => string): string {
     const header = `<snapshot generated_at="${this.createdAt.toISOString()}">`;
     const body = this.sections.map((s) => {
       const status = s.ok
@@ -50,7 +51,8 @@ export class ProjectSnapshot {
               ? `showing data from ${s.fetchedAt.toISOString()}`
               : 'no data'
           }`;
-      return `<${s.source} status="${status}">\n${s.text}\n</${s.source}>`;
+      const text = view ? view(s) : s.text;
+      return `<${s.source} status="${status}">\n${text}\n</${s.source}>`;
     });
     return [header, ...body, '</snapshot>'].join('\n');
   }

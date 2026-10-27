@@ -44,6 +44,19 @@ describe('settings', () => {
     );
   });
 
+  it('takes the personal-mode person as one clean line; empty switches it off', () => {
+    expect(cleanSettings({ focusPerson: ' Max <b>Brenner\n' })).toEqual({
+      focusPerson: 'Max b Brenner',
+    });
+    expect(cleanSettings({ focusPerson: '' })).toEqual({ focusPerson: null });
+    expect(cleanSettings({ focusPerson: null })).toEqual({ focusPerson: null });
+    expect(() => cleanSettings({ focusPerson: 'x'.repeat(101) })).toThrow(
+      'focusPerson',
+    );
+    expect(resolveConfig(base, { focusPerson: 'Max' }).focusPerson).toBe('Max');
+    expect(resolveConfig(base, {}).focusPerson).toBeUndefined();
+  });
+
   it('puts overrides over the env config; null keeps the env value', () => {
     const config = resolveConfig(base, {
       dailyQuestionLimit: 0,

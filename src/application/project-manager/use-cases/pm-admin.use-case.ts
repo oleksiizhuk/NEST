@@ -147,6 +147,10 @@ export class PmAdminUseCase {
     const message = String(text ?? '').trim();
     if (!message || message.length > 800)
       throw new SettingsError('text: 1-800 characters');
+    if ((await this.runtime.current()).focusPerson)
+      throw new SettingsError(
+        'Личный режим: бот пишет только владельцу, не в группы',
+      );
     const chat = (await this.groups()).find((g) => g.chatId === chatId && g.on);
     if (!chat) throw new SettingsError('chat: a PM group the bot works in');
     // From the store: a link saved a moment ago may not be in the cache
@@ -279,6 +283,7 @@ export class PmAdminUseCase {
       releaseBaseline: null,
       telegramUsernames: {},
       teamRoles: {},
+      focusPerson: null,
       todayHidden: [],
       adminUsers: [],
     };

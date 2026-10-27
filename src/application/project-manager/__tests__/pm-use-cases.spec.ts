@@ -453,6 +453,86 @@ describe('PostDailyDigestUseCase', () => {
     expect(telegram.sendMessage).not.toHaveBeenCalled();
   });
 
+  it('in personal mode writes only to the owner, about one person, with rated proposals', async () => {
+    const at = now;
+    const personalSnapshot = new ProjectSnapshot('p', at, [
+      {
+        source: 'issues',
+        ok: true,
+        fetchedAt: at,
+        text: [
+          'ABC-1 | In Progress | Story | High | Max Brenner | by Anna | Login',
+          'ABC-9 | Open | Task | Low | Lena Ward | by Anna | Filters',
+        ].join('\n'),
+        error: null,
+      },
+    ]);
+    refresh.execute.mockResolvedValueOnce(personalSnapshot);
+    ai.digest.mockResolvedValueOnce(
+      'Today: ABC-1\n\n```proposals\n[{"keys":["ABC-1"],"kind":"backend","blocker":"Auth not on dev","step":"Ask for a deploy","ask":"Lena Ward","draft":null}]\n```',
+    );
+    const runtime = {
+      current: jest
+        .fn()
+        .mockResolvedValue({ ...config, focusPerson: 'Max Brenner' }),
+    };
+    const proposals = {
+      recent: jest.fn().mockResolvedValue([
+        {
+          id: 'old00001',
+          fingerprint: 'design|ABC-1',
+          keys: ['ABC-1'],
+          kind: 'design',
+          blocker: 'b',
+          step: 'Ping the designer',
+          ask: null,
+          draft: null,
+          status: 'rejected',
+          createdAt: now,
+          ratedAt: now,
+        },
+      ]),
+      add: jest.fn(async (drafts) =>
+        drafts.map((d: object, i: number) => ({
+          ...d,
+          id: `0000000${i}`,
+          status: 'sent',
+        })),
+      ),
+      rate: jest.fn(),
+    };
+    const pmChats = chats([-300]);
+    const useCase = new PostDailyDigestUseCase(
+      refresh as any,
+      ai as any,
+      telegram,
+      { ...config, ownerId: 5 },
+      pmChats,
+      knowledge as any,
+      undefined,
+      runtime as any,
+      proposals,
+    );
+    await expect(useCase.execute(now)).resolves.toEqual({ posted: true });
+    const request = ai.digest.mock.calls[0][0];
+    expect(request.snapshot).toContain('ABC-1 |');
+    expect(request.snapshot).not.toContain('ABC-9 |');
+    expect(request.question).toContain('morning brief for Max Brenner');
+    expect(request.question).toContain('NOT USEFUL: [design] ABC-1');
+    expect(telegram.sendMessage.mock.calls).toEqual([[5, 'Today: ABC-1']]);
+    expect(telegram.sendWithButtons).toHaveBeenCalledWith(
+      5,
+      expect.stringContaining('Шаг: Ask for a deploy'),
+      [
+        [
+          { text: '✅ Беру', data: 'pp:00000000:a' },
+          { text: '⏳ Позже', data: 'pp:00000000:s' },
+          { text: '❌ Не то', data: 'pp:00000000:r' },
+        ],
+      ],
+    );
+  });
+
   it('also posts to chats switched on with /pm_on, once each', async () => {
     const useCase = new PostDailyDigestUseCase(
       refresh as any,

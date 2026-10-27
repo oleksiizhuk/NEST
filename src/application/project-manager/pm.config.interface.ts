@@ -47,6 +47,11 @@ export interface IPmConfig {
   teamRoles?: Record<string, string>;
   // Релиз: scope growth is counted from this day
   releaseBaseline?: string | null;
+  // TELEGRAM_OWNER_ID: in personal mode the only chat the bot writes to
+  ownerId?: number;
+  // Personal mode: the Jira name of the person the bot works for (admin
+  // page only); unset = the team bot
+  focusPerson?: string | null;
   // For links on the admin page: Jira site origin and the GitHub org
   jiraUrl?: string | null;
   githubOrg?: string | null;

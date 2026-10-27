@@ -190,6 +190,8 @@ const ACCESS_KEYS = [
   'actionUserIds',
   'alertChatIds',
   'pmInOwnerGroups',
+  // Personal mode shuts every other chat out
+  'focusPerson',
 ];
 
 export class AdminUserBody {

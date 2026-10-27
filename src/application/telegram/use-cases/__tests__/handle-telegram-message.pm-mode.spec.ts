@@ -98,6 +98,92 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
     );
   });
 
+  describe('personal mode', () => {
+    const live = {
+      chatIds: [PM_GROUP],
+      digestChatId: null,
+      releaseDate: null,
+      projectBrief: '',
+      maxSnapshotAgeHours: 30,
+      actionUserIds: [],
+      dmUsernames: ['dmytro_aa'],
+      team: [],
+      focusPerson: 'Max Brenner',
+    };
+    const proposals = { add: jest.fn(), recent: jest.fn(), rate: jest.fn() };
+    const personal = () =>
+      new HandleTelegramMessageUseCase(
+        telegram,
+        persona,
+        repo as any,
+        {
+          ownerId: OWNER,
+          mode: 'webhook',
+          webhookSecret: 's',
+          historySince: null,
+        },
+        live,
+        pmAnswer as any,
+        pmRefresh as any,
+        registry,
+        confirm as any,
+        undefined,
+        undefined,
+        { current: jest.fn().mockResolvedValue(live) } as any,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        proposals,
+      );
+    const dm = (fromId: number, username: string, text: string) => ({
+      chatId: fromId,
+      chatType: 'private',
+      chatTitle: null,
+      text,
+      from: { id: fromId, username, firstName: 'X', lastName: null },
+    });
+
+    it('answers the owner in private and nobody else, anywhere', async () => {
+      const bot = personal();
+      await bot.execute(group(PM_GROUP, '@nest_bot как дела?'));
+      await bot.execute(dm(9, 'dmytro_aa', 'привет'));
+      expect(pmAnswer.execute).not.toHaveBeenCalled();
+      expect(telegram.sendMessage).not.toHaveBeenCalled();
+      await bot.execute(dm(OWNER, 'owner', 'что у меня?'));
+      expect(pmAnswer.execute).toHaveBeenCalledTimes(1);
+      expect(telegram.sendMessage.mock.calls[0][0]).toBe(OWNER);
+    });
+
+    it("rates a proposal on the owner's press and shows it on the buttons", async () => {
+      proposals.rate.mockResolvedValueOnce({
+        id: 'a1b2c3d4',
+        status: 'rejected',
+      });
+      const press = (fromId: number, action: 'a' | 'r' | 'x') => ({
+        ...dm(fromId, 'owner', '💡'),
+        callback: {
+          id: 'cb',
+          messageId: 77,
+          kind: 'proposal' as const,
+          proposal: { id: 'a1b2c3d4', action },
+        },
+      });
+      await personal().execute(press(OWNER, 'r'));
+      expect(proposals.rate).toHaveBeenCalledWith(
+        'a1b2c3d4',
+        'rejected',
+        expect.any(Date),
+      );
+      expect(telegram.setButtons).toHaveBeenCalledWith(OWNER, 77, [
+        [{ text: '❌ Не то — отмечено', data: 'pp:a1b2c3d4:x' }],
+      ]);
+      await personal().execute(press(OWNER, 'x'));
+      await personal().execute(press(9, 'a'));
+      expect(proposals.rate).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('answers as project manager in a listed group and logs the turn as pm', async () => {
     await useCase.execute(group(PM_GROUP, '@nest_bot как дела?'));
     expect(pmAnswer.execute).toHaveBeenCalledWith('Dev @dev: как дела?', [], {

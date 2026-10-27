@@ -95,6 +95,9 @@ import { PmAdminTopicDaySchema } from '@infrastructure/database/schemas/pm-admin
 import { PM_AUDITS } from '@application/project-manager/audit.interface';
 import { MongoAuditStore } from '@infrastructure/database/repositories/mongo-audit-store';
 import { PmAuditSchema } from '@infrastructure/database/schemas/pm-audit.schema';
+import { PM_PROPOSALS } from '@application/project-manager/proposals.interface';
+import { MongoPmProposals } from '@infrastructure/database/repositories/mongo-pm-proposals';
+import { PmProposalSchema } from '@infrastructure/database/schemas/pm-proposal.schema';
 
 @Module({
   imports: [
@@ -118,6 +121,7 @@ import { PmAuditSchema } from '@infrastructure/database/schemas/pm-audit.schema'
       { name: 'PmAdminTopic', schema: PmAdminTopicSchema },
       { name: 'PmAdminTopicDay', schema: PmAdminTopicDaySchema },
       { name: 'PmAudit', schema: PmAuditSchema },
+      { name: 'PmProposal', schema: PmProposalSchema },
     ]),
   ],
   providers: [
@@ -170,6 +174,7 @@ import { PmAuditSchema } from '@infrastructure/database/schemas/pm-audit.schema'
     { provide: PM_TEAM_HISTORY, useClass: MongoTeamHistory },
     { provide: PM_ADMIN_TOPICS, useClass: MongoAdminTopics },
     { provide: PM_AUDITS, useClass: MongoAuditStore },
+    { provide: PM_PROPOSALS, useClass: MongoPmProposals },
     AdminAccess,
     { provide: PM_INDEX, useClass: MongoProjectIndex },
     { provide: PM_INDEX_JOB, useClass: MongoIndexJob },
@@ -213,6 +218,7 @@ import { PmAuditSchema } from '@infrastructure/database/schemas/pm-audit.schema'
     PM_TEAM_REVIEWS,
     PM_ADMIN_TOPICS,
     PM_AUDITS,
+    PM_PROPOSALS,
     // The consistency audit decides which comparisons to run from the repos
     CODE_HOST,
     PM_INDEX,
