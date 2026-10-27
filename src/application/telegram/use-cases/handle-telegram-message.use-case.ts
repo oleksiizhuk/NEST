@@ -285,8 +285,14 @@ export class HandleTelegramMessageUseCase {
     if (
       this.pm?.focusPerson &&
       !(isPrivate && msg.from.id === this.config.ownerId)
-    )
+    ) {
+      // A press still gets its spinner stopped
+      if (msg.callback)
+        await this.telegram
+          .answerCallback(msg.callback.id)
+          .catch(() => undefined);
       return;
+    }
 
     // Groups are open — the mention/reply check below is the only gate there.
     // In private, only the owner and the team members listed for PM DMs.

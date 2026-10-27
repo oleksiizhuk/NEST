@@ -40,8 +40,19 @@ export interface Proposal extends ProposalDraft {
   ratedAt: Date | null;
 }
 
-export const fingerprintOf = (p: Pick<ProposalDraft, 'kind' | 'keys'>) =>
-  `${p.kind}|${[...p.keys].sort().join(',')}`;
+// Without tickets, the blocker's first words tell proposals apart
+export const fingerprintOf = (
+  p: Pick<ProposalDraft, 'kind' | 'keys'> & { blocker?: string },
+) =>
+  `${p.kind}|${
+    p.keys.length
+      ? [...p.keys].sort().join(',')
+      : `~${(p.blocker ?? '')
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}]+/gu, ' ')
+          .trim()
+          .slice(0, 40)}`
+  }`;
 
 export interface IProposalStore {
   // Stores new proposals; returns them with ids
@@ -115,20 +126,27 @@ export const renderProposalFeedback = (
 const KEY = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/;
 const MAX_PROPOSALS = 3;
 
-// The digest ends with a ```proposals JSON block; returns the text without
-// it and the valid proposals (at most 3, none that must stay quiet)
+// The digest carries a ```proposals JSON block, meant to be last. The last
+// such fence is the one (an earlier fence may quote a log); text after its
+// closing fence stays, and the block never reaches the owner as raw JSON,
+// even when it is broken or cut off. Returns the text without it and the
+// valid proposals (at most 3, none that must stay quiet).
 export const takeProposals = (
   written: string,
   quiet: Set<string> = new Set(),
 ): { text: string; proposals: ProposalDraft[] } => {
-  const m = written.match(/```(proposals|json)?[ \t]*\n?([\s\S]*?)```\s*$/);
-  // An untagged block counts only when it holds an array
-  if (!m || (!m[1] && !m[2].trim().startsWith('[')))
-    return { text: written, proposals: [] };
-  const text = written.slice(0, m.index).trimEnd();
+  const open = written.lastIndexOf('```proposals');
+  if (open < 0) return { text: written, proposals: [] };
+  const bodyAt = open + '```proposals'.length;
+  const close = written.indexOf('```', bodyAt);
+  const body = written.slice(bodyAt, close < 0 ? undefined : close);
+  const after = close < 0 ? '' : written.slice(close + 3).trim();
+  const text = [written.slice(0, open).trimEnd(), after]
+    .filter(Boolean)
+    .join('\n\n');
   let raw: unknown;
   try {
-    raw = JSON.parse(m[2]);
+    raw = JSON.parse(body.trim());
   } catch {
     return { text, proposals: [] };
   }

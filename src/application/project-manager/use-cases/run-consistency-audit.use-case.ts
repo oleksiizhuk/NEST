@@ -472,7 +472,8 @@ export class RunConsistencyAuditUseCase {
     return run;
   }
 
-  private async personal(): Promise<boolean> {
+  // Personal mode: no team checklist
+  async personal(): Promise<boolean> {
     const live = await this.runtime?.current().catch(() => undefined);
     return Boolean(live?.focusPerson);
   }

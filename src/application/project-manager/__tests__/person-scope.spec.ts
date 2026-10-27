@@ -9,6 +9,7 @@ const issues = [
   '## Computed metrics',
   'Open 40, in progress 12, bugs 5',
   'Stale > 5 days: ABC-9 (Lena Ward), ABC-3 (Max Brenner)',
+  'Past due date: 2 — ABC-9 (Lena Ward), ABC-8 (Tomas)',
   '## Open issues: 5',
   'key | status | type | priority | assignee | by reporter | … | summary',
   'ABC-1 | In Progress | Story | High | Max Brenner | by Anna | is blocked by ABC-2(Open) | Login screen',
@@ -22,6 +23,8 @@ const code = [
   'app#12 by maxb | ABC-1 login | 2d',
   'web#40 by lenaw | ABC-9 filters | 1d',
   'web#41 by lenaw | chore deps | 3d',
+  '#15 | lenaw | feature/abc-1-fix → develop | 1d | Fix login',
+  'Waiting for a first review: 2 — web#40, web#41',
   'Pipelines: all green',
 ].join('\n');
 const docs = [
@@ -56,8 +59,25 @@ describe('personal view of the snapshot', () => {
     const out = text('code');
     expect(out).toContain('app#12 by maxb');
     expect(out).toContain('Pipelines: all green');
-    expect(out).not.toContain('web#41');
-    expect(out).not.toContain('web#40');
+    expect(out).not.toContain('web#41 by');
+    expect(out).not.toContain('web#40 by');
+    // A teammate's PR on their ticket, found by the branch name
+    expect(out).toContain('#15 | lenaw | feature/abc-1-fix');
+  });
+
+  it("keeps team totals as numbers without other people's keys", () => {
+    expect(text('issues')).toContain('Past due date: 2 …');
+    expect(text('issues')).not.toContain('ABC-8');
+    expect(text('code')).toContain('Waiting for a first review: 2 …');
+  });
+
+  it('matches the name in any case, and says when it matches nothing', () => {
+    const lower = personalView(snapshot, { name: 'max brenner' });
+    expect(lower(snapshot.section('issues')!)).toContain('ABC-1 |');
+    const typo = personalView(snapshot, { name: 'Max Brener' });
+    expect(typo(snapshot.section('issues')!)).toContain(
+      'no ticket in this snapshot has them',
+    );
   });
 
   it('keeps only headings and lines about them from docs', () => {

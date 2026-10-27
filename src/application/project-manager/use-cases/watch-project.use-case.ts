@@ -74,6 +74,10 @@ const RULES: Array<[string, string]> = [
   ['person-idle', 'Без задач'],
 ];
 
+// Personal mode: the release concerns everyone on it, so these alerts
+// pass even though they name nobody
+const RELEASE_WIDE = /^(readiness|release-forecast)$/;
+
 // About people: only for the owner's private chats, never a group
 const PERSONAL = /^person-/;
 const PER_RULE = 8;
@@ -182,7 +186,12 @@ export class WatchProjectUseCase {
       let waiting = 0;
       const perRule = new Map<string, number>();
       for (const signal of signals) {
-        if (about && !about(`${signal.subject} ${signal.text}`)) continue;
+        if (
+          about &&
+          !RELEASE_WIDE.test(signal.rule) &&
+          !about(`${signal.subject} ${signal.text}`)
+        )
+          continue;
         // About people: the owner's own chat only, never a group or a
         // teammate on the alert list
         if (

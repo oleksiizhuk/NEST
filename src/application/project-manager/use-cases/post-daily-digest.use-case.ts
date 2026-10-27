@@ -186,7 +186,7 @@ export class PostDailyDigestUseCase {
       this.snapshots?.findLastDigest(snapshot.createdAt).catch(() => null),
       loadKnowledge(this.knowledge, this.config.knowledgeInlineChars),
       this.proposals
-        ?.recent(new Date(now.getTime() - QUIET_WINDOW_DAYS * 86_400_000), 50)
+        ?.recent(new Date(now.getTime() - QUIET_WINDOW_DAYS * 86_400_000), 200)
         .catch(() => []) ?? Promise.resolve([]),
     ]);
     const feedback = renderProposalFeedback(recent, now);

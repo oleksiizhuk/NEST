@@ -70,6 +70,26 @@ describe('settings', () => {
   });
 });
 
+describe('PmRuntimeConfig keeps the last good settings', () => {
+  it('does not drop personal mode when one read fails', async () => {
+    const store = {
+      get: jest
+        .fn()
+        .mockResolvedValueOnce({
+          values: { focusPerson: 'Max' },
+          updatedAt: null,
+        })
+        .mockRejectedValueOnce(new Error('mongo timeout'))
+        .mockResolvedValueOnce({ values: {}, updatedAt: null }),
+    };
+    const runtime = new PmRuntimeConfig(base, store as any);
+    expect((await runtime.current(0)).focusPerson).toBe('Max');
+    expect((await runtime.current(31_000)).focusPerson).toBe('Max');
+    // Retried after a few seconds, not the whole TTL
+    expect((await runtime.current(37_000)).focusPerson).toBeUndefined();
+  });
+});
+
 describe('PmRuntimeConfig', () => {
   it('caches for 30 s, re-reads after invalidate, falls back to env on errors', async () => {
     const store = {
@@ -92,7 +112,8 @@ describe('PmRuntimeConfig', () => {
     expect(store.get).toHaveBeenCalledTimes(1);
     runtime.invalidate();
     store.get.mockRejectedValueOnce(new Error('down'));
-    expect((await runtime.current(21_000)).dailyQuestionLimit).toBe(7);
+    // A failed read keeps the last good settings, not the env defaults
+    expect((await runtime.current(21_000)).dailyQuestionLimit).toBe(3);
   });
 });
 

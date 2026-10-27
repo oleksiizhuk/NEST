@@ -76,6 +76,45 @@ describe('unblock proposals', () => {
     });
   });
 
+  it('takes the last block, keeps text around it, never shows raw JSON', () => {
+    const item = JSON.stringify([
+      { keys: ['ABC-1'], kind: 'qa', blocker: 'b', step: 's' },
+    ]);
+    const quoted = 'Log:\n```\nError 500\n```\nMore';
+    expect(
+      takeProposals(
+        `${quoted}\n\n\`\`\`proposals\n${item}\n\`\`\`\nХорошего дня!`,
+      ),
+    ).toEqual({
+      text: `${quoted}\n\nХорошего дня!`,
+      proposals: [
+        {
+          keys: ['ABC-1'],
+          kind: 'qa',
+          blocker: 'b',
+          step: 's',
+          ask: null,
+          draft: null,
+        },
+      ],
+    });
+    // Cut off mid-JSON
+    expect(takeProposals('Brief\n```proposals\n[{"keys":["AB')).toEqual({
+      text: 'Brief',
+      proposals: [],
+    });
+  });
+
+  it('tells keyless proposals apart by their blocker', () => {
+    expect(
+      fingerprintOf({
+        kind: 'review',
+        keys: [],
+        blocker: 'No reviewer, PRs wait!',
+      }),
+    ).toBe('review|~no reviewer prs wait');
+  });
+
   it('caps at three and skips quiet and repeated ones', () => {
     const item = (k: string) => ({
       keys: [k],

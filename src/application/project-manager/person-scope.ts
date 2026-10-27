@@ -15,17 +15,42 @@ export interface PersonScope {
   githubLogin?: string | null;
 }
 
-const KEY = /(?<![\w-])[A-Z][A-Z0-9]{1,9}-\d+(?![\w-])/g;
+// A ticket key, also inside a branch name (feature/abc-12-login)
+const KEY = /(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]{1,9}-\d+(?!\d)/g;
+// The same in capitals only: whether a line is about a particular ticket
+const STRICT_KEY = /(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,9}-\d+(?!\d)/;
 const ISSUE_LINE = /^([A-Z][A-Z0-9]{1,9}-\d+) \| /;
 const PR_REF = /#\d+(?!\w)/;
+// Where a PR reference starts, its repo name included (web#12)
+const PR_START = /[\w.-]*#\d+(?!\w)/;
 const HEADING = /^(#{1,4} |<)/;
 
-const keysIn = (line: string): string[] => line.match(KEY) ?? [];
+const keysIn = (line: string): string[] =>
+  (line.match(KEY) ?? []).map((k) => k.toUpperCase());
 
 // key | status | type | priority | assignee | by reporter | …
 const isTheirs = (line: string, name: string): boolean => {
-  const f = line.split(' | ');
-  return f[4] === name || f.includes(`by ${name}`);
+  const f = line.split(' | ').map((x) => x.toLowerCase());
+  const n = name.toLowerCase();
+  return f[4] === n || f.includes(`by ${n}`);
+};
+
+// Where a line starts listing tickets or PRs ("Past due date: 3 — ABC-1…")
+const firstRef = (line: string): number => {
+  const at = [line.search(STRICT_KEY), line.search(PR_START)].filter(
+    (i) => i >= 0,
+  );
+  return at.length ? Math.min(...at) : -1;
+};
+
+// A totals line keeps its numbers without other people's keys; a row that
+// is all about one ticket or PR has nothing left and goes
+const countOnly = (line: string): string | null => {
+  const head = line
+    .slice(0, firstRef(line))
+    .replace(/[\s,:;—–(-]+$/, '')
+    .trim();
+  return /\d/.test(head) && /\p{L}{3}/u.test(head) ? `${head} …` : null;
 };
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -85,19 +110,22 @@ export const personalView = (
         ? // Pages and frames are prose: headings and what names them only;
           // the rest stays a tool call away
           lines.filter((l) => HEADING.test(l) || aboutThem(l))
-        : lines.filter((l) => {
+        : lines.flatMap((l) => {
             const issue = l.match(ISSUE_LINE);
-            if (issue) return related.has(issue[1]);
-            // A line about other tickets or PRs is someone else's work
-            if (keysIn(l).length || PR_REF.test(l)) return aboutThem(l);
-            return true;
+            if (issue) return related.has(issue[1]) || aboutThem(l) ? [l] : [];
+            if (firstRef(l) < 0 || aboutThem(l)) return [l];
+            // Someone else's work: totals keep their numbers, rows go
+            const count = countOnly(l);
+            return count ? [count] : [];
           });
     const dropped = lines.length - kept.length;
     const note =
       section.source === 'issues'
-        ? `(Personal view for ${name}: ${mine.size} of their tickets, ${
-            related.size - mine.size
-          } linked; ${dropped} other lines left out — search_project / jira_get_issue read them.)`
+        ? mine.size
+          ? `(Personal view for ${name}: ${mine.size} of their tickets, ${
+              related.size - mine.size
+            } linked; ${dropped} other lines left out, totals shortened — search_project / jira_get_issue read them.)`
+          : `(Personal view for ${name}: no ticket in this snapshot has them as assignee or reporter. Say so and ask the owner to check the name on the admin Settings page — it must match Jira exactly.)`
         : dropped
         ? `(Personal view for ${name}: ${dropped} lines about other people's work left out.)`
         : '';

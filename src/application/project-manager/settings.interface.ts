@@ -295,6 +295,8 @@ export const cleanSettings = (input: Record<string, unknown>): PmSettings => {
   }
   if (has('focusPerson')) {
     const v = input.focusPerson;
+    if (v !== null && v !== undefined && typeof v !== 'string')
+      throw new SettingsError('focusPerson: a Jira display name');
     // Goes into every prompt: one short line, no markup
     const name =
       v === null
