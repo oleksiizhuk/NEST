@@ -52,6 +52,15 @@ const countOnly = (line: string): string | null => {
   return /\d/.test(head) && /\p{L}{3}/u.test(head) ? `${head} …` : null;
 };
 
+// The tickets an issue line links to: its "parent KEY" and "<link> KEY(status)"
+// fields only, never labels, versions or summary words (ios-17, release-1)
+const LINKED = /(?<![A-Za-z0-9])([A-Z][A-Z0-9]{1,9}-\d+)\(/g;
+const linksOf = (line: string): string[] =>
+  line.split(' | ').flatMap((f) => {
+    const parent = f.match(/^parent ([A-Z][A-Z0-9]{1,9}-\d+)$/);
+    return parent ? [parent[1]] : [...f.matchAll(LINKED)].map((m) => m[1]);
+  });
+
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 interface Scoped {
@@ -60,6 +69,8 @@ interface Scoped {
   related: Set<string>;
   // A line that names the person, their GitHub login or a related ticket
   about: (line: string) => boolean;
+  // A line that names the person or their GitHub login
+  named: (line: string) => boolean;
 }
 
 const scoped = (snapshot: ProjectSnapshot, scope: PersonScope): Scoped => {
@@ -75,7 +86,7 @@ const scoped = (snapshot: ProjectSnapshot, scope: PersonScope): Scoped => {
   const related = new Set(mine);
   for (const line of issueLines) {
     const key = line.match(ISSUE_LINE)![1];
-    const keys = keysIn(line);
+    const keys = linksOf(line);
     if (mine.has(key)) keys.forEach((k) => related.add(k));
     else if (keys.some((k) => mine.has(k))) related.add(key);
   }
@@ -86,9 +97,10 @@ const scoped = (snapshot: ProjectSnapshot, scope: PersonScope): Scoped => {
       (n) =>
         new RegExp(`(?<![\\p{L}\\p{N}_])${escape(n)}(?![\\p{L}\\p{N}_])`, 'iu'),
     );
+  const named = (line: string) => names.some((r) => r.test(line));
   const about = (line: string) =>
-    names.some((r) => r.test(line)) || keysIn(line).some((k) => related.has(k));
-  return { name, mine, related, about };
+    named(line) || keysIn(line).some((k) => related.has(k));
+  return { name, mine, related, about, named };
 };
 
 // Whether a line (an alert, a signal) is about the person's work
@@ -101,7 +113,13 @@ export const personalView = (
   snapshot: ProjectSnapshot,
   scope: PersonScope,
 ): ((section: SnapshotSection) => string) => {
-  const { name, mine, related, about: aboutThem } = scoped(snapshot, scope);
+  const {
+    name,
+    mine,
+    related,
+    about: aboutThem,
+    named,
+  } = scoped(snapshot, scope);
   return (section) => {
     const lines = section.text.split('\n');
     const kept =
@@ -111,7 +129,8 @@ export const personalView = (
           lines.filter((l) => HEADING.test(l) || aboutThem(l))
         : lines.flatMap((l) => {
             const issue = l.match(ISSUE_LINE);
-            if (issue) return related.has(issue[1]) || aboutThem(l) ? [l] : [];
+            // Another ticket's labels and versions say nothing about them
+            if (issue) return related.has(issue[1]) || named(l) ? [l] : [];
             if (firstRef(l) < 0 || aboutThem(l)) return [l];
             // Someone else's work: totals keep their numbers, rows go
             const count = countOnly(l);

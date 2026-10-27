@@ -98,6 +98,9 @@ describe('unblock proposals', () => {
         },
       ],
     });
+    expect(
+      takeProposals(`Brief\n\`\`\`json\n${item}\n\`\`\``).proposals,
+    ).toHaveLength(1);
     // Cut off mid-JSON
     expect(takeProposals('Brief\n```proposals\n[{"keys":["AB')).toEqual({
       text: 'Brief',

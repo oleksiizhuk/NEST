@@ -135,9 +135,22 @@ export const takeProposals = (
   written: string,
   quiet: Set<string> = new Set(),
 ): { text: string; proposals: ProposalDraft[] } => {
-  const open = written.lastIndexOf('```proposals');
-  if (open < 0) return { text: written, proposals: [] };
-  const bodyAt = open + '```proposals'.length;
+  // The tag asked for; a ```json fence holding an array is taken too
+  let fence = '```proposals';
+  let open = written.lastIndexOf(fence);
+  if (open < 0) {
+    fence = '```json';
+    open = written.lastIndexOf(fence);
+    if (
+      open < 0 ||
+      !written
+        .slice(open + fence.length)
+        .trim()
+        .startsWith('[')
+    )
+      return { text: written, proposals: [] };
+  }
+  const bodyAt = open + fence.length;
   const close = written.indexOf('```', bodyAt);
   const body = written.slice(bodyAt, close < 0 ? undefined : close);
   const after = close < 0 ? '' : written.slice(close + 3).trim();

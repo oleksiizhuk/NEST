@@ -12,7 +12,8 @@ const issues = [
   'Past due date: 2 — ABC-9 (Lena Ward), ABC-8 (Tomas)',
   '## Open issues: 5',
   'key | status | type | priority | assignee | by reporter | … | summary',
-  'ABC-1 | In Progress | Story | High | Max Brenner | by Anna | is blocked by ABC-2(Open) | Login screen',
+  'ABC-1 | In Progress | Story | High | Max Brenner | by Anna | labels ios-17 | fix release-1.4.0 | is blocked by ABC-2(Open) | Login screen',
+  'ABC-7 | Open | Task | Low | Tomas | by Anna | labels ios-17 | fix release-1.4.0 | Same release, not theirs',
   'ABC-2 | Open | Task | High | Lena Ward | by Anna | blocks ABC-1(In Progress) | Auth endpoint',
   'ABC-3 | On DEV | Bug | Medium | Lena Ward | by Max Brenner | Crash on start',
   'ABC-4 | Open | Task | Low | Tomas | by Anna | relates to ABC-1(In Progress) | Copy',
@@ -50,6 +51,8 @@ describe('personal view of the snapshot', () => {
     for (const key of ['ABC-1 |', 'ABC-2 |', 'ABC-3 |', 'ABC-4 |'])
       expect(out).toContain(key);
     expect(out).not.toContain('ABC-9 |');
+    // Sharing a label or a fix version is not a link
+    expect(out).not.toContain('ABC-7 |');
     expect(out).toContain('Open 40, in progress 12');
     expect(out).toContain('2 of their tickets, 2 linked');
   });
