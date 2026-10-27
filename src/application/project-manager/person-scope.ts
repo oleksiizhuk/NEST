@@ -20,7 +20,6 @@ const KEY = /(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]{1,9}-\d+(?!\d)/g;
 // The same in capitals only: whether a line is about a particular ticket
 const STRICT_KEY = /(?<![A-Za-z0-9])[A-Z][A-Z0-9]{1,9}-\d+(?!\d)/;
 const ISSUE_LINE = /^([A-Z][A-Z0-9]{1,9}-\d+) \| /;
-const PR_REF = /#\d+(?!\w)/;
 // Where a PR reference starts, its repo name included (web#12)
 const PR_START = /[\w.-]*#\d+(?!\w)/;
 const HEADING = /^(#{1,4} |<)/;
