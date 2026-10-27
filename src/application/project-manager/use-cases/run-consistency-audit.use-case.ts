@@ -415,6 +415,8 @@ export class RunConsistencyAuditUseCase {
     by: 'cron' | number,
     force = false,
   ): Promise<AuditRun | null> {
+    // Personal mode: the team checklist is nobody's business; no model calls
+    if (await this.personal()) return null;
     const latest = await this.store.latest();
     if (latest?.status === 'running') return latest;
     if (this.notConfigured()) return null;
@@ -453,6 +455,8 @@ export class RunConsistencyAuditUseCase {
   async step(now: Date, budgetMs = 240_000): Promise<AuditRun | null> {
     const current = await this.store.latest();
     if (!current || current.status !== 'running') return current;
+    // A run started before personal mode went on stops where it is
+    if (await this.personal()) return current;
     const claimed = await this.store.claimStep(
       current.runId,
       new Date(now.getTime() + CLAIM_MS),
@@ -466,6 +470,12 @@ export class RunConsistencyAuditUseCase {
       await this.store.releaseStep(claimed.runId).catch(() => undefined);
     }
     return run;
+  }
+
+  // Personal mode: no team checklist
+  async personal(): Promise<boolean> {
+    const live = await this.runtime?.current().catch(() => undefined);
+    return Boolean(live?.focusPerson);
   }
 
   async cron(now: Date): Promise<{ run: AuditRun | null; did: string }> {

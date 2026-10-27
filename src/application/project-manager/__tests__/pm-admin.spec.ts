@@ -44,6 +44,19 @@ describe('settings', () => {
     );
   });
 
+  it('takes the personal-mode person as one clean line; empty switches it off', () => {
+    expect(cleanSettings({ focusPerson: ' Max <b>Brenner\n' })).toEqual({
+      focusPerson: 'Max b Brenner',
+    });
+    expect(cleanSettings({ focusPerson: '' })).toEqual({ focusPerson: null });
+    expect(cleanSettings({ focusPerson: null })).toEqual({ focusPerson: null });
+    expect(() => cleanSettings({ focusPerson: 'x'.repeat(101) })).toThrow(
+      'focusPerson',
+    );
+    expect(resolveConfig(base, { focusPerson: 'Max' }).focusPerson).toBe('Max');
+    expect(resolveConfig(base, {}).focusPerson).toBeUndefined();
+  });
+
   it('puts overrides over the env config; null keeps the env value', () => {
     const config = resolveConfig(base, {
       dailyQuestionLimit: 0,
@@ -54,6 +67,26 @@ describe('settings', () => {
     expect(config.dmUsernames).toEqual(['dev_one']);
     expect(config.aiEffort).toBe('medium');
     expect(config.unlimitedUsernames).toEqual(['anna_z']);
+  });
+});
+
+describe('PmRuntimeConfig keeps the last good settings', () => {
+  it('does not drop personal mode when one read fails', async () => {
+    const store = {
+      get: jest
+        .fn()
+        .mockResolvedValueOnce({
+          values: { focusPerson: 'Max' },
+          updatedAt: null,
+        })
+        .mockRejectedValueOnce(new Error('mongo timeout'))
+        .mockResolvedValueOnce({ values: {}, updatedAt: null }),
+    };
+    const runtime = new PmRuntimeConfig(base, store as any);
+    expect((await runtime.current(0)).focusPerson).toBe('Max');
+    expect((await runtime.current(31_000)).focusPerson).toBe('Max');
+    // Retried after a few seconds, not the whole TTL
+    expect((await runtime.current(37_000)).focusPerson).toBeUndefined();
   });
 });
 
@@ -79,7 +112,8 @@ describe('PmRuntimeConfig', () => {
     expect(store.get).toHaveBeenCalledTimes(1);
     runtime.invalidate();
     store.get.mockRejectedValueOnce(new Error('down'));
-    expect((await runtime.current(21_000)).dailyQuestionLimit).toBe(7);
+    // A failed read keeps the last good settings, not the env defaults
+    expect((await runtime.current(21_000)).dailyQuestionLimit).toBe(3);
   });
 });
 

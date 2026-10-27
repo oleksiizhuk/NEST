@@ -76,6 +76,7 @@ export interface Settings {
   aiEffort?: Effort | null;
   pmInOwnerGroups?: boolean | null;
   teamThresholds?: Thresholds | null;
+  focusPerson?: string | null;
 }
 
 export interface SettingsView {

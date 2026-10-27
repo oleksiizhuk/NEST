@@ -19,6 +19,7 @@ describe('PmAdminController owner-only actions', () => {
     start: jest.fn().mockResolvedValue({ runId: 'abcd1234' }),
     step: jest.fn().mockResolvedValue({ runId: 'abcd1234' }),
     notConfigured: jest.fn().mockReturnValue('Некуда отправлять'),
+    personal: jest.fn().mockResolvedValue(false),
   };
   const controller = new PmAdminController(
     auth as any,

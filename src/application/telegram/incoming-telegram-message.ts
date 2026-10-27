@@ -20,7 +20,14 @@ export interface IncomingTelegramMessage {
   callback?: {
     id: string;
     messageId: number;
-    kind: 'confirm' | 'cancel' | 'option' | 'feedback' | 'approve' | 'check';
+    kind:
+      | 'confirm'
+      | 'cancel'
+      | 'option'
+      | 'feedback'
+      | 'approve'
+      | 'check'
+      | 'proposal';
     // For feedback: 👍 = 1, 👎 = -1, and the answer's token
     vote?: 1 | -1;
     token?: string;
@@ -28,5 +35,8 @@ export interface IncomingTelegramMessage {
     approve?: boolean;
     // For check: an item of a consistency-audit checklist
     check?: { runId: string; kind: AuditKind; index: number };
+    // For proposal: personal mode's unblock proposal and the press
+    // (a take, s later, r not useful, x already rated)
+    proposal?: { id: string; action: 'a' | 's' | 'r' | 'x' };
   };
 }

@@ -16,8 +16,14 @@ const FIELDS: Array<{
   key: Key;
   title: string;
   hint: string;
-  kind: 'number' | 'usernames' | 'ids' | 'effort' | 'bool';
+  kind: 'number' | 'usernames' | 'ids' | 'effort' | 'bool' | 'text';
 }> = [
+  {
+    key: 'focusPerson',
+    title: 'Личный режим: бот работает только на этого человека',
+    hint: 'Имя как в Jira (например, ваше). Бот пишет только вам в личку, видит только работу этого человека и предлагает, как её разблокировать; группы, аудит и отчёт о качестве выключены. Пусто — бот команды (если в Vercel не задан PM_FOCUS_PERSON).',
+    kind: 'text',
+  },
   {
     key: 'pmInOwnerGroups',
     title: 'Менеджер во всех группах, где есть вы',
@@ -123,7 +129,7 @@ export function SettingsForm({
         patch[f.key] = null;
       } else if (f.kind === 'number') {
         patch[f.key] = Number(text);
-      } else if (f.kind === 'effort') {
+      } else if (f.kind === 'effort' || f.kind === 'text') {
         patch[f.key] = text;
       } else if (f.kind === 'bool') {
         patch[f.key] = text === 'true';

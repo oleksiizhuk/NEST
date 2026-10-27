@@ -1,3 +1,4 @@
+import { personalView } from '@application/project-manager/person-scope';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   IProjectSnapshotRepository,
@@ -75,6 +76,14 @@ export interface PmAnswer {
   usage?: PmUsage;
 }
 
+// Personal mode: the snapshot holds only this person's work
+export const personalNote = (name: string): string =>
+  `Personal mode: you work for ${name} alone, in a private chat. The ` +
+  'snapshot shows their tickets, the ones linked to them and the totals. ' +
+  'Answer about their work: what is theirs, what blocks it and who can ' +
+  'unblock it, what others wait from them; when something blocks them, ' +
+  'propose a concrete step. Read anything else with the tools only when ' +
+  'the question needs it.';
 @Injectable()
 export class AnswerProjectQuestionUseCase {
   constructor(
@@ -124,6 +133,7 @@ export class AnswerProjectQuestionUseCase {
     // budget counts from here, not from after the snapshot is loaded
     const until = deadline ?? Date.now() + ANSWER_BUDGET_MS;
     const live = await this.runtime?.current().catch(() => undefined);
+    const focus = live?.focusPerson?.trim() || null;
     const [snapshot, knowledge, memories] = await Promise.all([
       this.currentSnapshot(now),
       loadKnowledge(this.knowledge, this.config.knowledgeInlineChars),
@@ -155,12 +165,19 @@ export class AnswerProjectQuestionUseCase {
         .filter(Boolean)
         .join('\n\n'),
       knowledge: knowledge.text,
-      snapshot: snapshot.render(),
+      snapshot: focus
+        ? snapshot.render(
+            personalView(snapshot, {
+              name: focus,
+              githubLogin: live?.githubLogins?.[focus] ?? null,
+            }),
+          )
+        : snapshot.render(),
       history,
       // After the cached prefix, so the note does not split the cache
       question: `${todayLine(now, this.config.releaseDate)}${
         canReadCode ? '' : `\n${NO_CODE_NOTE}`
-      }\n\n${question}`,
+      }${focus ? `\n${personalNote(focus)}` : ''}\n\n${question}`,
       tools: {
         specs: toolbox.specs(),
         run: (name, input) => toolbox.run(name, input, ctx),

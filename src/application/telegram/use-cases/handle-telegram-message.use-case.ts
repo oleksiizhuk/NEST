@@ -42,6 +42,12 @@ import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config'
 import { AdminAccess } from '@application/project-manager/admin-access';
 import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 import {
+  IProposalStore,
+  PM_PROPOSALS,
+  PROPOSAL_ACTIONS,
+  proposalButtons as unblockButtons,
+} from '@application/project-manager/proposals.interface';
+import {
   IAdminLinks,
   PM_ADMIN_LINKS,
 } from '@application/project-manager/admin-links.interface';
@@ -152,6 +158,9 @@ export class HandleTelegramMessageUseCase {
     private readonly adminApprovals?: IAdminApprovals,
     @Optional() private readonly adminAccess?: AdminAccess,
     @Optional() private readonly audit?: RunConsistencyAuditUseCase,
+    @Optional()
+    @Inject(PM_PROPOSALS)
+    private readonly proposals?: IProposalStore,
   ) {}
 
   // The config with the owner's admin-page overrides, loaded at the start
@@ -213,6 +222,9 @@ export class HandleTelegramMessageUseCase {
     msg?: IncomingTelegramMessage,
   ): Promise<boolean> {
     if (!this.pmAnswer) return false;
+    // Personal mode: the owner's private chat (its id is the owner's id) is
+    // the only PM chat there is
+    if (this.pm?.focusPerson) return chatId === this.config.ownerId;
     if (msg && this.isTeamDm(msg)) return true;
     if (this.pm?.chatIds.includes(chatId)) return true;
     if (this.pmChats) {
@@ -268,6 +280,19 @@ export class HandleTelegramMessageUseCase {
     const isPrivate = chatType === 'private';
     const isGroup = chatType === 'group' || chatType === 'supergroup';
     if (!isPrivate && !isGroup) return;
+    // Personal mode: the bot is the owner's alone. No group and no one else
+    // gets a reply, or costs a model call
+    if (
+      this.pm?.focusPerson &&
+      !(isPrivate && msg.from.id === this.config.ownerId)
+    ) {
+      // A press still gets its spinner stopped
+      if (msg.callback)
+        await this.telegram
+          .answerCallback(msg.callback.id)
+          .catch(() => undefined);
+      return;
+    }
 
     // Groups are open — the mention/reply check below is the only gate there.
     // In private, only the owner and the team members listed for PM DMs.
@@ -379,6 +404,10 @@ export class HandleTelegramMessageUseCase {
       await this.toggleAuditItem(msg);
       return;
     }
+    if (callback.kind === 'proposal') {
+      await this.rateProposal(msg);
+      return;
+    }
     if (!(await this.isPmChat(msg.chatId, msg))) {
       await this.telegram.answerCallback(callback.id).catch(() => undefined);
       return;
@@ -404,6 +433,40 @@ export class HandleTelegramMessageUseCase {
       .clearButtons(msg.chatId, callback.messageId)
       .catch(() => undefined);
     await this.handleAsProjectManager(msg, text);
+  }
+
+  // Personal mode: the owner rates an unblock proposal; the buttons then
+  // show the answer, and the next digest learns from it
+  private async rateProposal(msg: IncomingTelegramMessage): Promise<void> {
+    const callback = msg.callback!;
+    const press = callback.proposal;
+    const rating = press ? PROPOSAL_ACTIONS[press.action] : null;
+    if (!press || !this.proposals || msg.from.id !== this.config.ownerId) {
+      await this.telegram.answerCallback(callback.id).catch(() => undefined);
+      return;
+    }
+    const rated = rating
+      ? await this.proposals
+          .rate(press.id, rating, new Date())
+          .catch(() => null)
+      : null;
+    if (!rated) {
+      await this.telegram
+        .answerCallback(callback.id, 'Уже отмечено')
+        .catch(() => undefined);
+      return;
+    }
+    const toast = {
+      accepted: 'Взял в работу',
+      snoozed: 'Напомню позже',
+      rejected: 'Понял, такое больше не предлагаю',
+    }[rating!];
+    await this.telegram
+      .answerCallback(callback.id, toast)
+      .catch(() => undefined);
+    await this.telegram
+      .setButtons(msg.chatId, callback.messageId, unblockButtons(rated))
+      .catch((error) => this.logger.warn(`proposal buttons: ${error}`));
   }
 
   // Anyone in the chat may tick an audit item: ✅ means "someone looked at

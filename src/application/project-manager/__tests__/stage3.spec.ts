@@ -278,6 +278,57 @@ describe('WatchProjectUseCase', () => {
     return { useCase, deps };
   };
 
+  it('in personal mode alerts only the owner, about the person and the release', async () => {
+    const { deps } = build({
+      config: {
+        alertChatIds: [1, -100],
+        releaseDate: '2026-09-30',
+        team: ['Ann'],
+      },
+    });
+    deps.refresh.execute.mockResolvedValue(
+      new ProjectSnapshot('s', NOW, [
+        {
+          source: 'issues',
+          ok: true,
+          fetchedAt: NOW,
+          text: 'ABC-1 | Open | Task | High | Ann | by Bob | Checkout',
+          error: null,
+          metrics: { blockers: 1 },
+          signals: [{ rule: 'blocker', subject: 'A-1', text: 'A-1 blocker' }],
+        },
+      ]),
+    );
+    const useCase = new WatchProjectUseCase(
+      deps.refresh as any,
+      deps.snapshots as any,
+      deps.telegram as any,
+      deps.config as any,
+      deps.alerts,
+      deps.knowledge as any,
+      deps.memory as any,
+      deps.issues as any,
+      undefined,
+      undefined,
+      {
+        current: jest
+          .fn()
+          .mockResolvedValue({ ...deps.config, focusPerson: 'Bob' }),
+      } as any,
+      { ownerId: 1 } as any,
+    );
+    const { sent } = await useCase.execute(NOW);
+    // Bob reported ABC-1: the release readiness and the client question on
+    // ABC-1 reach him, the commitment Ann noted for Ivan does not
+    expect(sent).toEqual({ 1: 2 });
+    expect(deps.telegram.sendMessage).toHaveBeenCalledTimes(1);
+    const text = deps.telegram.sendMessage.mock.calls[0][1];
+    expect(text).toContain('ABC-1');
+    expect(text).not.toContain('A-1 blocker');
+    expect(text).not.toContain('Ivan merges');
+    expect(text).toContain('Готовность релиза');
+  });
+
   it('sends new events once, grouped, to the alert chats', async () => {
     const { useCase, deps } = build();
     const { signals, sent } = await useCase.execute(NOW);
@@ -599,6 +650,24 @@ describe('golden eval', () => {
       remaining: 1,
       reported: false,
     });
+  });
+
+  it('runs nothing in personal mode', async () => {
+    const answer = { execute: jest.fn() };
+    const useCase = new RunGoldenEvalUseCase(
+      { all: jest.fn().mockResolvedValue([]) } as any,
+      answer as any,
+      { sendMessage: jest.fn() } as any,
+      { alertChatIds: [1] } as any,
+      { claim: jest.fn(), release: jest.fn(), releaseStale: jest.fn() },
+      { current: jest.fn().mockResolvedValue({ focusPerson: 'Ann' }) } as any,
+    );
+    expect(await useCase.execute(NOW)).toEqual({
+      ran: [],
+      remaining: 0,
+      reported: false,
+    });
+    expect(answer.execute).not.toHaveBeenCalled();
   });
 
   it('stops before a case that would not fit in the budget', async () => {

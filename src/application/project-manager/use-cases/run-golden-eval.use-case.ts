@@ -89,6 +89,9 @@ export class RunGoldenEvalUseCase {
     budgetMs = RUN_BUDGET_MS,
   ): Promise<{ ran: string[]; remaining: number; reported: boolean }> {
     const started = Date.now();
+    // Personal mode: the team's golden questions cost tokens for nothing
+    const live = await this.runtime?.current().catch(() => undefined);
+    if (live?.focusPerson) return { ran: [], remaining: 0, reported: false };
     const cases = await this.golden.all();
     // Due = not run yet this ISO week; the week's slots share the work
     const week = weekOf(now);

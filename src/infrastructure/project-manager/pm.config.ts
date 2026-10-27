@@ -49,6 +49,12 @@ export const pmConfig = (config: ConfigService): IPmConfig => {
       Number(config.get<string>('TELEGRAM_OWNER_ID')),
     ),
     digestChatId,
+    ...(Number.isInteger(ownerId) && ownerId > 0 ? { ownerId } : {}),
+    // Personal mode from env too: it then holds even when the settings
+    // store cannot be read (the admin page value still wins)
+    ...(config.get<string>('PM_FOCUS_PERSON')?.trim()
+      ? { focusPerson: config.get<string>('PM_FOCUS_PERSON')!.trim() }
+      : {}),
     releaseDate: /^\d{4}-\d{2}-\d{2}$/.test(release) ? release : null,
     // Vercel env values are single-line; "\n" in the value means a newline
     projectBrief: (config.get<string>('PM_PROJECT_BRIEF') ?? '').replace(

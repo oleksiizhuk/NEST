@@ -190,6 +190,8 @@ const ACCESS_KEYS = [
   'actionUserIds',
   'alertChatIds',
   'pmInOwnerGroups',
+  // Personal mode shuts every other chat out
+  'focusPerson',
 ];
 
 export class AdminUserBody {
@@ -708,7 +710,10 @@ export class PmAdminController {
     // null: not configured, or a race with another start; say which
     if (!run)
       throw new BadRequestException(
-        this.audit.notConfigured() ?? 'Аудит не запустился, попробуйте ещё раз',
+        (await this.audit.personal())
+          ? 'Включён личный режим: аудит команды выключен.'
+          : this.audit.notConfigured() ??
+            'Аудит не запустился, попробуйте ещё раз',
       );
     return { run };
   }

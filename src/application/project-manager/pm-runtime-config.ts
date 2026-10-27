@@ -11,13 +11,17 @@ import {
 
 // Settings change rarely; every instance re-reads them at most this often
 const TTL_MS = 30_000;
+const RETRY_MS = 5_000;
 
 // The effective project-manager config: env values with the owner's
-// admin-page overrides. A store failure falls back to the env config.
+// admin-page overrides. A store failure keeps the last config read (personal
+// mode must not switch itself off on one slow query), else the env config.
+// A failed read is retried after a few seconds, not the full TTL.
 @Injectable()
 export class PmRuntimeConfig {
   private readonly logger = new Logger(PmRuntimeConfig.name);
   private cached: { at: number; config: IPmConfig } | null = null;
+  private lastGood: IPmConfig | null = null;
 
   constructor(
     @Inject(PM_CONFIG) private readonly base: IPmConfig,
@@ -26,16 +30,21 @@ export class PmRuntimeConfig {
 
   async current(now = Date.now()): Promise<IPmConfig> {
     if (this.cached && now - this.cached.at < TTL_MS) return this.cached.config;
-    let config = this.base;
-    if (this.store) {
-      try {
-        config = resolveConfig(this.base, (await this.store.get()).values);
-      } catch (error) {
-        this.logger.error(`settings not loaded: ${error}`);
-      }
+    if (!this.store) {
+      this.cached = { at: now, config: this.base };
+      return this.base;
     }
-    this.cached = { at: now, config };
-    return config;
+    try {
+      const config = resolveConfig(this.base, (await this.store.get()).values);
+      this.lastGood = config;
+      this.cached = { at: now, config };
+      return config;
+    } catch (error) {
+      this.logger.error(`settings not loaded: ${error}`);
+      const config = this.lastGood ?? this.base;
+      this.cached = { at: now - TTL_MS + RETRY_MS, config };
+      return config;
+    }
   }
 
   invalidate(): void {

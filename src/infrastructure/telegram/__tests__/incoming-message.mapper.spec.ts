@@ -62,6 +62,14 @@ describe('mapCallbackToIncoming', () => {
     expect(mapCallbackToIncoming(query('a:+:short'))).toBeNull();
   });
 
+  it('reads a press on an unblock proposal', () => {
+    expect(mapCallbackToIncoming(query('pp:0a1b2c3d:r'))).toMatchObject({
+      callback: { kind: 'proposal', proposal: { id: '0a1b2c3d', action: 'r' } },
+    });
+    expect(mapCallbackToIncoming(query('pp:0a1b2c3d:z'))).toBeNull();
+    expect(mapCallbackToIncoming(query('pp:nothex!!:a'))).toBeNull();
+  });
+
   it('reads an audit checklist item from its button data', () => {
     expect(mapCallbackToIncoming(query('ck:0a1b2c3d:t3'))).toMatchObject({
       chatId: -100,
