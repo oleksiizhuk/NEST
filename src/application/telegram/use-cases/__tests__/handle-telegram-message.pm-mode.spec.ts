@@ -170,6 +170,18 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       expect(text).toContain('до 2026-11-01 00:00 UTC');
     });
 
+    it('keeps the limit notice out of a group, even for the owner', async () => {
+      pmAnswer.execute.mockRejectedValueOnce(
+        new Error('You have reached your specified API usage limits.'),
+      );
+      telegram.sendMessage.mockResolvedValue(undefined);
+      repo.save.mockResolvedValue(undefined);
+      await useCase.execute(group(PM_GROUP, '@nest_bot как дела?', OWNER));
+      const [chat, text] = telegram.sendMessage.mock.calls[0];
+      expect(chat).toBe(PM_GROUP);
+      expect(text).not.toContain('Anthropic');
+    });
+
     it("rates a proposal on the owner's press and shows it on the buttons", async () => {
       proposals.rate.mockResolvedValueOnce({
         id: 'a1b2c3d4',

@@ -782,12 +782,13 @@ export class HandleTelegramMessageUseCase {
       });
     } catch (error) {
       this.logger.error(error);
-      // The owner can lift a used-up spend limit, so they hear why
+      // The owner can lift a used-up spend limit, so they hear why; only in
+      // their private chat, never in a group
       const limit = usageLimitOf(error);
       await this.telegram
         .sendMessage(
           chatId,
-          limit && msg.from.id === this.config.ownerId
+          limit && msg.from.id === this.config.ownerId && chatId === msg.from.id
             ? usageLimitNotice(limit)
             : FALLBACK_MESSAGE,
         )

@@ -364,7 +364,7 @@ describe('PostDailyDigestUseCase', () => {
     const limit = new Error(
       '400 {"type":"error","error":{"type":"invalid_request_error","message":"You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."}}',
     );
-    ai.digest.mockRejectedValue(limit);
+    ai.digest.mockRejectedValueOnce(limit).mockRejectedValueOnce(limit);
     const claimed = new Set<string>();
     const alerts = {
       claim: jest.fn(async (chat: number, key: string) => {
@@ -395,8 +395,6 @@ describe('PostDailyDigestUseCase', () => {
     expect(telegram.sendMessage.mock.calls[0][1]).toContain(
       'до 2026-11-01 00:00 UTC',
     );
-    ai.digest.mockReset();
-    ai.digest.mockResolvedValue('digest text');
   });
 
   it('still fails the run on any other model error', async () => {

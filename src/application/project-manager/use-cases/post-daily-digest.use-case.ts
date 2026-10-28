@@ -122,9 +122,12 @@ export class PostDailyDigestUseCase {
       if (!limit) throw error;
       this.logger.warn('Anthropic spend limit reached; no digest');
       const ownerId = this.config.ownerId;
-      if (!ownerId) return null;
+      // Nobody to tell: keep the failed run visible
+      if (!ownerId) throw error;
+      // Without a date, once per UTC day rather than once for a month
       const key = `ai-limit:${
-        limit.until?.toISOString().slice(0, 10) ?? 'unknown'
+        limit.until?.toISOString().slice(0, 10) ??
+        `unknown:${now.toISOString().slice(0, 10)}`
       }`;
       const fresh = this.alerts
         ? await this.alerts.claim(ownerId, key, now).catch(() => true)
