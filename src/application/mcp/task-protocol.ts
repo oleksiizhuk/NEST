@@ -148,6 +148,16 @@ export const failedCallText = (task: McpTask): string =>
     : `NEXT STEP: call ask_advice again with task_id "${task.id}" in a ` +
       'minute, or with a smaller context.');
 
+// The key's spend limit is used up: no retry helps before the date
+export const usageLimitText = (task: McpTask, until: string | null): string =>
+  `The Claude API spend limit behind this bridge is used up${
+    until ? ` until ${until}` : ''
+  }, so no model call can run before then. Not counted as a round or a ` +
+  `failed attempt. NEXT STEP: do not retry; tell the user that the bridge ` +
+  `is out of budget${until ? ` until ${until}` : ''} and that its owner can ` +
+  `raise the limit in the Anthropic console. Task_id "${task.id}" stays open ` +
+  'for later.';
+
 export const reportedText = (task: McpTask): string => {
   if (task.status === 'solved' || task.status === 'abandoned') {
     return `Task ${task.id} closed as ${task.status}. Thank you for reporting.`;

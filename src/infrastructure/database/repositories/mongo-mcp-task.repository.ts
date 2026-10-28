@@ -99,11 +99,15 @@ export class MongoMcpTaskRepository implements IMcpTaskRepository {
 
   // After a takeover this also refunds the dead function's round: a dead
   // round plus a failed one costs no round and one failed attempt
-  async releaseRound(id: string, claimedAt: Date): Promise<void> {
+  async releaseRound(
+    id: string,
+    claimedAt: Date,
+    counted = true,
+  ): Promise<void> {
     await this.tasks.updateOne(
       { taskId: id, inFlightSince: claimedAt },
       {
-        $inc: { rounds: -1, failures: 1 },
+        $inc: { rounds: -1, failures: counted ? 1 : 0 },
         $set: { inFlightSince: null },
       },
     );

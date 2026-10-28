@@ -17,6 +17,7 @@ import {
   McpTask,
 } from '@domain/mcp-task/mcp-task.entity';
 import { McpToolError } from '@application/mcp/mcp-tool.error';
+import { untilText, usageLimitOf } from '@application/shared/ai-usage-limit';
 import { StartTaskUseCase } from '@application/mcp/use-cases/start-task.use-case';
 import {
   answerFooter,
@@ -28,6 +29,7 @@ import {
   needsReminder,
   failedCallText,
   noAnswerFooter,
+  usageLimitText,
   reportFirstText,
   unknownText,
 } from '@application/mcp/task-protocol';
@@ -125,13 +127,18 @@ export class AskClaudeUseCase {
       });
     } catch (error) {
       // A failed call must not use up the task, and a caller that sent no
-      // task_id still needs the one that was opened for it
+      // task_id still needs the one that was opened for it. A used-up spend
+      // limit is no attempt at all: retrying cannot help before its date.
+      const limit = usageLimitOf(error);
       await this.bestEffort('releaseRound', () =>
-        this.tasks.releaseRound(task.id, claimedAt),
+        this.tasks.releaseRound(task.id, claimedAt, !limit),
       );
-      throw Object.assign(new McpToolError(failedCallText(task)), {
-        cause: error,
-      });
+      throw Object.assign(
+        new McpToolError(
+          limit ? usageLimitText(task, untilText(limit)) : failedCallText(task),
+        ),
+        { cause: error },
+      );
     }
 
     if (result.noAnswer) {

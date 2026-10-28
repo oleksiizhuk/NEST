@@ -45,6 +45,14 @@ import {
   renderProposalFeedback,
   takeProposals,
 } from '@application/project-manager/proposals.interface';
+import {
+  IAlertLog,
+  PM_ALERT_LOG,
+} from '@application/project-manager/alert-log.interface';
+import {
+  usageLimitNotice,
+  usageLimitOf,
+} from '@application/shared/ai-usage-limit';
 
 export const DIGEST_REQUEST =
   'Write the daily status digest for the team chat, following the digest ' +
@@ -94,7 +102,43 @@ export class PostDailyDigestUseCase {
     @Optional()
     @Inject(PM_PROPOSALS)
     private readonly proposals?: IProposalStore,
+    // Says once per limit period that the API spend limit is used up
+    @Optional()
+    @Inject(PM_ALERT_LOG)
+    private readonly alerts?: IAlertLog,
   ) {}
+
+  // A used-up spend limit fails every call until its date: the owner hears
+  // it once (not every weekday) and the cron ends cleanly. Anything else
+  // still fails the run.
+  private async digestOrLimit(
+    request: Parameters<IProjectManagerAiService['digest']>[0],
+    now: Date,
+  ): Promise<string | null> {
+    try {
+      return await this.ai.digest(request);
+    } catch (error) {
+      const limit = usageLimitOf(error);
+      if (!limit) throw error;
+      this.logger.warn('Anthropic spend limit reached; no digest');
+      const ownerId = this.config.ownerId;
+      if (!ownerId) return null;
+      const key = `ai-limit:${
+        limit.until?.toISOString().slice(0, 10) ?? 'unknown'
+      }`;
+      const fresh = this.alerts
+        ? await this.alerts.claim(ownerId, key, now).catch(() => true)
+        : true;
+      if (!fresh) return null;
+      try {
+        await this.telegram.sendMessage(ownerId, usageLimitNotice(limit));
+      } catch (sendError) {
+        this.logger.error(`limit notice: ${sendError}`);
+        await this.alerts?.release(ownerId, [key]).catch(() => undefined);
+      }
+      return null;
+    }
+  }
 
   // Always rebuilds the snapshot first: the digest is the morning's source
   // of truth, and its prompt warms the cache for the questions that follow.
@@ -125,26 +169,30 @@ export class PostDailyDigestUseCase {
       live?.teamRoles ?? this.config.teamRoles,
     );
     const team = rosterBlock(roster);
-    const written = await this.ai.digest({
-      history: previous
-        ? [
-            {
-              userText: `(${previous.createdAt
-                .toISOString()
-                .slice(0, 10)}) ${DIGEST_REQUEST}`,
-              botResponse: previous.text,
-            },
-          ]
-        : [],
-      brief: knowledge.brief ?? this.config.projectBrief,
-      knowledge: knowledge.text,
-      snapshot: snapshot.render(),
-      question: `${todayLine(
-        now,
-        this.config.releaseDate,
-      )}\n\n${DIGEST_REQUEST}${team ? `\n\n${team}` : ''}`,
-      deadline,
-    });
+    const written = await this.digestOrLimit(
+      {
+        history: previous
+          ? [
+              {
+                userText: `(${previous.createdAt
+                  .toISOString()
+                  .slice(0, 10)}) ${DIGEST_REQUEST}`,
+                botResponse: previous.text,
+              },
+            ]
+          : [],
+        brief: knowledge.brief ?? this.config.projectBrief,
+        knowledge: knowledge.text,
+        snapshot: snapshot.render(),
+        question: `${todayLine(
+          now,
+          this.config.releaseDate,
+        )}\n\n${DIGEST_REQUEST}${team ? `\n\n${team}` : ''}`,
+        deadline,
+      },
+      now,
+    );
+    if (written === null) return { posted: false };
     // Only the people on the roster are @-mentioned, never a guessed handle
     const text =
       written === PM_UNAVAILABLE_REPLY ? written : tagPeople(written, roster);
@@ -191,30 +239,34 @@ export class PostDailyDigestUseCase {
     ]);
     const feedback = renderProposalFeedback(recent, now);
     const request = personalDigestRequest(focus);
-    const written = await this.ai.digest({
-      history: previous
-        ? [
-            {
-              userText: `(${previous.createdAt
-                .toISOString()
-                .slice(0, 10)}) ${request}`,
-              botResponse: previous.text,
-            },
-          ]
-        : [],
-      brief: knowledge.brief ?? this.config.projectBrief,
-      knowledge: knowledge.text,
-      snapshot: snapshot.render(
-        personalView(snapshot, {
-          name: focus,
-          githubLogin: live?.githubLogins?.[focus] ?? null,
-        }),
-      ),
-      question: `${todayLine(now, this.config.releaseDate)}\n\n${request}${
-        feedback ? `\n\n${feedback}` : ''
-      }`,
-      deadline,
-    });
+    const written = await this.digestOrLimit(
+      {
+        history: previous
+          ? [
+              {
+                userText: `(${previous.createdAt
+                  .toISOString()
+                  .slice(0, 10)}) ${request}`,
+                botResponse: previous.text,
+              },
+            ]
+          : [],
+        brief: knowledge.brief ?? this.config.projectBrief,
+        knowledge: knowledge.text,
+        snapshot: snapshot.render(
+          personalView(snapshot, {
+            name: focus,
+            githubLogin: live?.githubLogins?.[focus] ?? null,
+          }),
+        ),
+        question: `${todayLine(now, this.config.releaseDate)}\n\n${request}${
+          feedback ? `\n\n${feedback}` : ''
+        }`,
+        deadline,
+      },
+      now,
+    );
+    if (written === null) return { posted: false };
     if (written === PM_UNAVAILABLE_REPLY) {
       await this.telegram.sendMessage(ownerId, written).catch(() => undefined);
       return { posted: false };

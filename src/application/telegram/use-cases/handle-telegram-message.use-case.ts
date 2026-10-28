@@ -19,6 +19,10 @@ import {
   ITelegramMessageRepository,
   TELEGRAM_MESSAGE_REPOSITORY,
 } from '@domain/telegram/telegram-message.repository.interface';
+import {
+  usageLimitNotice,
+  usageLimitOf,
+} from '@application/shared/ai-usage-limit';
 import { IncomingTelegramMessage } from '@application/telegram/incoming-telegram-message';
 import { PmTurn } from '@application/project-manager/project-manager-ai.interface';
 import {
@@ -778,8 +782,15 @@ export class HandleTelegramMessageUseCase {
       });
     } catch (error) {
       this.logger.error(error);
+      // The owner can lift a used-up spend limit, so they hear why
+      const limit = usageLimitOf(error);
       await this.telegram
-        .sendMessage(chatId, FALLBACK_MESSAGE)
+        .sendMessage(
+          chatId,
+          limit && msg.from.id === this.config.ownerId
+            ? usageLimitNotice(limit)
+            : FALLBACK_MESSAGE,
+        )
         .catch(() => undefined);
       await this.saveLog(
         msg,

@@ -226,6 +226,28 @@ describe('AskClaudeUseCase', () => {
     });
   });
 
+  it('says the spend limit is used up and counts no attempt', async () => {
+    assistant.ask.mockRejectedValue(
+      new Error(
+        '400 {"type":"error","error":{"type":"invalid_request_error","message":"You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."}}',
+      ),
+    );
+
+    const error = await useCase
+      .execute({ prompt: 'a', taskId: ID })
+      .catch((e: Error) => e);
+
+    expect(error).toBeInstanceOf(McpToolError);
+    expect((error as Error).message).toContain('until 2026-11-01 00:00 UTC');
+    expect((error as Error).message).toContain('do not retry');
+    expect((error as Error).message).not.toContain('busy');
+    expect(tasks.rows.get(ID)).toMatchObject({
+      rounds: 0,
+      failures: 0,
+      inFlightSince: null,
+    });
+  });
+
   it('gives the round back when the model produced no answer', async () => {
     assistant.ask.mockResolvedValue({
       text: 'Claude declined to answer this request.',

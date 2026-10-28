@@ -155,6 +155,21 @@ describe('HandleTelegramMessageUseCase — project-manager mode', () => {
       expect(telegram.sendMessage.mock.calls[0][0]).toBe(OWNER);
     });
 
+    it('tells the owner the API spend limit is used up, and until when', async () => {
+      pmAnswer.execute.mockRejectedValueOnce(
+        new Error(
+          '400 You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC.',
+        ),
+      );
+      telegram.sendMessage.mockResolvedValue(undefined);
+      repo.save.mockResolvedValue(undefined);
+      await personal().execute(dm(OWNER, 'owner', 'что у меня?'));
+      const [chat, text] = telegram.sendMessage.mock.calls[0];
+      expect(chat).toBe(OWNER);
+      expect(text).toContain('Лимит расходов Anthropic API исчерпан');
+      expect(text).toContain('до 2026-11-01 00:00 UTC');
+    });
+
     it("rates a proposal on the owner's press and shows it on the buttons", async () => {
       proposals.rate.mockResolvedValueOnce({
         id: 'a1b2c3d4',
