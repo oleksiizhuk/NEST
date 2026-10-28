@@ -96,12 +96,12 @@ export class InMemoryTaskRepository implements IMcpTaskRepository {
     return this.put(t, { rounds: t.rounds + 1, inFlightSince: now });
   }
 
-  async releaseRound(id: string, claimedAt: Date) {
+  async releaseRound(id: string, claimedAt: Date, counted = true) {
     const t = this.rows.get(id);
     if (t && t.inFlightSince?.getTime() === claimedAt.getTime()) {
       this.put(t, {
         rounds: t.rounds - 1,
-        failures: t.failures + 1,
+        failures: t.failures + (counted ? 1 : 0),
         inFlightSince: null,
       });
     }

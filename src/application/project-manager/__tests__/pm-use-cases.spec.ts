@@ -360,6 +360,56 @@ describe('PostDailyDigestUseCase', () => {
     expect(telegram.sendMessage).toHaveBeenCalledWith(-100, 'digest text');
   });
 
+  it('tells the owner once when the API spend limit is used up, and ends cleanly', async () => {
+    const limit = new Error(
+      '400 {"type":"error","error":{"type":"invalid_request_error","message":"You have reached your specified API usage limits. You will regain access on 2026-11-01 at 00:00 UTC."}}',
+    );
+    ai.digest.mockRejectedValueOnce(limit).mockRejectedValueOnce(limit);
+    const claimed = new Set<string>();
+    const alerts = {
+      claim: jest.fn(async (chat: number, key: string) => {
+        const fresh = !claimed.has(`${chat}:${key}`);
+        claimed.add(`${chat}:${key}`);
+        return fresh;
+      }),
+      release: jest.fn(),
+      releaseStale: jest.fn(),
+    };
+    const useCase = new PostDailyDigestUseCase(
+      refresh as any,
+      ai as any,
+      telegram,
+      { ...config, ownerId: 5 },
+      chats([]),
+      knowledge as any,
+      undefined,
+      undefined,
+      undefined,
+      alerts,
+    );
+    await expect(useCase.execute(now)).resolves.toEqual({ posted: false });
+    await expect(useCase.execute(now)).resolves.toEqual({ posted: false });
+    expect(alerts.claim).toHaveBeenCalledWith(5, 'ai-limit:2026-11-01', now);
+    expect(telegram.sendMessage).toHaveBeenCalledTimes(1);
+    expect(telegram.sendMessage.mock.calls[0][0]).toBe(5);
+    expect(telegram.sendMessage.mock.calls[0][1]).toContain(
+      'до 2026-11-01 00:00 UTC',
+    );
+  });
+
+  it('still fails the run on any other model error', async () => {
+    ai.digest.mockRejectedValueOnce(new Error('529 overloaded'));
+    const useCase = new PostDailyDigestUseCase(
+      refresh as any,
+      ai as any,
+      telegram,
+      config,
+      chats([]),
+      knowledge as any,
+    );
+    await expect(useCase.execute(now)).rejects.toThrow('529 overloaded');
+  });
+
   it('gives the model the team from the admin page and tags only them', async () => {
     ai.digest.mockResolvedValueOnce(
       '- Tomas: test the build\n- @client: approve',

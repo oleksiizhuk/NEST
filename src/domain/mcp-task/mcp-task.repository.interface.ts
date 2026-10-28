@@ -28,8 +28,9 @@ export interface IMcpTaskRepository {
     maxRounds: number,
     now: Date,
   ): Promise<McpTask | null>;
-  // Gives the claimed round back and counts a failed attempt
-  releaseRound(id: string, claimedAt: Date): Promise<void>;
+  // Gives the claimed round back and counts a failed attempt, unless
+  // counted is false (the API refused before doing any work)
+  releaseRound(id: string, claimedAt: Date, counted?: boolean): Promise<void>;
   // Records the reply of the claimed round and ends it: need_info →
   // gathering, answer → answered. Only while the task is open and the claim
   // is still this one.
