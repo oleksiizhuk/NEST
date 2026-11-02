@@ -8,6 +8,24 @@ import { TelegramBotService } from '@infrastructure/telegram/telegram-bot.servic
 
 const REGISTER_TIMEOUT_MS = 5000;
 
+// The menu in the owner's private chat. Only there: /report and /refresh
+// are the owner's, and nobody else should see them offered.
+export const OWNER_COMMANDS = [
+  { command: 'status', description: 'Статус проекта: вердикт, фокус, риски' },
+  { command: 'report', description: 'Отчёт по человеку из команды' },
+  { command: 'refresh', description: 'Обновить данные из Jira, GitHub и др.' },
+  { command: 'memory', description: 'Что бот помнит о проекте' },
+  { command: 'admin', description: 'Ссылка на админку' },
+];
+
+const withTimeout = <T>(work: Promise<T>): Promise<T> =>
+  Promise.race([
+    work,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('timed out')), REGISTER_TIMEOUT_MS),
+    ),
+  ]);
+
 // Where Telegram should deliver updates: TELEGRAM_WEBHOOK_URL if set,
 // otherwise the project's production domain that Vercel exposes.
 export const resolveWebhookUrl = (config: ConfigService): string | null => {
@@ -45,13 +63,15 @@ export class TelegramWebhookBootstrap implements OnModuleInit {
       return;
     }
 
+    // Side by side, so the menu adds no time to a cold start
+    await Promise.all([this.registerWebhook(url), this.setOwnerMenu()]);
+  }
+
+  private async registerWebhook(url: string): Promise<void> {
     try {
-      const before = await Promise.race([
+      const before = await withTimeout(
         this.botService.registerWebhook(url, this.config.webhookSecret),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('timed out')), REGISTER_TIMEOUT_MS),
-        ),
-      ]);
+      );
       this.logger.log(
         `Telegram webhook set to ${url} (was: ${before.url || 'none'}, ` +
           `pending: ${before.pending}, last error: ${
@@ -61,6 +81,19 @@ export class TelegramWebhookBootstrap implements OnModuleInit {
     } catch (error) {
       // Never block the API on Telegram; the next cold start retries.
       this.logger.error(`Telegram webhook registration failed: ${error}`);
+    }
+  }
+
+  private async setOwnerMenu(): Promise<void> {
+    if (!this.config.ownerId) return;
+    try {
+      const changed = await withTimeout(
+        this.botService.setChatCommands(this.config.ownerId, OWNER_COMMANDS),
+      );
+      if (changed) this.logger.log("Owner's command menu updated");
+    } catch (error) {
+      // A missing menu only means typing the command; the next cold start retries
+      this.logger.warn(`Owner's command menu not set: ${error}`);
     }
   }
 }
