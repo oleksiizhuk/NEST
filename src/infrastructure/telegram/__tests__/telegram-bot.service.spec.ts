@@ -59,7 +59,16 @@ const mockApi = {
   editMessageReplyMarkup: jest.fn().mockResolvedValue(undefined),
   getMyCommands: jest.fn(),
   setMyCommands: jest.fn().mockResolvedValue(true),
+  getWebhookInfo: jest.fn(),
+  setWebhook: jest.fn(),
 };
+
+// What grammy throws for Telegram's flood control
+const tooMany = (retryAfter: number) =>
+  Object.assign(new Error('429: Too Many Requests'), {
+    error_code: 429,
+    parameters: { retry_after: retryAfter },
+  });
 const mockBotCtor = jest.fn();
 jest.mock('grammy', () => ({
   Bot: jest.fn().mockImplementation((token: string) => {
@@ -158,6 +167,81 @@ describe('TelegramBotService', () => {
       false,
     );
     expect(mockApi.setMyCommands).not.toHaveBeenCalled();
+  });
+
+  describe('registerWebhook', () => {
+    const URL = 'https://nest.example/telegram/webhook';
+    beforeEach(() => {
+      mockApi.getWebhookInfo.mockResolvedValue({
+        url: URL,
+        pending_update_count: 2,
+      });
+    });
+
+    it('sets the webhook and reports what was there before', async () => {
+      mockApi.setWebhook.mockResolvedValueOnce(true);
+      await expect(
+        serviceWith('1:abc').registerWebhook(URL, 's'),
+      ).resolves.toEqual({
+        url: URL,
+        pending: 2,
+        lastError: null,
+        rateLimited: false,
+        registered: true,
+      });
+      expect(mockApi.setWebhook).toHaveBeenCalledWith(URL, {
+        secret_token: 's',
+        allowed_updates: ['message', 'callback_query'],
+      });
+    });
+
+    it('waits out a 429 from a sibling instance and tries once more', async () => {
+      mockApi.setWebhook
+        .mockRejectedValueOnce(tooMany(0))
+        .mockResolvedValueOnce(true);
+      const result = await serviceWith('1:abc').registerWebhook(URL, 's');
+      expect(mockApi.setWebhook).toHaveBeenCalledTimes(2);
+      expect(result).toMatchObject({ rateLimited: false, registered: true });
+    });
+
+    it('still refused, reads back whether another instance set it', async () => {
+      mockApi.setWebhook.mockRejectedValue(tooMany(0));
+      mockApi.getWebhookInfo
+        .mockResolvedValueOnce({ url: '', pending_update_count: 0 })
+        .mockResolvedValueOnce({ url: URL, pending_update_count: 0 });
+      await expect(
+        serviceWith('1:abc').registerWebhook(URL, 's'),
+      ).resolves.toMatchObject({
+        url: '',
+        rateLimited: true,
+        registered: true,
+      });
+      expect(mockApi.setWebhook).toHaveBeenCalledTimes(2);
+
+      mockApi.setWebhook.mockClear();
+      mockApi.getWebhookInfo.mockResolvedValue({
+        url: 'https://elsewhere/hook',
+        pending_update_count: 0,
+      });
+      await expect(
+        serviceWith('1:abc').registerWebhook(URL, 's'),
+      ).resolves.toMatchObject({ rateLimited: true, registered: false });
+    });
+
+    it('does not wait longer than a cold start allows, nor retry other errors', async () => {
+      mockApi.setWebhook.mockRejectedValueOnce(tooMany(30));
+      await expect(
+        serviceWith('1:abc').registerWebhook(URL, 's'),
+      ).resolves.toMatchObject({ rateLimited: true });
+      expect(mockApi.setWebhook).toHaveBeenCalledTimes(1);
+
+      mockApi.setWebhook.mockReset();
+      mockApi.setWebhook.mockRejectedValueOnce(new Error('401 Unauthorized'));
+      await expect(
+        serviceWith('1:abc').registerWebhook(URL, 's'),
+      ).rejects.toThrow('401');
+      expect(mockApi.setWebhook).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('shows the typing indicator', async () => {

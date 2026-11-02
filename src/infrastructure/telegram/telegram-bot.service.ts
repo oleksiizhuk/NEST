@@ -22,6 +22,20 @@ const keyboard = (buttons: InlineButton[][]) => ({
   ),
 });
 
+// Telegram's flood control answers 429 with parameters.retry_after
+// (seconds); anything else is not a rate limit
+export const retryAfterSeconds = (error: unknown): number | null => {
+  const e = error as {
+    error_code?: number;
+    parameters?: { retry_after?: number };
+  } | null;
+  return e?.error_code === 429 ? e.parameters?.retry_after ?? 1 : null;
+};
+
+// Longer than this and a retry would not fit the cold start's time budget
+const MAX_RETRY_WAIT_S = 2;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 // Prefer paragraph, then line, then word boundaries — a chunk cut mid-word
 // reads as a broken message
 export const splitForTelegram = (text: string): string[] => {
@@ -197,20 +211,45 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
   // Points Telegram at our webhook with the shared secret. Idempotent, so it
   // is safe on every cold start. Returns what Telegram reported before the
   // change, for the log.
+  //
+  // A fresh deployment starts several instances at once and each one calls
+  // setWebhook; Telegram lets one through and answers the rest 429 with a
+  // retry_after. Such an instance waits that long (with jitter) and tries
+  // once more; still refused, it reads the webhook back: `rateLimited` says
+  // its own call never landed, `registered` whether the webhook points at
+  // this URL anyway (another instance set it).
   async registerWebhook(
     url: string,
     secret: string,
-  ): Promise<{ url: string; pending: number; lastError: string | null }> {
+  ): Promise<{
+    url: string;
+    pending: number;
+    lastError: string | null;
+    rateLimited: boolean;
+    registered: boolean;
+  }> {
     const before = await this.bot.api.getWebhookInfo();
-    await this.bot.api.setWebhook(url, {
-      secret_token: secret,
-      allowed_updates: ['message', 'callback_query'],
-    });
-    return {
+    const info = {
       url: before.url,
       pending: before.pending_update_count,
       lastError: before.last_error_message ?? null,
     };
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.bot.api.setWebhook(url, {
+          secret_token: secret,
+          allowed_updates: ['message', 'callback_query'],
+        });
+        return { ...info, rateLimited: false, registered: true };
+      } catch (error) {
+        const wait = retryAfterSeconds(error);
+        if (wait === null) throw error;
+        if (attempt >= 1 || wait > MAX_RETRY_WAIT_S) break;
+        await sleep(wait * 1000 + Math.random() * 500);
+      }
+    }
+    const now = await this.bot.api.getWebhookInfo();
+    return { ...info, rateLimited: true, registered: now.url === url };
   }
 
   // The command menu of one private chat (the owner's), so commands only the
