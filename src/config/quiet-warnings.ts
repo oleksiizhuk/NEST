@@ -8,14 +8,18 @@ export const QUIET_WARNING_CODES = ['DEP0169'];
 type Emit = (warning: string | Error, ...rest: unknown[]) => void;
 const QUIET = Symbol.for('nest.quietWarnings');
 
+// The code the way Node reads it (internal/process/warning): an Error keeps
+// its own code and ignores the rest; then an options object; a constructor
+// in the second or third place means there is no code
 const codeOf = (warning: string | Error, rest: unknown[]): unknown => {
-  const [typeOrOptions, code] = rest;
-  if (typeOrOptions && typeof typeOrOptions === 'object')
-    return (typeOrOptions as { code?: unknown }).code;
-  if (code !== undefined) return code;
-  return warning instanceof Error
-    ? (warning as Error & { code?: unknown }).code
-    : undefined;
+  if (warning instanceof Error)
+    return (warning as Error & { code?: unknown }).code;
+  const [type, code] = rest;
+  if (type && typeof type === 'object')
+    return (type as { code?: unknown }).code;
+  if (typeof type === 'function' || typeof code === 'function')
+    return undefined;
+  return code;
 };
 
 export const quietPlatformWarnings = (
