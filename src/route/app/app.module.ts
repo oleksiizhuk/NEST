@@ -13,6 +13,7 @@ import { ShoppingCartModule } from '@infrastructure/http/shopping-cart/shopping-
 import { EmailHttpModule } from '@infrastructure/http/email/email.module';
 import { TelegramHttpModule } from '@infrastructure/http/telegram/telegram.module';
 import { McpHttpModule } from '@infrastructure/http/mcp/mcp.module';
+import { JobWatchHttpModule } from '@infrastructure/http/job-watch/job-watch.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { McpHttpModule } from '@infrastructure/http/mcp/mcp.module';
     McpHttpModule,
     PmCronHttpModule,
     PmAdminHttpModule,
+    JobWatchHttpModule,
     ConfigModule.forRoot(),
     MongooseModule.forRootAsync({
       useFactory: () => {

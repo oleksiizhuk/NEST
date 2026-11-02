@@ -1,0 +1,54 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "6f1b9a52-0c3e-4f8e-9d1a-2b7c5e8f0a11",
+      "title": "Senior React Native Engineer ",
+      "department": "Engineering",
+      "team": "Mobile",
+      "employmentType": "FullTime",
+      "location": "Berlin, Germany",
+      "secondaryLocations": [{ "location": "München, Germany", "address": null }],
+      "publishedAt": "2026-10-16T12:56:10.049+00:00",
+      "isListed": true,
+      "isRemote": false,
+      "workplaceType": "Hybrid",
+      "address": {
+        "postalAddress": {
+          "addressRegion": "Berlin",
+          "addressCountry": "Germany",
+          "addressLocality": "Berlin"
+        }
+      },
+      "jobUrl": "https://jobs.ashbyhq.com/acme/6f1b9a52-0c3e-4f8e-9d1a-2b7c5e8f0a11",
+      "applyUrl": "https://jobs.ashbyhq.com/acme/6f1b9a52-0c3e-4f8e-9d1a-2b7c5e8f0a11/application",
+      "descriptionHtml": "<p>About the role</p>",
+      "descriptionPlain": "About the role"
+    },
+    {
+      "id": "0d2e4c61-7a8b-4c9d-8e0f-1a2b3c4d5e6f",
+      "title": "Hidden Role",
+      "department": "Engineering",
+      "team": "Engineering",
+      "location": "Berlin, Germany",
+      "secondaryLocations": [],
+      "publishedAt": "2026-10-01T10:00:00.000+00:00",
+      "isListed": false,
+      "isRemote": false,
+      "workplaceType": "Hybrid",
+      "address": null,
+      "jobUrl": "https://jobs.ashbyhq.com/acme/0d2e4c61-7a8b-4c9d-8e0f-1a2b3c4d5e6f"
+    },
+    {
+      "id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+      "title": "Data Engineer",
+      "department": "Engineering",
+      "team": null,
+      "location": "Lisbon, Portugal",
+      "publishedAt": null,
+      "isListed": true,
+      "workplaceType": null,
+      "jobUrl": null
+    }
+  ]
+}
