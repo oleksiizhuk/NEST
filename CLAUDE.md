@@ -157,6 +157,7 @@ STAGING_API_BASE_URL=   # Staging admin API; with STAGING_ALLOWED_HOSTS (exact h
 STAGING_ADMIN_EMAIL=    # Dedicated least-privilege staging account for the bot, with STAGING_ADMIN_PASSWORD
 DEV_API_BASE_URL=       # Same four settings for the dev environment (DEV_ALLOWED_HOSTS, DEV_ADMIN_EMAIL, DEV_ADMIN_PASSWORD); STAGING_FORBIDDEN_HOSTS applies to both
 <P>_CLIENT_EMAIL=       # Per environment (P = DEV / STAGING): client account (falls back to <P>_ADMIN_*); <P>_PLATFORM_ADMIN_EMAIL/PASSWORD = platform admin. Tools take as=client|admin
+JOB_WATCH_BOARDS=       # Ashby job-board slugs to watch (jobs.ashbyhq.com/<slug>); unset = off. JOB_WATCH_LOCATIONS (unset = anywhere), JOB_WATCH_KEYWORDS (unset = mobile/React Native/web defaults), JOB_WATCH_CHAT_ID (default TELEGRAM_OWNER_ID)
 ENV=
 PORT=3000
 ```
@@ -230,6 +231,7 @@ In chats listed in `TELEGRAM_PM_CHAT_IDS`, chats switched on with `/pm_on`, and 
 | GET | `/cron/pm/actions`, `/cron/pm/ask?q=`, `/cron/pm/targets`, `/cron/pm/feedback` | Bearer `CRON_SECRET` | Diagnostics: recent actions with outcome, one question through the PM pipeline, dev/staging sign-in check, 👍/👎 and time/tokens of recent answers |
 | GET | `/cron/pm/watch?dry=1`, `/cron/pm/eval`, `/cron/pm/memory`, `/cron/pm/golden` · PUT `/cron/pm/golden` | Bearer `CRON_SECRET` | Alerts (Vercel Cron 08/11/14 UTC weekdays; `dry=1` lists without sending), weekly golden eval (Mon 02:00, 03:00, 04:00 UTC), memory records, golden questions |
 | GET | `/cron/pm/refresh`, `/cron/pm/daily` | Bearer `CRON_SECRET` | Rebuild the project snapshot; daily also posts the digest (Vercel Cron, weekdays 05:00 UTC) |
+| GET | `/cron/jobs/watch?dry=1` | Bearer `CRON_SECRET` | Job watch (Vercel Cron daily 07:00 UTC): reads the Ashby boards in `JOB_WATCH_BOARDS`, sends each posting whose place and title/team match to Telegram once (Mongo `jobwatchseen`, 365 days), says so when a board cannot be read; no model call. `dry=1` lists matches without sending |
 | GET | `/api/docs` | — | Swagger UI |
 
 ### MCP endpoint (`/mcp`)

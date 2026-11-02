@@ -77,6 +77,10 @@
     {
       "path": "/cron/pm/audit?slot=6",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/cron/jobs/watch",
+      "schedule": "0 7 * * *"
     }
   ],
   "headers": [
