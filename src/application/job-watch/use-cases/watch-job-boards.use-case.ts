@@ -37,6 +37,12 @@ export interface JobWatchResult {
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim();
+const errorText = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+// Telegram allows about one message a second to a chat
+const SEND_GAP_MS = 1_100;
+const pause = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // One posting as a Telegram message: what, where, which keywords, the link
 export const jobMessage = (job: JobPosting, match: JobMatch): string =>
@@ -71,7 +77,14 @@ export class WatchJobBoardsUseCase {
       matches: [],
       sent: 0,
     };
-    if (result.off) return result;
+    if (result.off) {
+      if (boards.length) {
+        this.logger.warn(
+          'job watch off: no chat (JOB_WATCH_CHAT_ID / TELEGRAM_OWNER_ID)',
+        );
+      }
+      return result;
+    }
 
     const found: { job: JobPosting; match: JobMatch }[] = [];
     for (const slug of boards) {
@@ -79,20 +92,19 @@ export class WatchJobBoardsUseCase {
       try {
         jobs = await this.board.list(slug);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        result.boards.push({ board: slug, jobs: 0, error: message });
+        result.boards.push({ board: slug, jobs: 0, error: errorText(error) });
         continue;
       }
       result.boards.push({ board: slug, jobs: jobs.length });
       for (const job of jobs) {
-        const keywords = matchJob(job, this.config);
-        if (!keywords) continue;
+        const hit = matchJob(job, this.config);
+        if (!hit) continue;
         const match: JobMatch = {
           board: slug,
           id: job.id,
           title: oneLine(job.title),
-          location: job.locations[0] ?? '',
-          keywords,
+          location: hit.place,
+          keywords: hit.keywords,
           url: job.url,
         };
         found.push({ job, match });
@@ -101,37 +113,47 @@ export class WatchJobBoardsUseCase {
     }
     if (dry) return result;
 
+    const problems = result.boards
+      .filter((b) => b.error)
+      .map((b) => `${b.board} (${b.error})`);
     for (const { job, match } of found) {
       const key = `${match.board}:${match.id}`;
-      if (!(await this.seen.claim(key, now))) continue;
+      let claimed: boolean;
       try {
+        claimed = await this.seen.claim(key, now);
+      } catch (error) {
+        // Nothing claimed, so nothing lost: the next run tries them all
+        this.logger.error(`job watch store: ${error}`);
+        problems.push(`хранилище недоступно (${errorText(error)})`);
+        break;
+      }
+      if (!claimed) continue;
+      try {
+        if (result.sent) await pause(SEND_GAP_MS);
         await this.telegram.sendMessage(
           chatId,
           jobMessage(job, match),
           undefined,
-          {
-            links: false,
-          },
+          { links: false },
         );
         result.sent++;
       } catch (error) {
+        // Most likely a flood limit: stop here, the rest go out next run
         this.logger.error(`job ${key} not sent: ${error}`);
         await this.seen
           .release(key)
           .catch((e) => this.logger.error(`job ${key} release: ${e}`));
+        break;
       }
     }
 
     // A board that cannot be read looks exactly like a board with nothing
     // new, so say so instead of going quiet
-    const broken = result.boards.filter((b) => b.error);
-    if (broken.length) {
+    if (problems.length) {
       await this.telegram
         .sendMessage(
           chatId,
-          `⚠️ Не смог прочитать вакансии: ${broken
-            .map((b) => `${b.board} (${b.error})`)
-            .join('; ')}`,
+          `⚠️ Не смог проверить вакансии: ${problems.join('; ')}`,
           undefined,
           { links: false },
         )

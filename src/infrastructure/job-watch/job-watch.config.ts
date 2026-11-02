@@ -13,10 +13,10 @@ const list = (value?: string): string[] =>
 // Which boards, places and roles are personal, so they live in env only
 export const jobWatchConfig = (config: ConfigService): IJobWatchConfig => {
   const keywords = list(config.get<string>('JOB_WATCH_KEYWORDS'));
-  const chatId = Number(
-    config.get<string>('JOB_WATCH_CHAT_ID') ||
-      config.get<string>('TELEGRAM_OWNER_ID'),
-  );
+  const owner = config.get<string>('TELEGRAM_OWNER_ID');
+  const wanted = config.get<string>('JOB_WATCH_CHAT_ID')?.trim();
+  // "owner" as in the PM chat lists
+  const chatId = Number(!wanted || wanted === 'owner' ? owner : wanted);
   return {
     boards: list(config.get<string>('JOB_WATCH_BOARDS')),
     locations: list(config.get<string>('JOB_WATCH_LOCATIONS')),

@@ -30,14 +30,14 @@ describe('AshbyJobBoard', () => {
     expect(jobs[0]).toMatchObject({
       team: 'Mobile',
       workplaceType: 'Hybrid',
-      locations: ['Warsaw, Poland', 'Kraków, Poland', 'Warsaw', 'Poland'],
+      locations: ['Berlin, Germany', 'München, Germany', 'Berlin', 'Germany'],
       url: 'https://jobs.ashbyhq.com/acme/6f1b9a52-0c3e-4f8e-9d1a-2b7c5e8f0a11',
     });
     // Missing fields become empty, never "null" or a crash
     expect(jobs[1]).toMatchObject({
       team: '',
       workplaceType: '',
-      locations: ['Sliema, Malta'],
+      locations: ['Lisbon, Portugal'],
       url: 'https://jobs.ashbyhq.com/acme/9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d',
       publishedAt: null,
     });

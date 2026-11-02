@@ -7,12 +7,12 @@ import { ISeenJobs } from '@application/job-watch/seen-jobs.interface';
 import { IJobWatchConfig } from '@application/job-watch/job-watch.config.interface';
 import { ITelegramGateway } from '@application/telegram/telegram.gateway.interface';
 
-const posting = (id: string, title: string, place = 'Warsaw, Poland') =>
+const posting = (id: string, title: string, place = 'Berlin, Germany') =>
   ({
     id,
     title,
     locations: [place],
-    department: 'Product & Technology',
+    department: 'Engineering',
     team: '',
     workplaceType: 'Hybrid',
     url: `https://example.test/${id}`,
@@ -21,7 +21,7 @@ const posting = (id: string, title: string, place = 'Warsaw, Poland') =>
 
 const config: IJobWatchConfig = {
   boards: ['acme'],
-  locations: ['Warsaw'],
+  locations: ['Berlin'],
   keywords: ['react native', 'mobile'],
   chatId: 42,
 };
@@ -64,7 +64,7 @@ describe('WatchJobBoardsUseCase', () => {
     const { useCase, telegram } = setup([
       posting('a', 'Senior React Native Developer'),
       posting('b', 'Staff Backend Engineer'),
-      posting('c', 'Mobile Engineer', 'Málaga, Spain'),
+      posting('c', 'Mobile Engineer', 'Lisbon, Portugal'),
     ]);
 
     const first = await useCase.execute(now);
@@ -74,7 +74,7 @@ describe('WatchJobBoardsUseCase', () => {
     const [chatId, text, , options] = telegram.sendMessage.mock.calls[0];
     expect(chatId).toBe(42);
     expect(text).toContain('Senior React Native Developer');
-    expect(text).toContain('Warsaw, Poland');
+    expect(text).toContain('Berlin, Germany');
     expect(text).toContain('https://example.test/a');
     expect(options).toEqual({ links: false });
 
@@ -95,17 +95,31 @@ describe('WatchJobBoardsUseCase', () => {
     expect(telegram.sendMessage).not.toHaveBeenCalled();
   });
 
-  it('gives the claim back when Telegram fails, so the next run retries', async () => {
+  it('stops at a Telegram failure and sends the rest next run', async () => {
     const { useCase, telegram, seen } = setup([
       posting('a', 'Mobile Developer'),
+      posting('b', 'React Native Developer'),
     ]);
     telegram.sendMessage.mockRejectedValueOnce(new Error('429'));
     const first = await useCase.execute(now);
     expect(first.sent).toBe(0);
     expect(seen.release).toHaveBeenCalledWith('acme:a');
+    // The second one was not even claimed
+    expect(seen.claim).toHaveBeenCalledTimes(1);
 
     const second = await useCase.execute(now);
-    expect(second.sent).toBe(1);
+    expect(second.sent).toBe(2);
+  });
+
+  it('says so when the store is down, claiming nothing', async () => {
+    const { useCase, telegram, seen } = setup([
+      posting('a', 'Mobile Developer'),
+    ]);
+    seen.claim.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    const result = await useCase.execute(now);
+    expect(result.sent).toBe(0);
+    expect(telegram.sendMessage).toHaveBeenCalledTimes(1);
+    expect(telegram.sendMessage.mock.calls[0][1]).toContain('ECONNREFUSED');
   });
 
   it('says so when a board cannot be read', async () => {
