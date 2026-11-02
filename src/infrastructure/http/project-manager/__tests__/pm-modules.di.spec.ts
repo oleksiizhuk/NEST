@@ -99,6 +99,8 @@ describe('project-manager module wiring', () => {
       'pmChats',
       'pmConfirm',
       'audit',
+      'proposals',
+      'teamReview',
     ]) {
       expect(optional(handler, field)).toBeDefined();
     }

@@ -30,7 +30,10 @@ import { RefreshProjectSnapshotUseCase } from '@application/project-manager/use-
 import { BuildIndexUseCase } from '@application/project-manager/use-cases/build-index.use-case';
 import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 import { SettingsError } from '@application/project-manager/settings.interface';
-import { ReviewKind } from '@application/project-manager/team-reviews.interface';
+import {
+  MeetingKind,
+  ReviewKind,
+} from '@application/project-manager/team-reviews.interface';
 import {
   PmAdminAuth,
   PmAdminGuard,
@@ -512,7 +515,7 @@ export class PmAdminController {
   @UseGuards(PmAdminGuard)
   async teamReview(@Body() body: AdminTeamReviewBody) {
     try {
-      const kind: ReviewKind =
+      const kind: MeetingKind =
         body.kind === 'oneonone'
           ? `oneonone:${body.person ?? ''}`
           : body.kind ?? 'meeting';

@@ -40,6 +40,7 @@ import { ProjectSnapshot } from '@domain/project-status/project-snapshot.entity'
 import {
   ITeamReviews,
   PM_TEAM_REVIEWS,
+  MeetingKind,
   ReviewKind,
 } from '@application/project-manager/team-reviews.interface';
 
@@ -68,6 +69,20 @@ export const ONE_ON_ONE_REQUEST =
   'Start with up to three wins (closed tickets, merged work). Then up to two friction points, each phrased as an open question, not a verdict. ' +
   'Then one growth topic and one question about workload and how they feel about it. ' +
   'Do not guess motivation or mood, give no ratings, do not compare them with others. Use only the data below; plain text, short lines.';
+
+export const PERSON_REPORT_REQUEST =
+  'Write a report on the person below for me as the team lead, in Russian, for my private chat. ' +
+  'Sections: (1) Сейчас: what they are working on, one line per ticket with its key, how long, and whether it is release work; ' +
+  '(2) Сделано за 14 дней: closed tickets and merged work, briefly; ' +
+  '(3) Ждёт и блокеры: what of theirs is blocked or waiting for review or QA, since when, and who can move it; what others wait from them; ' +
+  '(4) Риски: what threatens the release or their dates (overdue, stuck, off-release work while release work waits, load against the team median, running out of work); ' +
+  '(5) Что сделать мне: one to three concrete steps for me. ' +
+  'Do not guess motivation or mood, give no ratings, do not compare them with other people by name. ' +
+  'Use only the data below and the snapshot, cite ticket keys; if something is unknown, say so. Plain text, short lines, no tables, no @-mentions.';
+
+// A refusal the person asking should read as is (no data, the daily cap);
+// anything else is a fault and gets a generic message
+export class ReviewRefused extends Error {}
 
 const DAY = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -390,32 +405,23 @@ export class TeamReviewUseCase {
     return this.reviews.latest(kind);
   }
 
-  async review(force: boolean, now = new Date(), kind: ReviewKind = 'meeting') {
+  async review(
+    force: boolean,
+    now = new Date(),
+    kind: MeetingKind = 'meeting',
+  ) {
     const cached = await this.reviews.latest(kind);
     if (!force && cached && DAY(cached.at) === DAY(now)) return cached;
-    // Whatever the page asks, at most this many model calls per UTC day
-    const dayStart = new Date(`${DAY(now)}T00:00:00Z`);
-    if ((await this.reviews.countSince(dayStart)) >= DAILY_REVIEW_LIMIT)
-      throw new Error(
-        `На сегодня уже подготовлено ${DAILY_REVIEW_LIMIT} разборов — это дневной предел. Готовые разборы открываются бесплатно.`,
-      );
-    const snapshot = await this.snapshots.findLatest();
-    if (!snapshot) throw new Error('Нет снимка проекта: обновите данные.');
-    const live = await this.runtime.current();
-    const team = buildTeam(snapshot, live.githubLogins ?? {}, now, {
-      thresholds: live.teamThresholds,
-      away: live.teamAway,
-    });
-    if (!team.hasDetails)
-      throw new Error(
-        'В снимке ещё нет данных по людям: нажмите «Обновить данные сейчас».',
-      );
-    if (!team.people.length) throw new Error('В данных Jira нет исполнителей.');
+    await this.withinDailyCap(now);
+    const { snapshot, live, team } = await this.teamFor(
+      await this.snapshots.findLatest(),
+      now,
+    );
     const who = kind.startsWith('oneonone:')
       ? team.people.find((p) => p.name === kind.slice('oneonone:'.length))
       : null;
     if (kind.startsWith('oneonone:') && !who)
-      throw new Error('Такого человека нет в данных Jira.');
+      throw new ReviewRefused('Такого человека нет в данных Jira.');
     const request =
       kind === 'standup'
         ? STANDUP_REQUEST
@@ -434,6 +440,94 @@ export class TeamReviewUseCase {
       : `${team.people.map(describe).join('\n\n')}${
           kind === 'retro' ? `\n\n${flowLines(stages)}` : ''
         }`;
+    return this.write(kind, request, body, snapshot, live, team, now);
+  }
+
+  // The people a report can be asked about: everyone with work in the
+  // latest snapshot, by name
+  async peopleNames(): Promise<string[]> {
+    const snapshot = await this.snapshots.findLatest();
+    if (!snapshot) return [];
+    const issues = snapshot.section('issues')?.details as
+      | { people?: Record<string, unknown> }
+      | undefined;
+    return Object.keys(issues?.people ?? {}).sort((a, b) => a.localeCompare(b));
+  }
+
+  // Telegram /report: one person's report for the owner. The same data gives
+  // the same report, so a second press is free until the snapshot changes or
+  // the day ends; a new one counts toward the daily cap.
+  async personReport(
+    name: string,
+    now = new Date(),
+  ): Promise<{ text: string; at: Date; cached: boolean }> {
+    const kind: ReviewKind = `report:${name}`;
+    const [snapshot, cached] = await Promise.all([
+      this.snapshots.findLatest(),
+      this.reviews.latest(kind),
+    ]);
+    if (
+      cached &&
+      snapshot &&
+      cached.at >= snapshot.createdAt &&
+      DAY(cached.at) === DAY(now)
+    )
+      return { ...cached, cached: true };
+    await this.withinDailyCap(now);
+    const { snapshot: latest, live, team } = await this.teamFor(snapshot, now);
+    const who = team.people.find((p) => p.name === name);
+    if (!who)
+      throw new ReviewRefused(
+        `${name} нет в последних данных Jira: нет ни открытых задач, ни закрытых за 14 дней.`,
+      );
+    const written = await this.write(
+      kind,
+      PERSON_REPORT_REQUEST,
+      describe(who),
+      latest,
+      live,
+      team,
+      now,
+    );
+    return { ...written, cached: false };
+  }
+
+  // Whatever the page or the bot asks, at most this many model calls per
+  // UTC day
+  private async withinDailyCap(now: Date): Promise<void> {
+    const dayStart = new Date(`${DAY(now)}T00:00:00Z`);
+    if ((await this.reviews.countSince(dayStart)) >= DAILY_REVIEW_LIMIT)
+      throw new ReviewRefused(
+        `На сегодня уже подготовлено ${DAILY_REVIEW_LIMIT} разборов — это дневной предел. Готовые разборы открываются бесплатно.`,
+      );
+  }
+
+  private async teamFor(snapshot: ProjectSnapshot | null, now: Date) {
+    if (!snapshot)
+      throw new ReviewRefused('Нет снимка проекта: обновите данные.');
+    const live = await this.runtime.current();
+    const team = buildTeam(snapshot, live.githubLogins ?? {}, now, {
+      thresholds: live.teamThresholds,
+      away: live.teamAway,
+    });
+    if (!team.hasDetails)
+      throw new ReviewRefused(
+        'В снимке ещё нет данных по людям: нажмите «Обновить данные сейчас».',
+      );
+    if (!team.people.length)
+      throw new ReviewRefused('В данных Jira нет исполнителей.');
+    return { snapshot, live, team };
+  }
+
+  private async write(
+    kind: ReviewKind,
+    request: string,
+    body: string,
+    snapshot: ProjectSnapshot,
+    live: Awaited<ReturnType<PmRuntimeConfig['current']>>,
+    team: ReturnType<typeof buildTeam>,
+    now: Date,
+  ): Promise<{ text: string; at: Date }> {
     const knowledge = await loadKnowledge(
       this.knowledge,
       live.knowledgeInlineChars,
@@ -453,7 +547,9 @@ export class TeamReviewUseCase {
       deadline: Date.now() + 240_000,
     });
     if (!text || text === PM_UNAVAILABLE_REPLY)
-      throw new Error('Модель не смогла подготовить разбор. Попробуйте позже.');
+      throw new ReviewRefused(
+        'Модель не смогла подготовить разбор. Попробуйте позже.',
+      );
     await this.reviews.save(text, now, kind);
     return { text, at: now };
   }

@@ -20,6 +20,10 @@ const query = (data: string, keyboard = true): CallbackQuery =>
               inline_keyboard: [
                 [{ text: 'Galleria, Riyadh', callback_data: 'o:0' }],
                 [{ text: 'Park Avenue', callback_data: 'o:1' }],
+                [
+                  { text: 'Ann Lee', callback_data: 'rp:0' },
+                  { text: 'Карина Шевченко', callback_data: 'rp:1' },
+                ],
               ],
             },
           }
@@ -44,6 +48,21 @@ describe('mapCallbackToIncoming', () => {
       text: 'Выбираю вариант: Park Avenue',
       callback: { kind: 'option' },
     });
+  });
+
+  it('reads the person picked for /report from the button label', () => {
+    expect(mapCallbackToIncoming(query('rp:1'))).toMatchObject({
+      text: 'Отчёт: Карина Шевченко',
+      callback: { kind: 'person', person: 'Карина Шевченко', messageId: 99 },
+    });
+    // A picker too old to read is still a press, without a name
+    const stale = mapCallbackToIncoming(query('rp:0', false));
+    expect(stale?.callback).toMatchObject({ kind: 'person' });
+    expect(stale?.callback?.person).toBeUndefined();
+    expect(
+      mapCallbackToIncoming(query('rp:7'))?.callback?.person,
+    ).toBeUndefined();
+    expect(mapCallbackToIncoming(query('rp:x'))).toBeNull();
   });
 
   it('reads a feedback vote and its token', () => {

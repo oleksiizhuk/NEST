@@ -27,7 +27,8 @@ export interface IncomingTelegramMessage {
       | 'feedback'
       | 'approve'
       | 'check'
-      | 'proposal';
+      | 'proposal'
+      | 'person';
     // For feedback: 👍 = 1, 👎 = -1, and the answer's token
     vote?: 1 | -1;
     token?: string;
@@ -38,5 +39,7 @@ export interface IncomingTelegramMessage {
     // For proposal: personal mode's unblock proposal and the press
     // (a take, s later, r not useful, x already rated)
     proposal?: { id: string; action: 'a' | 's' | 'r' | 'x' };
+    // For person: /report's pick, the person's name from the button label
+    person?: string;
   };
 }

@@ -46,6 +46,10 @@ import { PmRuntimeConfig } from '@application/project-manager/pm-runtime-config'
 import { AdminAccess } from '@application/project-manager/admin-access';
 import { RunConsistencyAuditUseCase } from '@application/project-manager/use-cases/run-consistency-audit.use-case';
 import {
+  ReviewRefused,
+  TeamReviewUseCase,
+} from '@application/project-manager/use-cases/team-review.use-case';
+import {
   IProposalStore,
   PM_PROPOSALS,
   PROPOSAL_ACTIONS,
@@ -86,6 +90,7 @@ const BOT_COMMANDS = [
   '/cancel',
   '/memory',
   '/forget',
+  '/report',
 ];
 const CONFIRM_WORDS = /^(да|ага|yes|ok|ок|подтверждаю|confirm)[.!]*$/i;
 
@@ -112,6 +117,21 @@ const feedbackButtons = (token: string): InlineButton[][] => [
 // One option per row: labels are short sentences, not single words
 const choiceButtons = (choices: string[]): InlineButton[][] =>
   choices.map((text, i) => [{ text, data: `o:${i}` }]);
+
+// /report's picker: two names per row. The press is read back by the button
+// label (rp:<n>), so the label is the name and nothing else
+const MAX_PEOPLE = 60;
+const personButtons = (names: string[]): InlineButton[][] => {
+  const rows: InlineButton[][] = [];
+  names.slice(0, MAX_PEOPLE).forEach((text, i) => {
+    const button = { text, data: `rp:${i}` };
+    if (i % 2) rows[rows.length - 1].push(button);
+    else rows.push([button]);
+  });
+  return rows;
+};
+
+const hhmm = (d: Date) => d.toISOString().slice(11, 16);
 
 // "/status@my_bot args" → "/status" when addressed to this bot or to nobody
 const commandOf = (text: string, botUsername: string): string | null => {
@@ -165,7 +185,14 @@ export class HandleTelegramMessageUseCase {
     @Optional()
     @Inject(PM_PROPOSALS)
     private readonly proposals?: IProposalStore,
+    // /report: a report on one person, for the owner
+    @Optional() private readonly teamReview?: TeamReviewUseCase,
   ) {}
+
+  // People whose report is being written right now: a second press would
+  // pay for the same report twice. Per instance only — best effort, the
+  // daily cap is the real bound
+  private readonly reportsRunning = new Set<string>();
 
   // The config with the owner's admin-page overrides, loaded at the start
   // of each message (cached for 30 s by PmRuntimeConfig)
@@ -345,6 +372,11 @@ export class HandleTelegramMessageUseCase {
       return;
     }
 
+    if (command === '/report' && this.teamReview && this.pmAnswer) {
+      await this.offerPersonReport(msg, isPrivate);
+      return;
+    }
+
     const cleanText = text
       .replace(new RegExp(`@${botInfo.username}`, 'gi'), '')
       .trim();
@@ -412,6 +444,11 @@ export class HandleTelegramMessageUseCase {
       await this.rateProposal(msg);
       return;
     }
+    // Before the PM gate: the owner's private chat need not be in PM mode
+    if (callback.kind === 'person') {
+      await this.sendPersonReport(msg);
+      return;
+    }
     if (!(await this.isPmChat(msg.chatId, msg))) {
       await this.telegram.answerCallback(callback.id).catch(() => undefined);
       return;
@@ -471,6 +508,122 @@ export class HandleTelegramMessageUseCase {
     await this.telegram
       .setButtons(msg.chatId, callback.messageId, unblockButtons(rated))
       .catch((error) => this.logger.warn(`proposal buttons: ${error}`));
+  }
+
+  // /report: the owner picks a person from everyone with work in the latest
+  // snapshot. Only in private: a report about one person never goes to a
+  // group. Anyone else gets no reply, so the command does not advertise itself.
+  private async offerPersonReport(
+    msg: IncomingTelegramMessage,
+    isPrivate: boolean,
+  ): Promise<void> {
+    if (msg.from.id !== this.config.ownerId || !this.teamReview) return;
+    const send = (text: string, buttons?: InlineButton[][]) =>
+      (buttons
+        ? this.telegram.sendMessage(msg.chatId, text, buttons)
+        : this.telegram.sendMessage(msg.chatId, text)
+      ).catch((error) => this.logger.error(`report picker: ${error}`));
+    if (!isPrivate) {
+      await send(
+        'Отчёт по человеку пришлю только в личку: напишите /report мне в личные сообщения.',
+      );
+      return;
+    }
+    let names: string[];
+    try {
+      names = await this.teamReview.peopleNames();
+    } catch (error) {
+      this.logger.error(error);
+      await send(FALLBACK_MESSAGE);
+      return;
+    }
+    if (!names.length) {
+      await send(
+        'В последних данных Jira нет людей с задачами. Обновите данные (/refresh) и попробуйте снова.',
+      );
+      return;
+    }
+    const more =
+      names.length > MAX_PEOPLE
+        ? `\nПоказаны первые ${MAX_PEOPLE} из ${names.length}.`
+        : '';
+    await send(
+      `По кому отчёт? Выберите человека — отчёт придёт отдельным сообщением.${more}`,
+      personButtons(names),
+    );
+  }
+
+  // The owner pressed a name under /report: the report comes as its own
+  // message and the picker stays, so the next person is one press away
+  private async sendPersonReport(msg: IncomingTelegramMessage): Promise<void> {
+    const callback = msg.callback;
+    if (!callback) return;
+    const name = callback.person;
+    if (
+      !this.teamReview ||
+      msg.from.id !== this.config.ownerId ||
+      msg.chatType !== 'private'
+    ) {
+      await this.telegram.answerCallback(callback.id).catch(() => undefined);
+      return;
+    }
+    if (!name) {
+      await this.telegram
+        .answerCallback(
+          callback.id,
+          'Список устарел: отправьте /report ещё раз',
+        )
+        .catch(() => undefined);
+      return;
+    }
+    if (this.reportsRunning.has(name)) {
+      await this.telegram
+        .answerCallback(callback.id, 'Уже готовлю этот отчёт')
+        .catch(() => undefined);
+      return;
+    }
+    this.reportsRunning.add(name);
+    await this.telegram
+      .answerCallback(callback.id, `Готовлю отчёт: ${name}`)
+      .catch(() => undefined);
+    // The model can think for a minute or two; keep "typing…" alive
+    const typing = setInterval(
+      () => void this.telegram.sendTyping(msg.chatId).catch(() => undefined),
+      5000,
+    );
+    try {
+      await this.telegram.sendTyping(msg.chatId).catch(() => undefined);
+      const report = await this.teamReview.personReport(name, new Date());
+      const note = report.cached
+        ? `\n(тот же отчёт, что в ${hhmm(
+            report.at,
+          )} UTC: данные с тех пор не обновлялись)`
+        : '';
+      const text = `📋 ${name}${note}\n\n${report.text}`;
+      await this.telegram.sendMessage(msg.chatId, text);
+      // In the PM history, so a follow-up question knows what was said
+      await this.saveLog(msg, text, PM_MODE).catch((error) =>
+        this.logger.error(error),
+      );
+    } catch (error) {
+      if (error instanceof ReviewRefused)
+        this.logger.log(`report on ${name}: ${error.message}`);
+      else this.logger.error(error);
+      const limit = usageLimitOf(error);
+      await this.telegram
+        .sendMessage(
+          msg.chatId,
+          limit
+            ? usageLimitNotice(limit)
+            : error instanceof ReviewRefused
+            ? error.message
+            : FALLBACK_MESSAGE,
+        )
+        .catch(() => undefined);
+    } finally {
+      clearInterval(typing);
+      this.reportsRunning.delete(name);
+    }
   }
 
   // Anyone in the chat may tick an audit item: ✅ means "someone looked at
