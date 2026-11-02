@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   OWNER_COMMANDS,
   resolveWebhookUrl,
@@ -86,6 +87,60 @@ describe('TelegramWebhookBootstrap', () => {
     await run({ ...prod, TELEGRAM_TOKEN: undefined });
     await run(prod, { ...config, webhookSecret: '' });
     expect(botService.registerWebhook).not.toHaveBeenCalled();
+  });
+
+  describe('when sibling instances register at the same time', () => {
+    const logs = () => ({
+      log: jest.spyOn(Logger.prototype, 'log').mockImplementation(),
+      warn: jest.spyOn(Logger.prototype, 'warn').mockImplementation(),
+      error: jest.spyOn(Logger.prototype, 'error').mockImplementation(),
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('a 429 is not an error once the webhook points at us', async () => {
+      const spy = logs();
+      botService.registerWebhook.mockResolvedValue({
+        url: 'https://nest-ruby-theta.vercel.app/telegram/webhook',
+        pending: 0,
+        lastError: null,
+        rateLimited: true,
+        registered: true,
+      });
+      botService.setChatCommands.mockRejectedValue(
+        Object.assign(new Error('429'), {
+          error_code: 429,
+          parameters: { retry_after: 1 },
+        }),
+      );
+      await run(prod);
+      expect(spy.error).not.toHaveBeenCalled();
+      expect(spy.warn).not.toHaveBeenCalled();
+      expect(spy.log).toHaveBeenCalledWith(
+        expect.stringContaining('by another instance'),
+      );
+      expect(spy.log).toHaveBeenCalledWith(
+        expect.stringContaining('another instance is setting it'),
+      );
+    });
+
+    it('stays an error when the webhook is not ours', async () => {
+      const spy = logs();
+      botService.registerWebhook.mockResolvedValue({
+        url: 'https://elsewhere/hook',
+        pending: 0,
+        lastError: null,
+        rateLimited: true,
+        registered: false,
+      });
+      botService.setChatCommands.mockRejectedValue(new Error('400 bad'));
+      await run(prod);
+      expect(spy.error).toHaveBeenCalledWith(
+        expect.stringContaining('points at https://elsewhere/hook'),
+      );
+      expect(spy.warn).toHaveBeenCalledWith(
+        expect.stringContaining('menu not set'),
+      );
+    });
   });
 
   it('never fails the boot when Telegram errors', async () => {

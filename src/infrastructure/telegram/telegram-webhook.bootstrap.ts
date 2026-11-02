@@ -4,7 +4,10 @@ import {
   ITelegramConfig,
   TELEGRAM_CONFIG,
 } from '@application/telegram/telegram.config.interface';
-import { TelegramBotService } from '@infrastructure/telegram/telegram-bot.service';
+import {
+  retryAfterSeconds,
+  TelegramBotService,
+} from '@infrastructure/telegram/telegram-bot.service';
 
 const REGISTER_TIMEOUT_MS = 5000;
 
@@ -72,6 +75,21 @@ export class TelegramWebhookBootstrap implements OnModuleInit {
       const before = await withTimeout(
         this.botService.registerWebhook(url, this.config.webhookSecret),
       );
+      if (before.rateLimited) {
+        // Several instances of a new deployment register at once; Telegram
+        // let another one through. Only a webhook that is not ours is a fault
+        if (before.registered)
+          this.logger.log(
+            `Telegram webhook already set to ${url} by another instance (this one was rate-limited)`,
+          );
+        else
+          this.logger.error(
+            `Telegram webhook not registered: rate-limited, and it points at ${
+              before.url || 'none'
+            }`,
+          );
+        return;
+      }
       this.logger.log(
         `Telegram webhook set to ${url} (was: ${before.url || 'none'}, ` +
           `pending: ${before.pending}, last error: ${
@@ -92,8 +110,11 @@ export class TelegramWebhookBootstrap implements OnModuleInit {
       );
       if (changed) this.logger.log("Owner's command menu updated");
     } catch (error) {
+      // Another instance of the same deployment is writing the same menu
+      if (retryAfterSeconds(error) !== null)
+        this.logger.log("Owner's command menu: another instance is setting it");
       // A missing menu only means typing the command; the next cold start retries
-      this.logger.warn(`Owner's command menu not set: ${error}`);
+      else this.logger.warn(`Owner's command menu not set: ${error}`);
     }
   }
 }
