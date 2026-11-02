@@ -28,12 +28,30 @@ export const mapToIncoming = (msg: Message): IncomingTelegramMessage | null => {
 // Callback data written by the bot: "c:<id>" confirm, "x:<id>" cancel,
 // "o:<n>" the n-th option, "f:+:<token>" / "f:-:<token>" feedback,
 // "ck:<run>:<t|d><n>" an audit checklist item, "pp:<id>:<a|s|r|x>" a rating
-// of an unblock proposal. An option's meaning is its button label, read
-// back from the message itself, so nothing has to be stored for it.
+// of an unblock proposal, "rp:<n>" a person picked for /report. An option's
+// meaning (and a picked person's name) is its button label, read back from
+// the message itself, so nothing has to be stored for it.
 const ACTION_ID = /^[A-Z0-9]{1,16}$/i;
 const FEEDBACK = /^f:([+-]):([a-z0-9]{6,16})$/i;
 const APPROVE = /^a:([+-]):([a-f0-9]{32})$/;
 const PROPOSAL = /^pp:([a-f0-9]{8}):([asrx])$/;
+const PERSON = /^rp:\d{1,3}$/;
+
+// The label of the pressed button; an inaccessible (too old) message
+// carries no keyboard
+const pressedLabel = (
+  message: NonNullable<CallbackQuery['message']>,
+  data: string,
+): string | null => {
+  const rows =
+    'reply_markup' in message
+      ? message.reply_markup?.inline_keyboard ?? []
+      : [];
+  const button = rows
+    .flat()
+    .find((b) => 'callback_data' in b && b.callback_data === data);
+  return button ? button.text : null;
+};
 
 export const mapCallbackToIncoming = (
   query: CallbackQuery,
@@ -52,7 +70,14 @@ export const mapCallbackToIncoming = (
   const check = prefix === 'ck' ? parseCheckData(data) : null;
   const rated = data.match(PROPOSAL);
   let proposal: { id: string; action: 'a' | 's' | 'r' | 'x' } | null = null;
-  if (rated) {
+  let person: string | null = null;
+  if (PERSON.test(data)) {
+    // Without a readable label (a picker too old to read) it is still a
+    // press to answer, so its spinner stops; there is just no name
+    person = pressedLabel(message, data);
+    kind = 'person';
+    text = person ? `Отчёт: ${person}` : 'Отчёт';
+  } else if (rated) {
     kind = 'proposal';
     proposal = { id: rated[1], action: rated[2] as 'a' | 's' | 'r' | 'x' };
     text = '💡';
@@ -71,17 +96,10 @@ export const mapCallbackToIncoming = (
     kind = prefix === 'c' ? 'confirm' : 'cancel';
     text = `/${kind} ${value}`;
   } else if (prefix === 'o') {
-    // An inaccessible (too old) message carries no keyboard
-    const rows =
-      'reply_markup' in message
-        ? message.reply_markup?.inline_keyboard ?? []
-        : [];
-    const button = rows
-      .flat()
-      .find((b) => 'callback_data' in b && b.callback_data === data);
-    if (!button) return null;
+    const label = pressedLabel(message, data);
+    if (!label) return null;
     kind = 'option';
-    text = `Выбираю вариант: ${button.text}`;
+    text = `Выбираю вариант: ${label}`;
   } else {
     return null;
   }
@@ -105,6 +123,7 @@ export const mapCallbackToIncoming = (
       ...(approval ?? {}),
       ...(check ? { check } : {}),
       ...(proposal ? { proposal } : {}),
+      ...(person ? { person } : {}),
     },
   };
 };

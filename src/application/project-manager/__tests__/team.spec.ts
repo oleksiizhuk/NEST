@@ -6,7 +6,10 @@ import {
   teamIssues,
   todayItems,
 } from '@application/project-manager/team';
-import { TeamReviewUseCase } from '@application/project-manager/use-cases/team-review.use-case';
+import {
+  ReviewRefused,
+  TeamReviewUseCase,
+} from '@application/project-manager/use-cases/team-review.use-case';
 import { cleanSettings } from '@application/project-manager/settings.interface';
 
 const NOW = new Date('2026-09-24T10:00:00Z'); // Thursday
@@ -303,7 +306,10 @@ describe('buildTeam', () => {
 });
 
 describe('TeamReviewUseCase', () => {
-  const build = (latest: { text: string; at: Date } | null) => {
+  const build = (
+    latest: { text: string; at: Date } | null,
+    latestSnapshot: ProjectSnapshot | null = snapshot(),
+  ) => {
     const ai = {
       digest: jest.fn().mockResolvedValue('Ann: частично…'),
       answer: jest.fn(),
@@ -314,7 +320,7 @@ describe('TeamReviewUseCase', () => {
       countSince: jest.fn().mockResolvedValue(0),
     };
     const useCase = new TeamReviewUseCase(
-      { findLatest: jest.fn().mockResolvedValue(snapshot()) } as any,
+      { findLatest: jest.fn().mockResolvedValue(latestSnapshot) } as any,
       ai as any,
       { all: jest.fn().mockResolvedValue([]) } as any,
       reviews,
@@ -380,5 +386,78 @@ describe('TeamReviewUseCase', () => {
       'дневной предел',
     );
     expect(ai.digest).not.toHaveBeenCalled();
+  });
+
+  describe('personReport (Telegram /report)', () => {
+    it('lists everyone with work in the snapshot, by name', async () => {
+      const { useCase } = build(null);
+      await expect(useCase.peopleNames()).resolves.toEqual(['Ann Lee', 'Bob']);
+      await expect(build(null, null).useCase.peopleNames()).resolves.toEqual(
+        [],
+      );
+    });
+
+    it("writes one person's report from their data and keeps it", async () => {
+      const { useCase, ai, reviews } = build(null);
+      await expect(useCase.personReport('Bob', NOW)).resolves.toEqual({
+        text: 'Ann: частично…',
+        at: NOW,
+        cached: false,
+      });
+      const question = ai.digest.mock.calls[0][0].question;
+      expect(question).toContain('Write a report on the person below');
+      expect(question).toContain('## Bob');
+      expect(question).not.toContain('## Ann Lee');
+      expect(reviews.latest).toHaveBeenCalledWith('report:Bob');
+      expect(reviews.save).toHaveBeenCalledWith(
+        'Ann: частично…',
+        NOW,
+        'report:Bob',
+      );
+    });
+
+    it('gives the same report for free until the data or the day changes', async () => {
+      // Written after this snapshot (NOW), the same day
+      const fresh = { text: 'cached', at: new Date('2026-09-24T11:00:00Z') };
+      const same = build(fresh);
+      await expect(
+        same.useCase.personReport('Bob', new Date('2026-09-24T12:00:00Z')),
+      ).resolves.toEqual({ ...fresh, cached: true });
+      expect(same.ai.digest).not.toHaveBeenCalled();
+      expect(same.reviews.countSince).not.toHaveBeenCalled();
+
+      // Written before the latest snapshot: the data changed since
+      const older = build({
+        text: 'old',
+        at: new Date('2026-09-24T09:00:00Z'),
+      });
+      await older.useCase.personReport('Bob', NOW);
+      expect(older.ai.digest).toHaveBeenCalledTimes(1);
+
+      // Same snapshot, but yesterday's report: the release day count moved
+      const late = build(fresh);
+      await late.useCase.personReport('Bob', new Date('2026-09-25T08:00:00Z'));
+      expect(late.ai.digest).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses with a readable reason, inside the shared daily cap', async () => {
+      const nobody = build(null);
+      const error = await nobody.useCase
+        .personReport('Nobody', NOW)
+        .catch((e) => e);
+      expect(error).toBeInstanceOf(ReviewRefused);
+      expect(error.message).toContain('Nobody нет в последних данных Jira');
+
+      const capped = build(null);
+      capped.reviews.countSince.mockResolvedValue(20);
+      await expect(capped.useCase.personReport('Bob', NOW)).rejects.toThrow(
+        ReviewRefused,
+      );
+      expect(capped.ai.digest).not.toHaveBeenCalled();
+
+      await expect(
+        build(null, null).useCase.personReport('Bob', NOW),
+      ).rejects.toThrow('Нет снимка проекта');
+    });
   });
 });
