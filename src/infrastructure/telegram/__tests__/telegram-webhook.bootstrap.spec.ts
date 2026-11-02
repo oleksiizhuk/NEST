@@ -1,4 +1,5 @@
 import {
+  OWNER_COMMANDS,
   resolveWebhookUrl,
   TelegramWebhookBootstrap,
 } from '@infrastructure/telegram/telegram-webhook.bootstrap';
@@ -13,8 +14,15 @@ const prod = {
 };
 
 describe('TelegramWebhookBootstrap', () => {
-  const botService = { registerWebhook: jest.fn() };
-  const config = { mode: 'webhook', webhookSecret: 's3cret' } as any;
+  const botService = {
+    registerWebhook: jest.fn(),
+    setChatCommands: jest.fn(),
+  };
+  const config = {
+    mode: 'webhook',
+    webhookSecret: 's3cret',
+    ownerId: 555,
+  } as any;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -23,6 +31,7 @@ describe('TelegramWebhookBootstrap', () => {
       pending: 3,
       lastError: null,
     });
+    botService.setChatCommands.mockResolvedValue(true);
   });
 
   const run = (values: Record<string, string | undefined>, cfg = config) =>
@@ -40,10 +49,36 @@ describe('TelegramWebhookBootstrap', () => {
     );
   });
 
+  it("puts /report in the owner's private menu only", async () => {
+    await run(prod);
+    expect(botService.setChatCommands).toHaveBeenCalledWith(
+      555,
+      OWNER_COMMANDS,
+    );
+    expect(OWNER_COMMANDS.map((c) => c.command)).toContain('report');
+    // Telegram's rules: lowercase name, no slash, short description
+    for (const c of OWNER_COMMANDS) {
+      expect(c.command).toMatch(/^[a-z0-9_]{1,32}$/);
+      expect(c.description.length).toBeLessThanOrEqual(256);
+    }
+  });
+
+  it('sets no menu without an owner, and never fails the boot over it', async () => {
+    await run(prod, { ...config, ownerId: 0 });
+    expect(botService.setChatCommands).not.toHaveBeenCalled();
+    botService.setChatCommands.mockRejectedValue(
+      new Error('400 chat not found'),
+    );
+    await expect(run(prod)).resolves.toBeUndefined();
+    // The webhook still got registered
+    expect(botService.registerWebhook).toHaveBeenCalledTimes(2);
+  });
+
   it('leaves the webhook alone on previews and locally', async () => {
     await run({ ...prod, VERCEL_ENV: 'preview' });
     await run({ ...prod, VERCEL_ENV: undefined });
     expect(botService.registerWebhook).not.toHaveBeenCalled();
+    expect(botService.setChatCommands).not.toHaveBeenCalled();
   });
 
   it('does nothing in polling mode or without a token or secret', async () => {

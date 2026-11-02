@@ -213,6 +213,27 @@ export class TelegramBotService implements ITelegramGateway, OnModuleDestroy {
     };
   }
 
+  // The command menu of one private chat (the owner's), so commands only the
+  // owner may use are not shown to anyone else. Written only when it
+  // differs; returns whether it was.
+  async setChatCommands(
+    chatId: number,
+    commands: Array<{ command: string; description: string }>,
+  ): Promise<boolean> {
+    const scope = { type: 'chat' as const, chat_id: chatId };
+    const current = await this.bot.api.getMyCommands({ scope });
+    const same =
+      current.length === commands.length &&
+      current.every(
+        (c, i) =>
+          c.command === commands[i].command &&
+          c.description === commands[i].description,
+      );
+    if (same) return false;
+    await this.bot.api.setMyCommands(commands, { scope });
+    return true;
+  }
+
   // Local long polling only; production receives updates on the webhook.
   onMessage(handler: (message: Message) => void): void {
     this.bot.on('message', (ctx) => handler(ctx.message));

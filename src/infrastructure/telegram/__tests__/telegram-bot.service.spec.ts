@@ -57,6 +57,8 @@ const mockApi = {
   sendMessage: jest.fn().mockResolvedValue(undefined),
   sendChatAction: jest.fn().mockResolvedValue(undefined),
   editMessageReplyMarkup: jest.fn().mockResolvedValue(undefined),
+  getMyCommands: jest.fn(),
+  setMyCommands: jest.fn().mockResolvedValue(true),
 };
 const mockBotCtor = jest.fn();
 jest.mock('grammy', () => ({
@@ -135,6 +137,27 @@ describe('TelegramBotService', () => {
     // Any other failure is not hidden behind a resend
     mockApi.sendMessage.mockRejectedValueOnce(new Error('Forbidden: blocked'));
     await expect(service.sendMessage(42, 'ABC-9')).rejects.toThrow('blocked');
+  });
+
+  it("writes one chat's command menu only when it differs", async () => {
+    const menu = [
+      { command: 'status', description: 'Статус' },
+      { command: 'report', description: 'Отчёт по человеку' },
+    ];
+    const scope = { scope: { type: 'chat', chat_id: 555 } };
+    mockApi.getMyCommands.mockResolvedValueOnce(menu.slice(0, 1));
+    await expect(serviceWith('1:abc').setChatCommands(555, menu)).resolves.toBe(
+      true,
+    );
+    expect(mockApi.getMyCommands).toHaveBeenCalledWith(scope);
+    expect(mockApi.setMyCommands).toHaveBeenCalledWith(menu, scope);
+
+    mockApi.setMyCommands.mockClear();
+    mockApi.getMyCommands.mockResolvedValueOnce(menu.map((c) => ({ ...c })));
+    await expect(serviceWith('1:abc').setChatCommands(555, menu)).resolves.toBe(
+      false,
+    );
+    expect(mockApi.setMyCommands).not.toHaveBeenCalled();
   });
 
   it('shows the typing indicator', async () => {
