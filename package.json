@@ -30,7 +30,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
     "@binance/connector": "^3.3.0",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@nestjs-modules/mailer": "^1.10.3",
     "@nestjs/axios": "^3.0.2",
     "@nestjs/common": "^9.0.0",
