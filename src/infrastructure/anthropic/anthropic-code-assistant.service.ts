@@ -24,7 +24,7 @@ import {
 const MODEL_IDS: Record<AssistantModel, string> = {
   opus: 'claude-opus-5-5',
   sonnet: 'claude-sonnet-5-5',
-  fable: 'claude-fable-5-1',
+  fable: 'claude-fable-5-2',
 };
 
 // The answer is relayed back into an IDE chat, so it has to finish inside

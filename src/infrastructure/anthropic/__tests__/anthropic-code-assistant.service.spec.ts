@@ -95,7 +95,7 @@ describe('AnthropicCodeAssistantService', () => {
     await service.ask({ prompt: 'c' });
 
     expect(mockStream.mock.calls.map((c) => (c[0] as any).model)).toEqual([
-      'claude-fable-5-1',
+      'claude-fable-5-2',
       'claude-opus-5-5',
       'claude-sonnet-5-5',
     ]);
